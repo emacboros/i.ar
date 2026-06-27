@@ -1,0 +1,34 @@
+---
+# playbooks/site.yml — Master playbook: runs all roles in order.
+# Usage: ansible-playbook playbooks/site.yml --vault-password-file .vault_pass
+
+- name: Base configuration (all hosts)
+  hosts: all
+  roles:
+    - base
+
+- name: WireGuard mesh (all hosts)
+  hosts: all
+  roles:
+    - wireguard
+
+- name: Cloud servers
+  hosts: cloud
+  roles:
+    - caddy
+    - role: cloudflare-tunnel
+      when: cloudflare_tunnel_enabled | default(false) | bool
+
+- name: AI playground
+  hosts: ai_playground
+  roles:
+    - podman
+    - ai-environment
+
+- name: Ollama hosts
+  hosts: ollama_hosts
+  roles:
+    - role: podman
+      when: podman_enabled | default(false) | bool
+    - role: ollama
+      when: ollama_enabled | default(false) | bool

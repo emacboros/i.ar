@@ -1,0 +1,69 @@
+# {{ ansible_managed }}
+# Caddyfile — Reverse proxy for randazzo.ar
+# Caddy handles TLS automatically via Let's Encrypt.
+# All backend services are reached over WireGuard (10.66.0.x).
+
+{
+    email {{ caddy_email }}
+    # Enable only if you want management API (not recommended for prod)
+    # admin off
+}
+
+# ── randazzo.ar — main site (static page from i-ar) ────────
+{{ domains.proxy }} {
+    reverse_proxy {{ caddy_config[0].reverse_proxy | default('10.66.0.3:80') }}
+    encode gzip zstd
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy no-referrer
+    }
+}
+
+# ── randazzo.com.ar — redirect to randazzo.ar ──────────────
+{{ domains.proxy_alt }} {
+    redir https://{{ domains.proxy }}{uri} permanent
+}
+
+# ── i.ar — tool static page ────────────────────────────────
+{{ domains.ollama }} {
+    reverse_proxy 10.66.0.3:{{ tool_static_port | default(8080) }}
+    encode gzip zstd
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options nosniff
+    }
+}
+
+# ── 0b.ar — AI playground ──────────────────────────────────
+{{ domains.ai }} {
+    reverse_proxy 10.66.0.2:80
+    encode gzip zstd
+    # Restrict access — only via WireGuard or authenticated
+    # @blocked not remote 10.66.0.0/24
+    # respond @blocked 403
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options nosniff
+    }
+}
+
+# ── Additional reverse proxies (add as needed) ────────────
+# Example: expose a local app running on server-pc
+# app.randazzo.ar {
+#     reverse_proxy 10.66.0.5:3000
+# }
+
+# ── Ollama API (internal only, no public exposure) ────────
+# ollama.randazzo.ar {
+#     reverse_proxy 10.66.0.3:11434
+#     # Only allow WireGuard clients
+#     @allowed remote 10.66.0.0/24
+#     handle @allowed {
+#         reverse_proxy 10.66.0.3:11434
+#     }
+#     handle {
+#         respond 403
+#     }
+# }

@@ -1,0 +1,49 @@
+---
+# roles/caddy/tasks/main.yml
+# Installs Caddy as a reverse proxy on the proxy server (randazzo-ar).
+# Caddy handles TLS automatically (Let's Encrypt) and proxies
+# to internal services over WireGuard.
+# All servers run Fedora Server 44 or AlmaLinux 10 (RHEL family).
+
+# ── Install Caddy ──────────────────────────────────────────
+- name: Add Caddy COPR repo
+  command: "dnf copr enable -y @caddy/caddy"
+  args:
+    creates: /etc/yum.repos.d/_copr_copr.fedorainfracloud.org_group_caddy_caddy.repo
+
+- name: Install Caddy
+  dnf:
+    name: caddy
+    state: present
+
+# ── Configure Caddy ───────────────────────────────────────
+- name: Deploy Caddyfile
+  template:
+    src: Caddyfile.j2
+    dest: "{{ caddy_config_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload caddy
+
+# ── Allow HTTP/HTTPS through firewall ──────────────────────
+- name: Allow HTTP through firewalld
+  ansible.posix.firewalld:
+    service: http
+    permanent: true
+    state: enabled
+    immediate: true
+
+- name: Allow HTTPS through firewalld
+  ansible.posix.firewalld:
+    service: https
+    permanent: true
+    state: enabled
+    immediate: true
+
+# ── Enable Caddy ───────────────────────────────────────────
+- name: Enable and start Caddy
+  service:
+    name: caddy
+    state: started
+    enabled: true
