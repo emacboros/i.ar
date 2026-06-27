@@ -1,0 +1,3 @@
+[submodule "metaconfig"]
+	path = metaconfig
+	url = git@github.com:randazzo-ignacio/iar-metaconfig.git
