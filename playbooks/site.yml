@@ -38,3 +38,8 @@
   roles:
     - role: static-page
       when: tool_static_page_enabled | default(false) | bool
+
+- name: randazzo.ar — deploy portfolio page (after Caddy created web root)
+  hosts: rammstein
+  roles:
+    - portfolio-page

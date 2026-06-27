@@ -27,7 +27,7 @@
 - name: Deploy script.js
   copy:
     src: script.js
-    dest: "{{ static_page_root }}/script.js
+    dest: "{{ static_page_root }}/script.js"
     owner: caddy
     group: caddy
     mode: '0644'

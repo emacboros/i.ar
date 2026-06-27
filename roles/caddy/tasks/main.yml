@@ -16,21 +16,23 @@
     name: caddy
     state: present
 
-# ── Create web root for static sites (if this host serves any) ──
+# ── Create web roots for static sites ──────────────────────
 # Caddy on Fedora runs as the 'caddy' user. Static files must be
-# readable by caddy. Each host that serves static content gets a
-# web root created here. The static-page role fills it with content.
-- name: Create web root directory
+# readable by caddy. Each host that serves static content gets its
+# web root created here. Content roles (static-page, portfolio-page)
+# fill them with files.
+- name: Create emacboros web root (daftpunk only)
   file:
     path: "{{ static_page_root | default('/var/www/emacboros') }}"
     state: directory
     owner: caddy
     group: caddy
     mode: '0755'
+  when: inventory_hostname == 'daftpunk'
 
 - name: Create portfolio web root (rammstein only)
   file:
-    path: /var/www/randazzo.ar
+    path: "{{ portfolio_page_root | default('/var/www/randazzo.ar') }}"
     state: directory
     owner: caddy
     group: caddy
