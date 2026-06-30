@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-SCRIPT_DIR="$(realpath "$(dirname "${BASH_SOURCE[0]}")")"
-source "${SCRIPT_DIR}/metaconfig/header.sh"
+REPO_DIR="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
+source "${REPO_DIR}/metaconfig/header.sh"
 
 # =============================================================================
 # Agentic Emacs -- Container Management Script
@@ -26,13 +26,17 @@ run() {
         --tmpfs /tmp:rw,size=256m \
         --tmpfs /run:rw,size=64m \
         --tmpfs /var/tmp:rw,size=64m \
-        -v "${SCRIPT_DIR}/elisp:/root/.emacs.d:Z" \
-        -v "${SCRIPT_DIR}/knowledge/prompts:/root/.emacs.d/agents.d:Z" \
-        -v "${SCRIPT_DIR}/elisp:/root/i.ar/elisp:Z" \
-        -v "${SCRIPT_DIR}/containers:/root/i.ar/containers:Z" \
-        -v "${SCRIPT_DIR}/infra:/root/i.ar/infra:Z" \
-        -v "${SCRIPT_DIR}/knowledge:/root/i.ar/knowledge:Z" \
-        -v "${SCRIPT_DIR}/metaconfig:/root/i.ar/metaconfig:Z" \
+        -v "${REPO_DIR}/emacs.d:/root/.emacs.d:Z" \
+        -v "${REPO_DIR}/metaconfig:/root/.emacs.d/metaconfig:Z" \
+        -v "${REPO_DIR}/knowledge/prompts:/root/.emacs.d/agents.d:Z" \
+	\
+        -v "${REPO_DIR}/emacs.d:/root/i.ar/emacs.d:Z" \
+        -v "${REPO_DIR}/metaconfig:/root/i.ar/metaconfig:Z" \
+        -v "${REPO_DIR}/knowledge:/root/i.ar/knowledge:Z" \
+        -v "${REPO_DIR}/containers:/root/i.ar/containers:Z" \
+        -v "${REPO_DIR}/infra:/root/i.ar/infra:Z" \
+        -v "${REPO_DIR}/utils:/root/i.ar/utils:Z" \
+        -v "${REPO_DIR}/README.org:/root/i.ar/README.org:Z" \
         "${IMAGE_NAME}" && \
 	info "Container started" || \
 	error "Container failed to start"
