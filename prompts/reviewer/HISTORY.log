@@ -1,0 +1,5 @@
+# HISTORY LOG - Reviewer Agent
+# Per-agent operational log. Format: [YYYY-MM-DD HH:MM:SS] reviewer: description
+
+[2026-06-21 00:00:00] reviewer: Agent initialized. Ready for code review delegation.
+[2026-06-21 00:00:00] reviewer: Fixed missing closing paren in delegate_tool.el (my-gptel--spawn-delegate). Uncommented load in init.el.

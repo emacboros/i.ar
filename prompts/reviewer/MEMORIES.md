@@ -1,0 +1,1 @@
+- Agent created 2026-06-21. Senior code reviewer and security auditor.
