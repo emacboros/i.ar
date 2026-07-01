@@ -19,7 +19,7 @@
 ;;
 ;; Usage (batch mode):
 ;;   emacs --batch -l /root/.emacs.d/init.el \
-;;         --eval '(darwin-run-cycle :timeout 1800)'
+;;         --eval '(darwin-run-cycle :timeout 3600)'
 ;;
 ;; The cycle is self-contained: darwin reads its own memories, decides what to
 ;; change, delegates to reviewer, runs tests, commits, and logs.  All we do is
@@ -31,8 +31,8 @@
 
 ;;; --- Configuration ---
 
-(defcustom darwin-cycle-timeout 1800
-  "Default timeout for a darwin cycle in seconds (30 minutes)."
+(defcustom darwin-cycle-timeout 3600
+  "Default timeout for a darwin cycle in seconds (60 minutes)."
   :type 'integer
   :group 'darwin)
 
@@ -177,9 +177,9 @@ timeout."
                              (gptel-fsm-state fsm))
                     (run-with-timer 1 nil (lambda () (kill-emacs exit-code)))))
                 ;; Safety: if idle for too long with no requests, bail out
-                (when (> idle-count 30)
+                (when (> idle-count 600)
                   (setq completed t)
-                  (message "[darwin] No active requests for 30s, exiting")
+                  (message "[darwin] No active requests for 600s, exiting")
                   (run-with-timer 1 nil (lambda () (kill-emacs exit-code))))))))))))
 
 (provide 'darwin_cycle)
