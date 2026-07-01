@@ -48,6 +48,9 @@
 ;; Session persistence (save/restore gptel chat sessions)
 (load "session_persistence.el")
 
+;; Tool call display — show tool calls in buffer before they execute
+(load "tool_display.el")
+
 ;; File guard — protected path enforcement
 (load "file_guard.el")
 ;; Audit logging — records all file operations and command executions
