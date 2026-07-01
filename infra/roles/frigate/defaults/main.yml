@@ -1,7 +1,7 @@
 ---
 # roles/frigate/defaults/main.yml
 # Frigate NVR — defaults.
-# Target: sophon (local, NVIDIA GPU, Fedora Server).
+# Target: sophon (local, NVIDIA GPU, Fedora Workstation 44).
 
 frigate_enabled: false
 

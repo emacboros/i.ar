@@ -1,21 +1,19 @@
 ---
 # roles/base/tasks/main.yml
 # Applied to every host — hardening, updates, essential packages.
-# All servers run Fedora Server 44 or AlmaLinux 10 (RHEL family).
+# Cloud hosts run AlmaLinux 10; local hosts run Fedora Workstation 44.
 
 # ── System update ──────────────────────────────────────────
 - name: Update all packages
   dnf:
     name: "*"
     state: latest
-  when: "'cloud' in group_names"
 
 # ── Essential packages ──────────────────────────────────────
 - name: Install essential packages
   dnf:
     name: "{{ base_packages }}"
     state: present
-  when: "'cloud' in group_names"
 
 # ── Timezone ───────────────────────────────────────────────
 - name: Set timezone
@@ -52,7 +50,6 @@
   dnf:
     name: firewalld
     state: present
-  when: "'cloud' in group_names"
 
 - name: Ensure firewalld is running
   service:
@@ -79,14 +76,12 @@
   dnf:
     name: dnf-automatic
     state: present
-  when: "'cloud' in group_names"
 
 - name: Enable dnf-automatic timer
   service:
     name: dnf-automatic.timer
     state: started
     enabled: true
-  when: "'cloud' in group_names"
 
 # ── Sysctl hardening ───────────────────────────────────────
 - name: Apply sysctl hardening

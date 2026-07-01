@@ -30,6 +30,9 @@
   roles:
     - role: podman
       when: podman_enabled | default(false) | bool
+    - role: nvidia
+      when: ollama_gpu | default(false) | bool
+      tags: [nvidia]
     - role: ollama
       when: ollama_enabled | default(false) | bool
 
@@ -49,5 +52,9 @@
   roles:
     - role: podman
       when: podman_enabled | default(false) | bool
+      tags: [frigate]
+    - role: nvidia
+      tags: [frigate, nvidia]
     - role: frigate
       when: frigate_enabled | default(false) | bool
+      tags: [frigate]

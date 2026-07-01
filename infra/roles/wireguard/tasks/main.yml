@@ -2,14 +2,13 @@
 # roles/wireguard/tasks/main.yml
 # Sets up a full WireGuard mesh: every peer can reach every other peer.
 # The proxy server (randazzo-ar) acts as the hub — all peers tunnel through it.
-# All servers run Fedora Server 44 or AlmaLinux 10 (RHEL family).
+# Cloud hosts run AlmaLinux 10; local hosts run Fedora Workstation 44.
 
 # ── Install WireGuard ──────────────────────────────────────
 - name: Install WireGuard
   dnf:
     name: wireguard-tools
     state: present
-  when: "'cloud' in group_names"
 
 # ── Generate wg0 config ────────────────────────────────────
 - name: Create WireGuard config
@@ -44,7 +43,6 @@
     permanent: true
     state: enabled
     immediate: true
-  when: "'cloud' in group_names"
 
 - name: Allow forwarded traffic on hub firewalld
   ansible.posix.firewalld:
@@ -62,4 +60,3 @@
     permanent: true
     state: enabled
     immediate: true
-  when: "'cloud' in group_names"

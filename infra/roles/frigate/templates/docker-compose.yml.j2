@@ -10,13 +10,8 @@ services:
     restart: unless-stopped
     stop_grace_period: {{ frigate_stop_grace_period }}
     image: {{ frigate_image }}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: {{ frigate_gpu_count }}
-              capabilities: [gpu]
+    devices:
+      - nvidia.com/gpu=all
     shm_size: "{{ frigate_shm_size }}"
     volumes:
       - /etc/localtime:/etc/localtime:ro

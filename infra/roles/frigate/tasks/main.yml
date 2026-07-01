@@ -1,10 +1,14 @@
 ---
 # roles/frigate/tasks/main.yml
 # Deploys Frigate NVR with NVIDIA TensorRT on Podman.
-# Target: sophon (local, Fedora Server, NVIDIA GPU).
-# Requires: podman role already applied, NVIDIA drivers installed.
+# Target: sophon (local, Fedora Workstation 44, NVIDIA GPU).
+# Requires: nvidia role (drivers + container toolkit) and podman role
+#           already applied.
 
 # ── Verify prerequisites ───────────────────────────────────
+# The nvidia role installs drivers and container toolkit.
+# We only verify here — if nvidia-smi fails, the nvidia role needs
+# a reboot or hasn't been run yet.
 - name: Verify NVIDIA GPU is present
   command: nvidia-smi --query-gpu=name --format=csv,noheader
   register: nvidia_check
@@ -16,24 +20,13 @@
     msg: |
       Frigate with TensorRT requires an NVIDIA GPU.
       nvidia-smi did not detect a GPU on this host.
-      Install NVIDIA drivers or use a non-TensorRT Frigate image.
+      The nvidia role should have installed drivers — a reboot
+      may be required after the first run. Reboot and re-run
+      the playbook.
   when:
     - frigate_enabled | bool
     - "'stable-tensorrt' in frigate_image"
     - nvidia_check.rc != 0
-
-# ── Install NVIDIA container toolkit ───────────────────────
-- name: Install NVIDIA container toolkit
-  dnf:
-    name: nvidia-container-toolkit
-    state: present
-  when: frigate_enabled | bool
-
-- name: Configure Podman for NVIDIA runtime
-  command: nvidia-ctk runtime configure --runtime=podman
-  changed_when: false
-  when: frigate_enabled | bool
-  notify: restart podman
 
 # ── Create directory structure ─────────────────────────────
 - name: Create Frigate directories
@@ -81,27 +74,9 @@
 
 # ── Create systemd service for Frigate ─────────────────────
 - name: Create Frigate systemd service
-  copy:
+  template:
+    src: frigate.service.j2
     dest: "/etc/systemd/system/{{ frigate_container_name }}.service"
-    content: |
-      # {{ ansible_managed }}
-      [Unit]
-      Description=Frigate NVR (Podman Compose)
-      After=network-online.target podman.service
-      Wants=network-online.target
-
-      [Service]
-      Type=simple
-      User={{ local_ssh_user }}
-      WorkingDirectory={{ frigate_base_dir }}
-      ExecStart=/usr/bin/podman-compose up
-      ExecStop=/usr/bin/podman-compose down
-      Restart=always
-      RestartSec=10
-      TimeoutStopSec=45
-
-      [Install]
-      WantedBy=multi-user.target
     owner: root
     group: root
     mode: '0644'

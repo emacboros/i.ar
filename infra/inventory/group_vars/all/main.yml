@@ -44,7 +44,9 @@ caddy_email: "ignacio@randazzo.ar"
 caddy_config_path: "/etc/caddy/Caddyfile"
 
 # ── Ollama defaults ────────────────────────────────────────
-ollama_version: "latest"
+# Empty string = latest release. Do NOT set to "latest" — the install
+# script treats this as a literal version tag and will 404.
+ollama_version: ""
 ollama_port: 11434
 ollama_install_dir: "/usr/local/bin"
 ollama_models_dir: "/usr/share/ollama"
