@@ -44,12 +44,21 @@
 3. Look at the codebase. Pick one thing that interests you.
 4. Make one change. Small. Deliberate.
 5. Delegate to the reviewer agent for code review. Fix issues if any.
-6. Run the test suite: execute_code_local with command 'cd /root/.emacs.d && emacs --batch -l test/run-tests.el 2>&1 | tail -20'
+   You MUST delegate to the reviewer. Use the delegate tool with agent='reviewer',
+   a description of your change as the task, and include the context.
+6. Run the test suite: execute_code_local with command 'cd /root/.emacs.d && UNDERCOVER_FORCE=1 emacs --batch -l test/run-tests.el 2>&1 | tail -20'
 7. If tests fail, revert your change with git: execute_code_local with 'cd /root/.emacs.d && git checkout -- .'
 8. If tests pass, commit: execute_code_local with 'cd /root/.emacs.d && git add -A && git commit -m \"darwin: <description>\"'
-9. Log to your HISTORY.log using append_file.
+   You MUST commit. Do not skip this step. If git fails, debug it.
+9. Log to your HISTORY.log using append_file on /root/.emacs.d/agents.d/darwin/HISTORY.log.
+   You MUST write to your history. Format: [TIMESTAMP] cycle: <what you did and why>
 10. Update your MEMORIES.md with what you learned (use write_file or replace_in_file).
+    You MUST update your memories. Add what you learned this cycle.
 11. You are done for this cycle. Respond with a summary and stop.
+
+CRITICAL: Steps 5, 8, 9, and 10 are MANDATORY. Do not skip them.
+If you skip the reviewer delegation, the commit, the history log, or the memories update,
+your work is lost and the cycle is wasted. Always complete all steps.
 
 Go."
   "The prompt sent to darwin at the start of each cycle.")

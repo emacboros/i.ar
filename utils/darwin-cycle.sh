@@ -60,7 +60,7 @@ podman run \
     -v "${REPO_DIR}/emacs.d:/root/.emacs.d:Z" \
     -v "${REPO_DIR}/metaconfig:/root/.emacs.d/metaconfig:Z" \
     -v "${REPO_DIR}/knowledge/prompts:/root/.emacs.d/agents.d:Z" \
-    -v "${REPO_DIR}/.git:/root/.emacs.d/.git:Z" \
+    -v "${REPO_DIR}.git:/root/i.ar/.git:Z" \
     -v "${REPO_DIR}/emacs.d:/root/i.ar/emacs.d:Z" \
     -v "${REPO_DIR}/metaconfig:/root/i.ar/metaconfig:Z" \
     -v "${REPO_DIR}/knowledge:/root/i.ar/knowledge:Z" \
