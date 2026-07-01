@@ -55,6 +55,23 @@
 (load "file_guard.el")
 ;; Audit logging — records all file operations and command executions
 (load "audit_log.el")
+
+;; ──────────────────────────────────────────────────────────
+;; Auto-discovery: load any init.d/*.el not explicitly loaded above.
+;; This allows autonomous agents (e.g. darwin) to create new modules
+;; that get picked up automatically on next cycle without modifying init.el.
+;; ──────────────────────────────────────────────────────────
+(let ((explicit-loads '("locale" "package_setup" "ui_cleanup" "evil_mode"
+                        "gptel_setup" "output_sanitizer" "fs_tools"
+                        "code_tools" "replacement_tool" "agent_loader"
+                        "delegate_tool" "reload_tools" "memory_tools"
+                        "check_elisp_tool" "task_tools" "session_persistence"
+                        "tool_display" "file_guard" "audit_log"))
+      (init-dir (expand-file-name "init.d" user-emacs-directory)))
+  (dolist (file (directory-files init-dir nil "\\.el\\'"))
+    (let ((basename (file-name-sans-extension file)))
+      (unless (member basename explicit-loads)
+        (load (expand-file-name file init-dir))))))
 (custom-set-variables
  ;; custom-set-variables was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
