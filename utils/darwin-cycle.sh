@@ -68,8 +68,8 @@ podman run \
     -v "${REPO_DIR}/infra:/root/i.ar/infra:Z" \
     -v "${REPO_DIR}/utils:/root/i.ar/utils:Z" \
     -v "${REPO_DIR}/README.org:/root/i.ar/README.org:Z" \
+    --entrypoint /bin/bash \
     "${IMAGE_NAME}" \
-    emacs --batch -l /root/.emacs.d/init.el \
-          --eval "(darwin-run-cycle :timeout ${TIMEOUT})" 2>&1
+    -c "preflight.sh && emacs --batch -l /root/.emacs.d/init.el --eval '(darwin-run-cycle :timeout ${TIMEOUT})'" 2>&1
 
 info "Darwin cycle container exited with code: $?"

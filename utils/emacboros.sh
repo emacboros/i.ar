@@ -99,13 +99,13 @@ DYNAMIC_MOUNT_OPTS=()
 
 for path in "${MOUNT_ARGS[@]:-}"; do
     [[ -z "${path}" ]] && continue
-    DYNAMIC_MOUNT_OPTS+=("-v" "${path}:${path}:Z")
+    DYNAMIC_MOUNT_OPTS+=("-v" "${path}:${path}:z")
     info "Mounting read-write: ${path}"
 done
 
 for path in "${MOUNT_RO_ARGS[@]:-}"; do
     [[ -z "${path}" ]] && continue
-    DYNAMIC_MOUNT_OPTS+=("-v" "${path}:${path}:ro,Z")
+    DYNAMIC_MOUNT_OPTS+=("-v" "${path}:${path}:ro,z")
     info "Mounting read-only:  ${path}"
 done
 
@@ -128,17 +128,17 @@ run() {
         --tmpfs /tmp:rw,size=256m \
         --tmpfs /run:rw,size=64m \
         --tmpfs /var/tmp:rw,size=64m \
-        -v "${REPO_DIR}/emacs.d:/root/.emacs.d:Z" \
-        -v "${REPO_DIR}/metaconfig:/root/.emacs.d/metaconfig:Z" \
-        -v "${REPO_DIR}/knowledge/prompts:/root/.emacs.d/agents.d:Z" \
+        -v "${REPO_DIR}/emacs.d:/root/.emacs.d:z" \
+        -v "${REPO_DIR}/metaconfig:/root/.emacs.d/metaconfig:z" \
+        -v "${REPO_DIR}/knowledge/prompts:/root/.emacs.d/agents.d:z" \
         \
-        -v "${REPO_DIR}/emacs.d:/root/i.ar/emacs.d:Z" \
-        -v "${REPO_DIR}/metaconfig:/root/i.ar/metaconfig:Z" \
-        -v "${REPO_DIR}/knowledge:/root/i.ar/knowledge:Z" \
-        -v "${REPO_DIR}/containers:/root/i.ar/containers:Z" \
-        -v "${REPO_DIR}/infra:/root/i.ar/infra:Z" \
-        -v "${REPO_DIR}/utils:/root/i.ar/utils:Z" \
-        -v "${REPO_DIR}/README.org:/root/i.ar/README.org:Z" \
+        -v "${REPO_DIR}/emacs.d:/root/i.ar/emacs.d:z" \
+        -v "${REPO_DIR}/metaconfig:/root/i.ar/metaconfig:z" \
+        -v "${REPO_DIR}/knowledge:/root/i.ar/knowledge:z" \
+        -v "${REPO_DIR}/containers:/root/i.ar/containers:z" \
+        -v "${REPO_DIR}/infra:/root/i.ar/infra:z" \
+        -v "${REPO_DIR}/utils:/root/i.ar/utils:z" \
+        -v "${REPO_DIR}/README.org:/root/i.ar/README.org:z" \
         ${DYNAMIC_MOUNT_OPTS[@]+"${DYNAMIC_MOUNT_OPTS[@]}"} \
         "${IMAGE_NAME}" && \
         info "Container started" || \
