@@ -85,7 +85,11 @@ with a timeout message or partial response."
                     (if (and resp-start (< resp-start (point-max)))
                         (buffer-substring-no-properties resp-start (point-max))
                       "")))))
-           (when (buffer-live-p buf) (kill-buffer buf))
+           ;; Delay buffer kill to avoid "Selecting deleted buffer" in sentinel
+           (run-with-timer
+            3 nil
+            (lambda ()
+              (when (buffer-live-p buf) (kill-buffer buf))))
            (funcall callback
                     (if (and partial (string-match-p "\\S-" partial))
                         (format "[TIMEOUT after %ds -- partial response captured]\n\n%s"
@@ -170,7 +174,14 @@ TIMER-SYM is a symbol holding the timer.  TIMEOUT-SECS is the timeout."
              (if (and (numberp start) (numberp end) (< start end))
                  (buffer-substring-no-properties start end)
                "")))
-        (when (buffer-live-p buf) (kill-buffer buf))
+        ;; Delay buffer kill to allow gptel's sentinel and post-response
+        ;; hooks to finish accessing the buffer.  Killing immediately
+        ;; causes "Selecting deleted buffer" errors in the process
+        ;; sentinel when it tries to clean up.
+        (run-with-timer
+         5 nil
+         (lambda ()
+           (when (buffer-live-p buf) (kill-buffer buf))))
         (funcall callback
                  (if (and response (string-match-p "\\S-" response))
                      (format "Delegate '%s' completed:\n\n%s" agent response)
