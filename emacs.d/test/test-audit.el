@@ -1,0 +1,191 @@
+;; -*- lexical-binding: t; -*-
+
+;;; Tests for audit_log.el
+;; Tests the audit logging system: agent name resolution, log formatting,
+;; and the wrapper functions for each tool type (write, replace, append, exec).
+;; Uses a temporary audit log path to avoid polluting the real audit log.
+
+(require 'ert)
+(require 'cl-lib)
+(require 'subr-x)
+
+;;; --- Test fixtures ---
+
+(defvar test-audit--tmpdir nil
+  "Temporary directory for audit log tests.")
+(defvar test-audit--log-path nil
+  "Temporary audit log file path.")
+(defvar test-audit--old-agent-name nil
+  "Saved agent name for restoration.")
+
+(defun test-audit--setup ()
+  "Create a fresh temporary directory and audit log file."
+  (setq test-audit--tmpdir (make-temp-file "test-audit-" :dir-flag))
+  (setq test-audit--log-path (expand-file-name "audit.log" test-audit--tmpdir))
+  (setq test-audit--old-agent-name
+        (and (boundp 'my-gptel--current-agent-name)
+             my-gptel--current-agent-name))
+  (setq my-gptel--current-agent-name "testagent"))
+
+(defun test-audit--teardown ()
+  "Remove the temporary directory and restore agent name."
+  (when (and test-audit--tmpdir (file-exists-p test-audit--tmpdir))
+    (delete-directory test-audit--tmpdir t))
+  (setq test-audit--tmpdir nil)
+  (setq test-audit--log-path nil)
+  (setq my-gptel--current-agent-name test-audit--old-agent-name))
+
+(defmacro with-audit-fixture (&rest body)
+  "Execute BODY with a temporary audit log path and test agent name.
+Temporarily rebinds `my-gptel--audit-log-path' to a temp file."
+  (declare (indent 0))
+  `(let ((old-log-path (bound-and-true-p my-gptel--audit-log-path)))
+     (unwind-protect
+         (progn
+           (test-audit--setup)
+           (let ((my-gptel--audit-log-path test-audit--log-path))
+             ,@body))
+       (test-audit--teardown))))
+
+(defun test-audit--read-log ()
+  "Read the current audit log file contents."
+  (if (file-exists-p test-audit--log-path)
+      (with-temp-buffer
+        (insert-file-contents test-audit--log-path)
+        (buffer-string))
+    ""))
+
+;;; --- Agent name resolution tests ---
+
+(ert-deftest test-audit-get-agent-name-when-set ()
+  "my-gptel--audit-get-agent-name should return the current agent name."
+  (let ((my-gptel--current-agent-name "darwin"))
+    (should (string= (my-gptel--audit-get-agent-name) "darwin"))))
+
+(ert-deftest test-audit-get-agent-name-when-unset ()
+  "my-gptel--audit-get-agent-name should return 'unknown' when no agent is set."
+  (let (my-gptel--current-agent-name)
+    (should (string= (my-gptel--audit-get-agent-name) "unknown"))))
+
+(ert-deftest test-audit-get-agent-name-when-nil ()
+  "my-gptel--audit-get-agent-name should return 'unknown' when agent name is nil."
+  (let ((my-gptel--current-agent-name nil))
+    (should (string= (my-gptel--audit-get-agent-name) "unknown"))))
+
+;;; --- Core audit log tests ---
+
+(ert-deftest test-audit-log-writes-formatted-line ()
+  "my-gptel--audit-log should write a timestamped, pipe-delimited line."
+  (with-audit-fixture
+    (my-gptel--audit-log "write_file" "/some/path/file.txt")
+    (let ((content (test-audit--read-log)))
+      (should (string-match-p "\\[[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\} [0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}\\]" content))
+      (should (string-match-p "testagent" content))
+      (should (string-match-p "write_file" content))
+      (should (string-match-p "/some/path/file.txt" content)))))
+
+(ert-deftest test-audit-log-appends-multiple-entries ()
+  "my-gptel--audit-log should append entries, not overwrite."
+  (with-audit-fixture
+    (my-gptel--audit-log "write_file" "/path/a.txt")
+    (my-gptel--audit-log "append_file" "/path/b.txt")
+    (let ((content (test-audit--read-log)))
+      (should (string-match-p "/path/a.txt" content))
+      (should (string-match-p "/path/b.txt" content))
+      ;; Two lines = two entries
+      (should (= (length (split-string content "\n" t)) 2)))))
+
+(ert-deftest test-audit-log-creates-directory-if-missing ()
+  "my-gptel--audit-log should create the workspace directory if it doesn't exist."
+  (let ((test-audit--tmpdir (make-temp-file "test-audit-" :dir-flag))
+        (test-audit--log-path nil)
+        (test-audit--old-agent-name
+         (and (boundp 'my-gptel--current-agent-name)
+              my-gptel--current-agent-name)))
+    (setq my-gptel--current-agent-name "testagent")
+    (setq test-audit--log-path
+          (expand-file-name "workspace/audit.log" test-audit--tmpdir))
+    (unwind-protect
+        (let ((my-gptel--audit-log-path test-audit--log-path))
+          (should-not (file-exists-p (file-name-directory test-audit--log-path)))
+          (my-gptel--audit-log "write_file" "/test.txt")
+          (should (file-exists-p test-audit--log-path)))
+      (when (and test-audit--tmpdir (file-exists-p test-audit--tmpdir))
+        (delete-directory test-audit--tmpdir t))
+      (setq my-gptel--current-agent-name test-audit--old-agent-name))))
+
+;;; --- Wrapper function tests ---
+
+(ert-deftest test-audit-log-write-logs-path ()
+  "my-gptel--audit-log-write should log the filepath with write_file tool name."
+  (with-audit-fixture
+    (my-gptel--audit-log-write "/some/file.el")
+    (let ((content (test-audit--read-log)))
+      (should (string-match-p "write_file" content))
+      (should (string-match-p "/some/file.el" content)))))
+
+(ert-deftest test-audit-log-replace-logs-path ()
+  "my-gptel--audit-log-replace should log the filepath with replace_in_file tool name."
+  (with-audit-fixture
+    (my-gptel--audit-log-replace "/some/other.el")
+    (let ((content (test-audit--read-log)))
+      (should (string-match-p "replace_in_file" content))
+      (should (string-match-p "/some/other.el" content)))))
+
+(ert-deftest test-audit-log-append-logs-path ()
+  "my-gptel--audit-log-append should log the filepath with append_file tool name."
+  (with-audit-fixture
+    (my-gptel--audit-log-append "/log/file.log")
+    (let ((content (test-audit--read-log)))
+      (should (string-match-p "append_file" content))
+      (should (string-match-p "/log/file.log" content)))))
+
+;;; --- execute_code_local audit tests ---
+
+(ert-deftest test-audit-log-exec-logs-command-and-exit-code ()
+  "my-gptel--audit-log-exec should log the command and exit code."
+  (with-audit-fixture
+    (my-gptel--audit-log-exec "echo hello" 0)
+    (let ((content (test-audit--read-log)))
+      (should (string-match-p "execute_code_local" content))
+      (should (string-match-p "exit=0" content))
+      (should (string-match-p "echo hello" content)))))
+
+(ert-deftest test-audit-log-exec-non-zero-exit-code ()
+  "my-gptel--audit-log-exec should log non-zero exit codes."
+  (with-audit-fixture
+    (my-gptel--audit-log-exec "false" 1)
+    (let ((content (test-audit--read-log)))
+      (should (string-match-p "exit=1" content)))))
+
+(ert-deftest test-audit-log-exec-truncates-long-commands ()
+  "my-gptel--audit-log-exec should truncate commands longer than 200 chars."
+  (with-audit-fixture
+    (let ((long-cmd (make-string 300 ?x)))
+      (my-gptel--audit-log-exec long-cmd 0)
+      (let ((content (test-audit--read-log)))
+        ;; Truncated command should end with "..."
+        (should (string-match-p "\\.\\.\\." content))
+        ;; Full 300-char command should NOT be present
+        (should-not (string-match-p (make-string 250 ?x) content))))))
+
+(ert-deftest test-audit-log-exec-does-not-truncate-short-commands ()
+  "my-gptel--audit-log-exec should not truncate commands under 200 chars."
+  (with-audit-fixture
+    (let ((short-cmd "ls -la /tmp"))
+      (my-gptel--audit-log-exec short-cmd 0)
+      (let ((content (test-audit--read-log)))
+        (should (string-match-p "ls -la /tmp" content))
+        (should-not (string-match-p "\\.\\.\\." content))))))
+
+;;; --- Error resilience test ---
+
+(ert-deftest test-audit-log-does-not-crash-on-error ()
+  "my-gptel--audit-log should not signal errors even if logging fails."
+  ;; Bind to an unwritable path -- the condition-case should swallow the error
+  (let ((my-gptel--audit-log-path "/proc/cannot/write/audit.log")
+        (my-gptel--current-agent-name "testagent"))
+    ;; This should not signal an error
+    (should (eq (my-gptel--audit-log "write_file" "/test.txt") nil))))
+
+(provide 'test-audit)
