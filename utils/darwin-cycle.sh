@@ -54,6 +54,8 @@ podman run \
     --cap-add=NET_BIND_SERVICE \
     --network=host \
     -e "EMACBOROS_OLLAMA_HOST=${LOCAL_OLLAMA_HOST}" \
+    -e "DARWIN_TELEGRAM_BOT_TOKEN=${DARWIN_TELEGRAM_BOT_TOKEN:-}" \
+    -e "DARWIN_TELEGRAM_CHAT_ID=${DARWIN_TELEGRAM_CHAT_ID:-}" \
     -e "LANG=C.utf8" \
     --tmpfs /tmp:rw,size=256m \
     --tmpfs /run:rw,size=64m \
