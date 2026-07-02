@@ -141,6 +141,21 @@ runs via file-local variables, plus our custom agent variables."
     (save-buffer)
     (message "[Session saved: %s]" session-path)))
 
+;;; --- Session file sorting ---
+
+(defun my-gptel--sort-sessions-by-mtime (files)
+  "Sort FILES by modification time, newest first.
+FILES is a list of absolute file paths.
+Returns a list of absolute file paths sorted newest first."
+  ;; Use decorate-sort-undecorate (Schwartzian transform) to call
+  ;; file-attributes only once per file instead of O(N log N) times.
+  (mapcar #'car
+          (sort (mapcar (lambda (f)
+                          (cons f (file-attribute-modification-time (file-attributes f))))
+                        files)
+                (lambda (a b)
+                  (time-less-p (cdr b) (cdr a))))))
+
 ;;; --- Open session ---
 
 (defun my-gptel-open-session ()
@@ -154,13 +169,7 @@ variables are restored."
   (let* ((all-files (directory-files my-gptel-sessions-dir t "\\.gptel$"))
          (_ (unless all-files
               (user-error "No saved sessions found in %s" my-gptel-sessions-dir)))
-         ;; Sort by modification time, newest first (consistent with
-         ;; my-gptel-list-sessions which also shows newest first)
-         (sorted-files (sort all-files
-                             (lambda (a b)
-                               (time-less-p
-                                (file-attribute-modification-time (file-attributes b))
-                                (file-attribute-modification-time (file-attributes a))))))
+         (sorted-files (my-gptel--sort-sessions-by-mtime all-files))
          (files (mapcar #'file-name-nondirectory sorted-files))
          (chosen (completing-read "Open session: " files nil t))
          (session-path (expand-file-name chosen my-gptel-sessions-dir)))
@@ -189,6 +198,7 @@ Shows session name, size, and last modified time."
   (let* ((files (directory-files my-gptel-sessions-dir t "\\.gptel$"))
          (_ (unless files
               (user-error "No saved sessions found")))
+         (sorted-files (my-gptel--sort-sessions-by-mtime files))
          (entries
           (mapcar (lambda (f)
                     (let* ((attrs (file-attributes f))
@@ -199,11 +209,7 @@ Shows session name, size, and last modified time."
                               name
                               size
                               (format-time-string "%Y-%m-%d %H:%M" mtime))))
-                  (sort files
-                        (lambda (a b)
-                          (time-less-p
-                           (file-attribute-modification-time (file-attributes b))
-                           (file-attribute-modification-time (file-attributes a))))))))
+                  sorted-files)))
     (with-current-buffer (get-buffer-create "*gptel-sessions*")
       (erase-buffer)
       (insert "Saved gptel Sessions\n")

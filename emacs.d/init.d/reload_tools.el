@@ -84,9 +84,8 @@ instead of the currently loaded one."
              ;; Read the profile (expands #+INCLUDE directives)
              (profile (my-gptel-read-agent-profile target-file))
              (agent-basename (file-name-nondirectory target-file)))
-        ;; Update system message in current buffer
-        (setq-local gptel-system-message profile)
-        (setq-local gptel--system-message profile)
+        ;; Update system prompt in current buffer
+        (setq-local gptel-system-prompt profile)
         ;; Track the loaded agent file and name
         (setq-local my-gptel--current-agent-file target-file)
         (setq-local my-gptel--current-agent-name target-name)
