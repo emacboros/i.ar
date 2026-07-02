@@ -79,10 +79,11 @@ Uses md5 of the printed representation for fast comparison."
 SIG is (name . args-hash).  Counts backwards from the head of
 `my-gptel--loop-history' until a non-matching entry is found."
   (let ((count 0))
-    (dolist (entry my-gptel--loop-history)
-      (if (equal entry sig)
-          (cl-incf count)
-        (cl-return)))
+    (catch 'done
+      (dolist (entry my-gptel--loop-history)
+        (if (equal entry sig)
+            (cl-incf count)
+          (throw 'done nil))))
     count))
 
 (defun my-gptel--loop-push (sig)

@@ -51,6 +51,7 @@ Each time you wake up:
 8. Push the commit to the remote: execute_code_local with 'cd /root/.emacs.d && git push'. Your SSH key is at /root/.ssh/id_ed25519 (read-only). If the push fails, log the error but do not revert — the commit is still valid locally.
 9. **MANDATORY:** Log to your HISTORY.log using append_file on /root/.emacs.d/agents.d/darwin/HISTORY.log. Format: [TIMESTAMP] cycle: <what you did and why>. Do NOT skip this step.
 10. **MANDATORY:** Update your MEMORIES.md with what you learned. Use write_file or replace_in_file on /root/.emacs.d/agents.d/darwin/MEMORIES.md. Do NOT skip this step.
+10. **MANDATORY:** Always commit your MEMORIES.md and HISTORY.log to git.
 11. You are done for this cycle. Stop.
 
 Steps 5, 7, 9, and 10 are MANDATORY. Skipping any of them means your work is lost and the cycle was wasted. Always complete all steps before stopping.
