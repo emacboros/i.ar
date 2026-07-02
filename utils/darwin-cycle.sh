@@ -63,14 +63,7 @@ podman run \
     -v "${REPO_DIR}/emacs.d:/root/.emacs.d:Z" \
     -v "${REPO_DIR}/metaconfig:/root/.emacs.d/metaconfig:Z" \
     -v "${REPO_DIR}/knowledge/prompts:/root/.emacs.d/agents.d:Z" \
-    -v "${REPO_DIR}/.git:/root/i.ar/.git:Z" \
-    -v "${REPO_DIR}/emacs.d:/root/i.ar/emacs.d:Z" \
-    -v "${REPO_DIR}/metaconfig:/root/i.ar/metaconfig:Z" \
-    -v "${REPO_DIR}/knowledge:/root/i.ar/knowledge:Z" \
-    -v "${REPO_DIR}/containers:/root/i.ar/containers:Z" \
-    -v "${REPO_DIR}/infra:/root/i.ar/infra:Z" \
-    -v "${REPO_DIR}/utils:/root/i.ar/utils:Z" \
-    -v "${REPO_DIR}/README.org:/root/i.ar/README.org:Z" \
+    -v "${REPO_DIR}/:/root/i.ar/:Z" \
     -v "${SSH_KEY_DIR:-${HOME}/.ssh}/darwin_ed25519:/root/.ssh/id_ed25519:ro,Z" \
     -v "${SSH_KEY_DIR:-${HOME}/.ssh}/darwin_ed25519.pub:/root/.ssh/id_ed25519.pub:ro,Z" \
     -v "${SSH_KEY_DIR:-${HOME}/.ssh}/known_hosts:/root/.ssh/known_hosts:ro,Z" \
