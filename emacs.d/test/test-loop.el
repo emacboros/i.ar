@@ -231,4 +231,80 @@
       ;; None should have been blocked -- each call has different args
       (should (= my-gptel--loop-block-count 0)))))
 
+;;; --- Threshold misconfiguration validation tests ---
+
+(ert-deftest test-loop-guard-soft-blocks-before-hard-when-misconfigured ()
+  "my-gptel--loop-guard should still soft-block before hard-stopping even
+when hard-threshold <= soft-threshold (misconfiguration).  Without the
+effective-hard guard, the cond checks hard first and the soft block is
+never reached, denying the model a chance to self-correct."
+  (with-temp-buffer
+    ;; Misconfiguration: hard threshold (2) < soft threshold (3)
+    (let ((my-gptel-loop-soft-threshold 3)
+          (my-gptel-loop-hard-threshold 2))
+      (setq-local my-gptel--loop-history nil)
+      (setq-local my-gptel--loop-block-count 0)
+      (let* ((args '(:filepath "/tmp/foo"))
+             (sig (cons "read_file" (my-gptel--loop-args-sig args)))
+             (info (list :name "read_file"
+                         :args args
+                         :buffer (current-buffer))))
+        ;; Push 2 entries (simulating 2 prior identical calls)
+        (my-gptel--loop-push sig)
+        (my-gptel--loop-push sig)
+        ;; Third call -- total = 3, hits soft threshold (3)
+        ;; With misconfigured hard=2, the old code would hard-stop at
+        ;; total=3 (>= 2) without ever soft-blocking.  The fix ensures
+        ;; effective-hard = max(2, 3+1) = 4, so soft block fires at 3.
+        (let ((result (my-gptel--loop-guard info)))
+          (should (plist-get result :block))
+          (should (stringp (plist-get result :block)))
+          (should (= my-gptel--loop-block-count 1)))))))
+
+(ert-deftest test-loop-guard-hard-stops-at-effective-hard-when-misconfigured ()
+  "my-gptel--loop-guard should hard-stop at effective-hard (soft+1) when
+hard-threshold is misconfigured below soft-threshold."
+  (with-temp-buffer
+    ;; Misconfiguration: hard threshold (1) < soft threshold (3)
+    (let ((my-gptel-loop-soft-threshold 3)
+          (my-gptel-loop-hard-threshold 1))
+      (setq-local my-gptel--loop-history nil)
+      (setq-local my-gptel--loop-block-count 0)
+      (let* ((args '(:filepath "/tmp/foo"))
+             (sig (cons "read_file" (my-gptel--loop-args-sig args)))
+             (info (list :name "read_file"
+                         :args args
+                         :buffer (current-buffer))))
+        ;; Push 3 entries: soft-blocked at total=3, now at total=4
+        (dotimes (_ 3)
+          (my-gptel--loop-push sig))
+        ;; Fourth call -- total = 4, effective-hard = max(1, 3+1) = 4
+        (let ((result (my-gptel--loop-guard info)))
+          (should (plist-get result :stop))
+          (should (plist-get result :stop-reason))
+          (should (stringp (plist-get result :stop-reason))))))))
+
+(ert-deftest test-loop-guard-equal-thresholds-still-soft-blocks-first ()
+  "my-gptel--loop-guard should soft-block before hard-stopping when
+hard-threshold == soft-threshold (edge case misconfiguration)."
+  (with-temp-buffer
+    ;; hard threshold == soft threshold (both 3)
+    (let ((my-gptel-loop-soft-threshold 3)
+          (my-gptel-loop-hard-threshold 3))
+      (setq-local my-gptel--loop-history nil)
+      (setq-local my-gptel--loop-block-count 0)
+      (let* ((args '(:filepath "/tmp/foo"))
+             (sig (cons "read_file" (my-gptel--loop-args-sig args)))
+             (info (list :name "read_file"
+                         :args args
+                         :buffer (current-buffer))))
+        ;; Push 2 entries
+        (dotimes (_ 2)
+          (my-gptel--loop-push sig))
+        ;; Third call -- total = 3, soft threshold = 3, effective-hard = max(3, 4) = 4
+        (let ((result (my-gptel--loop-guard info)))
+          ;; Should soft-block, NOT hard-stop
+          (should (plist-get result :block))
+          (should (stringp (plist-get result :block)))
+          (should (= my-gptel--loop-block-count 1)))))))
 (provide 'test-loop)
