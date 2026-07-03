@@ -28,7 +28,12 @@
 In current gptel, unknown tool names are logged but process-tool-result
 is NOT called (the tool-call is silently skipped). The FSM stays in TOOL
 state with no result set. This test documents that behavior: the FSM
-should not crash, and the tool-call should remain without a result."
+should not crash, and the tool-call should remain without a result.
+
+This is the raw gptel behavior WITHOUT our pre-tool-call hook guard.
+The hook guard (tested in test-unknown-tool-pre-hook-blocks) is what
+actually prevents the hang in production by injecting an error result
+for unknown tools at the TPRE stage."
   (let* ((tool-spec (gptel-make-tool
                      :name "list_directory"
                      :description "List a directory"
@@ -58,10 +63,44 @@ should not crash, and the tool-call should remain without a result."
       (error nil))
     ;; Document current gptel behavior: unknown tools are logged but
     ;; not given a :result. The FSM remains in TOOL state. This is a
-    ;; known limitation — the test documents it rather than asserting
+    ;; known limitation -- the test documents it rather than asserting
     ;; incorrect behavior.
     (should (eq (gptel-fsm-state fsm) 'TOOL))
     (should-not (plist-get tool-call :result))))
+
+(ert-deftest test-unknown-tool-pre-hook-blocks ()
+  "Test that the pre-tool-call hook guard blocks unknown tools.
+When a model calls a tool name not in gptel-tools, the pre-tool-call
+hook should return (:block ...) which causes gptel to inject an error
+result via gptel--process-tool-call.  This sets :result on the tool-call
+plist, preventing the FSM from hanging in TOOL state.
+
+This test simulates the hook behavior: given an info plist with a
+tool name not found in gptel-tools, the hook function returns a plist
+with :block set to a non-nil error string."
+  (let* ((tool-spec (gptel-make-tool
+                     :name "list_directory"
+                     :description "List a directory"
+                     :args (list '(:name "path" :type "string"))
+                     :function (lambda (path) (format "contents of %s" path))))
+         (known-tools (list tool-spec))
+         ;; Simulate the hook function used in delegate_tool.el and darwin_cycle.el
+         (hook-fn (lambda (info)
+                    (let ((name (plist-get info :name)))
+                      (unless (cl-find-if (lambda (ts)
+                                            (equal (gptel-tool-name ts) name))
+                                          known-tools)
+                        (list :block
+                              (format "Unknown tool '%s'. Check the tool name and use one of the available tools."
+                                      name)))))))
+    ;; Hook should return (:block ...) for unknown tool
+    (let ((result (funcall hook-fn (list :name "read_directory"))))
+      (should result)
+      (should (plist-get result :block))
+      (should (string-match-p "Unknown tool" (plist-get result :block))))
+    ;; Hook should return nil for known tool
+    (let ((result (funcall hook-fn (list :name "list_directory"))))
+      (should (null result)))))
 
 (ert-deftest test-ollama-stream-append-tool-use ()
   "Test that the Ollama streaming parser appends to :tool-use

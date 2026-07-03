@@ -301,6 +301,29 @@ so the user can watch progress in real time."
                   (set tools-called-sym t))
                 nil t)
 
+      ;; Unknown tool guard: when the model calls a tool name that does not
+      ;; exist in gptel-tools, gptel logs a message but does NOT call
+      ;; gptel--process-tool-call for it.  This means :result is never set on
+      ;; the tool-call plist, so the FSM's "remaining" counter never reaches
+      ;; zero and the FSM hangs in TOOL state forever.
+      ;;
+      ;; This hook intercepts unknown tool calls at the TPRE stage (before
+      ;; handle-tool-use runs) and returns (:block ...) which causes gptel
+      ;; to inject an error result via gptel--process-tool-call.  This sets
+      ;; :result on the tool-call, decrements the remaining counter, and
+      ;; lets the FSM progress to TRET -> WAIT, where the model receives
+      ;; the error feedback and can retry with the correct tool name.
+      (add-hook 'gptel-pre-tool-call-functions
+                (lambda (info)
+                  (let ((name (plist-get info :name)))
+                    (unless (cl-find-if (lambda (ts)
+                                          (equal (gptel-tool-name ts) name))
+                                        gptel-tools)
+                      (list :block
+                            (format "Unknown tool '%s'. Check the tool name and use one of the available tools."
+                                    name)))))
+                nil t)
+
       ;; Stream hook: mirror each chunk into the parent buffer.
       ;; gptel-post-stream-hook runs in the delegate buffer after each
       ;; streaming text insertion (see gptel-curl--stream-insert-response).
