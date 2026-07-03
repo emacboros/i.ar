@@ -32,7 +32,12 @@
 ;;; --- read_tasks ---
 
 (defun my-gptel--get-agent-dir ()
-  "Return the directory path for the currently loaded agent."
+  "Return the directory path for the currently loaded agent.
+Validates the agent name against path traversal before constructing
+the path.  This is defense-in-depth: the name is typically set by
+`my-gptel-load-agent' which already validates, but the variable is
+declared `safe-local-variable' for `stringp', so a tampered session
+file could set it to an arbitrary string."
   (let* ((agent-dir (expand-file-name "agents.d" user-emacs-directory))
          (agent-name
           (if (and (boundp 'my-gptel--current-agent-name)
@@ -44,7 +49,18 @@
                (directory-file-name
                 (file-name-directory my-gptel--current-agent-file)))))))
     (if agent-name
-        (expand-file-name agent-name agent-dir)
+        (progn
+          (unless (string-match-p "^[a-zA-Z0-9_-]+$" agent-name)
+            (error "Invalid agent name: '%s'" agent-name))
+          (let ((resolved (expand-file-name agent-name agent-dir)))
+            ;; Defense-in-depth: verify the resolved path hasn't escaped
+            ;; agents.d via symlinks.  The regex blocks direct traversal
+            ;; characters, but a symlink at agents.d/<name> -> /etc would
+            ;; bypass the regex.  This matches the containment check in
+            ;; my-gptel--load-agent-profile (delegate_tool.el).
+            (unless (string-prefix-p agent-dir (file-truename resolved))
+              (error "Path traversal attempt blocked for agent: '%s'" agent-name))
+            resolved))
       (error "No agent loaded. Load one with C-c a first."))))
 
 (defun my-gptel-tool-read-tasks ()

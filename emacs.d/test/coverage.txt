@@ -1,2 +1,3 @@
 == Code coverage text report ==
+task_tools : Percent 98% [Relevant: 74 Covered: 73 Missed: 1]
 loop_guard : Percent 100% [Relevant: 40 Covered: 40 Missed: 0]
