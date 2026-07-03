@@ -109,14 +109,19 @@ This is an alias for `my-gptel--get-agent-dir' defined in task_tools.el.")
 Returns the plain text of the buffer up to point-max, with gptel
 text properties stripped. If the conversation exceeds
 `my-gptel-memory-max-conversation-chars', only the most recent portion
-is retained (truncated from the beginning)."
-  (let ((text (buffer-substring-no-properties (point-min) (point-max))))
-    (if (> (length text) my-gptel-memory-max-conversation-chars)
-        (let ((truncated
-               (substring text (- (length text) my-gptel-memory-max-conversation-chars))))
-          (format "[...conversation truncated to last %d chars...]\n%s"
-                  my-gptel-memory-max-conversation-chars truncated))
-      text)))
+is retained (truncated from the beginning).
+
+Uses `save-restriction' + `widen' to ensure the full buffer content
+is extracted even when the buffer is narrowed."
+  (save-restriction
+    (widen)
+    (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+      (if (> (length text) my-gptel-memory-max-conversation-chars)
+          (let ((truncated
+                 (substring text (- (length text) my-gptel-memory-max-conversation-chars))))
+            (format "[...conversation truncated to last %d chars...]\n%s"
+                    my-gptel-memory-max-conversation-chars truncated))
+        text))))
 
 (defun my-gptel--memory-build-payload (current-memories conversation)
   "Build the JSON payload string for the Ollama /api/chat endpoint.

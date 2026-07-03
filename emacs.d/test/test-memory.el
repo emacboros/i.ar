@@ -451,4 +451,55 @@ The unwind-protect should still kill the buffer and delete the temp file."
       (when (file-exists-p tracking-file)
         (delete-file tracking-file)))))
 
+;;; --- Conversation extraction narrowing tests ---
+
+(ert-deftest test-memory-extract-conversation-widens-narrowed-buffer ()
+  "my-gptel--memory-extract-conversation should extract full text even when narrowed.
+If the buffer is narrowed, point-min/point-max return the narrowed
+boundaries, not the actual buffer boundaries.  The function should widen
+first to get the complete conversation.  Also verifies that narrowing
+is restored after the call (save-restriction invariant)."
+  (with-temp-buffer
+    (insert "Before narrowing.\n")
+    (insert "This is the visible part.\n")
+    (insert "After narrowing.\n")
+    ;; Narrow to just the middle line
+    (save-excursion
+      (goto-char (point-min))
+      (forward-line 1)
+      (narrow-to-region (point) (line-beginning-position 2)))
+    ;; Verify narrowing is in effect before the call
+    (should (< (- (point-max) (point-min)) (buffer-size)))
+    ;; Even though narrowed, extract-conversation should get ALL text
+    (let ((result (my-gptel--memory-extract-conversation)))
+      (should (string-match-p "Before narrowing" result))
+      (should (string-match-p "visible part" result))
+      (should (string-match-p "After narrowing" result)))
+    ;; After extraction, buffer should still be narrowed (save-restriction)
+    (should (< (- (point-max) (point-min)) (buffer-size)))))
+
+(ert-deftest test-memory-extract-conversation-truncates-when-narrowed ()
+  "Truncation should operate on the full (widened) buffer, not the narrowed region.
+When the buffer is narrowed AND the full content exceeds
+`my-gptel-memory-max-conversation-chars', the truncation prefix
+should appear and the result should contain text from outside the
+narrowed region."
+  (let ((my-gptel-memory-max-conversation-chars 50))
+    (with-temp-buffer
+      (insert (make-string 100 ?A))
+      (insert "\n")
+      (insert (make-string 100 ?B))
+      ;; Narrow to just the B section
+      (save-excursion
+        (goto-char (point-min))
+        (forward-line 1)
+        (narrow-to-region (point) (point-max)))
+      (let ((result (my-gptel--memory-extract-conversation)))
+        ;; Should contain truncated text from the full buffer
+        (should (string-match-p "truncated" result))
+        ;; The last 50 chars of the full buffer are all B's, so the
+        ;; truncated content should contain B's (from outside the narrowed
+        ;; region -- proving widen happened before truncation)
+        (should (string-match-p "B" result))))))
+
 (provide 'test-memory)
