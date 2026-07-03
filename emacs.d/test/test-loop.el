@@ -102,13 +102,18 @@
 
 (ert-deftest test-loop-hard-message-includes-name ()
   "my-gptel--loop-hard-message should include the tool name."
-  (let ((msg (my-gptel--loop-hard-message "write_file" 6)))
+  (let ((msg (my-gptel--loop-hard-message "write_file" 6 3)))
     (should (string-match-p "write_file" msg))))
 
 (ert-deftest test-loop-hard-message-includes-count ()
   "my-gptel--loop-hard-message should include the repeat count."
-  (let ((msg (my-gptel--loop-hard-message "delegate" 7)))
+  (let ((msg (my-gptel--loop-hard-message "delegate" 7 4)))
     (should (string-match-p "7" msg))))
+
+(ert-deftest test-loop-hard-message-includes-block-count ()
+  "my-gptel--loop-hard-message should include the actual block count."
+  (let ((msg (my-gptel--loop-hard-message "read_file" 6 3)))
+    (should (string-match-p "blocked 3 attempts" msg))))
 
 ;;; --- Main hook function tests ---
 
@@ -160,11 +165,14 @@
           (should (= my-gptel--loop-block-count 1)))))))
 
 (ert-deftest test-loop-guard-hard-stops-at-hard-threshold ()
-  "my-gptel--loop-guard should return :stop when hard threshold is reached."
+  "my-gptel--loop-guard should return :stop when hard threshold is reached.
+The stop reason should include the actual block count (3 soft blocks
+at thresholds 3, 4, 5 before hard stop at 6)."
   (with-temp-buffer
     (let ((my-gptel-loop-soft-threshold 3)
           (my-gptel-loop-hard-threshold 6))
       (setq-local my-gptel--loop-history nil)
+      (setq-local my-gptel--loop-block-count 0)
       (let* ((args '(:filepath "/tmp/foo"))
              (sig (cons "read_file" (my-gptel--loop-args-sig args)))
              (info (list :name "read_file"
@@ -173,11 +181,18 @@
         ;; Push 5 entries (simulating 5 prior identical calls)
         (dotimes (_ 5)
           (my-gptel--loop-push sig))
+        ;; Simulate 3 soft blocks (at totals 3, 4, 5)
+        (setq-local my-gptel--loop-block-count 3)
         ;; Sixth call -- total = 6, hits hard threshold
         (let ((result (my-gptel--loop-guard info)))
           (should (plist-get result :stop))
           (should (plist-get result :stop-reason))
-          (should (stringp (plist-get result :stop-reason))))))))
+          (should (stringp (plist-get result :stop-reason)))
+          ;; Stop reason should include actual block count (3), not
+          ;; the estimated count (6 - 3 = 3 -- same in this case, but
+          ;; the point is it reads the real counter)
+          (should (string-match-p "blocked 3 attempts"
+                                  (plist-get result :stop-reason))))))))
 
 (ert-deftest test-loop-guard-resets-on-different-call ()
   "my-gptel--loop-guard should reset block count when a different call is made."
@@ -278,11 +293,16 @@ hard-threshold is misconfigured below soft-threshold."
         ;; Push 3 entries: soft-blocked at total=3, now at total=4
         (dotimes (_ 3)
           (my-gptel--loop-push sig))
+        ;; Simulate 1 soft block (at total=3)
+        (setq-local my-gptel--loop-block-count 1)
         ;; Fourth call -- total = 4, effective-hard = max(1, 3+1) = 4
         (let ((result (my-gptel--loop-guard info)))
           (should (plist-get result :stop))
           (should (plist-get result :stop-reason))
-          (should (stringp (plist-get result :stop-reason))))))))
+          (should (stringp (plist-get result :stop-reason)))
+          ;; Stop reason should include actual block count (1)
+          (should (string-match-p "blocked 1 attempt"
+                                  (plist-get result :stop-reason))))))))
 
 (ert-deftest test-loop-guard-equal-thresholds-still-soft-blocks-first ()
   "my-gptel--loop-guard should soft-block before hard-stopping when
@@ -307,4 +327,48 @@ hard-threshold == soft-threshold (edge case misconfiguration)."
           (should (plist-get result :block))
           (should (stringp (plist-get result :block)))
           (should (= my-gptel--loop-block-count 1)))))))
+;;; --- Block count accuracy test ---
+
+(ert-deftest test-loop-guard-hard-stop-uses-actual-block-count ()
+  "my-gptel--loop-guard should report the actual block count, not an estimate.
+This test constructs a scenario where the old estimate (repeat-count -
+soft-threshold) would differ from the actual block count:
+1. Call read_file 3 times (soft-block at total=3, block-count=1)
+2. Call write_file once (different call, block-count resets to 0)
+3. Call read_file 3 more times (soft-block at total=3 again, block-count=1)
+4. Call read_file again (total=4, but effective-hard=6, still soft, block-count=2)
+5. Call read_file again (total=5, soft, block-count=3)
+6. Call read_file again (total=6, hard stop, block-count=3)
+
+The old estimate would compute 6 - 3 = 3, which happens to match.
+But if we set block-count to a value that differs from the estimate,
+we prove the message reads the actual counter."
+  (with-temp-buffer
+    (let ((my-gptel-loop-soft-threshold 3)
+          (my-gptel-loop-hard-threshold 6))
+      (setq-local my-gptel--loop-history nil)
+      (setq-local my-gptel--loop-block-count 0)
+      (let* ((args '(:filepath "/tmp/foo"))
+             (sig (cons "read_file" (my-gptel--loop-args-sig args)))
+             (info (list :name "read_file"
+                         :args args
+                         :buffer (current-buffer))))
+        ;; Simulate: 3 soft blocks happened, then a different call reset
+        ;; block-count to 0, then 2 more soft blocks. block-count=2.
+        ;; But total=6, so old estimate = 6 - 3 = 3.
+        ;; Actual block-count = 2, which differs from estimate = 3.
+        (dotimes (_ 5)
+          (my-gptel--loop-push sig))
+        (setq-local my-gptel--loop-block-count 2)
+        ;; Sixth call -- total = 6, hits hard threshold
+        (let ((result (my-gptel--loop-guard info)))
+          (should (plist-get result :stop))
+          ;; Message should say "blocked 2 attempts" (actual), not
+          ;; "blocked 3 attempts" (old estimate: 6 - 3 = 3)
+          (should (string-match-p "blocked 2 attempts"
+                                  (plist-get result :stop-reason)))
+          ;; Explicitly verify old estimate is NOT present
+          (should-not (string-match-p "blocked 3 attempts"
+                                      (plist-get result :stop-reason))))))))
+
 (provide 'test-loop)
