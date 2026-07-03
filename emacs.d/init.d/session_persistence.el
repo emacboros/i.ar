@@ -162,13 +162,25 @@ alphanumeric characters, dots, hyphens, and underscores are allowed."
 (defun my-gptel--sort-sessions-by-mtime (files)
   "Sort FILES by modification time, newest first.
 FILES is a list of absolute file paths.
-Returns a list of absolute file paths sorted newest first."
+Returns a list of absolute file paths sorted newest first.
+
+Files that vanish between directory-files and file-attributes
+(race condition) are filtered out with a warning.  This protects
+both callers (my-gptel-list-sessions and my-gptel-open-session)
+from processing non-existent files."
   ;; Use decorate-sort-undecorate (Schwartzian transform) to call
   ;; file-attributes only once per file instead of O(N log N) times.
+  ;; Filter out vanished files (nil attrs) before sorting so they
+  ;; don't pollute the sort order or appear in completion lists.
   (mapcar #'car
-          (sort (mapcar (lambda (f)
-                          (cons f (file-attribute-modification-time (file-attributes f))))
-                        files)
+          (sort (delq nil
+                      (mapcar (lambda (f)
+                                (let ((attrs (file-attributes f)))
+                                  (if attrs
+                                      (cons f (file-attribute-modification-time attrs))
+                                    (message "Warning: session file vanished: %s" f)
+                                    nil)))
+                              files))
                 (lambda (a b)
                   (time-less-p (cdr b) (cdr a))))))
 
@@ -223,7 +235,7 @@ Shows session name, size, and last modified time."
                            (name (file-name-nondirectory f)))
                       (format "%-40s %8d bytes  %s"
                               name
-                              size
+                              (or size 0)
                               (format-time-string "%Y-%m-%d %H:%M" mtime))))
                   sorted-files)))
     (with-current-buffer (get-buffer-create "*gptel-sessions*")

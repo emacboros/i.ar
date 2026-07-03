@@ -413,14 +413,18 @@
       (delete-directory dir t))))
 
 (ert-deftest test-session-sort-by-mtime-nonexistent-file ()
-  "my-gptel--sort-sessions-by-mtime should handle non-existent files without error."
-  ;; file-attributes returns nil for non-existent files, so mtime is nil.
-  ;; time-less-p with nil returns nil (not an error), so the function
-  ;; returns the path without crashing. This documents current behavior.
-  (let ((sorted (my-gptel--sort-sessions-by-mtime
-                 (list "/nonexistent/file.gptel"))))
-    (should (equal (length sorted) 1))
-    (should (equal (car sorted) "/nonexistent/file.gptel"))))
+  "my-gptel--sort-sessions-by-mtime should filter out non-existent files.
+file-attributes returns nil for non-existent files. The function now
+filters them out (with a warning) instead of returning them with nil
+mtime, which would pollute sort order and appear in completion lists."
+  (let (warnings)
+    (cl-letf (((symbol-function 'message)
+               (lambda (fmt &rest args)
+                 (push (apply #'format fmt args) warnings))))
+      (let ((sorted (my-gptel--sort-sessions-by-mtime
+                     (list "/nonexistent/file.gptel"))))
+        (should (null sorted))
+        (should (cl-some (lambda (w) (string-match-p "vanished" w)) warnings))))))
 
 (ert-deftest test-session-sort-by-mtime-duplicate-paths ()
   "my-gptel--sort-sessions-by-mtime should handle duplicate paths in input."
@@ -495,5 +499,43 @@ traversal vector, and \"../../etc/passwd\" is rejected because of the slashes."
       (gptel-mode 1)
       (insert "User: hello\n")
       (should-error (my-gptel-save-session "../../etc/passwd")))))
+
+;;; --- List sessions robustness tests ---
+
+(ert-deftest test-session-list-handles-vanished-file ()
+  "my-gptel-list-sessions should not crash if a session file is deleted
+between directory-files and file-attributes (race condition).
+file-attributes returns nil for non-existent files, which would crash
+(format \"%8d\" nil). The function should skip the vanished file and
+log a warning instead of crashing."
+  (with-session-fixture
+    ;; Create a real session file
+    (with-temp-buffer
+      (text-mode)
+      (gptel-mode 1)
+      (insert "Session content")
+      (cl-letf (((symbol-function 'gptel--save-state) #'test-session--mock-gptel-save-state))
+        (my-gptel-save-session "session-existing")))
+    ;; Mock directory-files to include a non-existent "ghost" file path,
+    ;; simulating a file that was listed but deleted before file-attributes.
+    (cl-letf (((symbol-function 'directory-files)
+               (lambda (dir _full _regexp &rest _)
+                 (list (expand-file-name "session-existing.gptel" dir)
+                       (expand-file-name "ghost-vanished.gptel" dir)))))
+      ;; Capture warning messages
+      (let (warnings)
+        (cl-letf (((symbol-function 'message)
+                   (lambda (fmt &rest args)
+                     (push (apply #'format fmt args) warnings))))
+          (my-gptel-list-sessions))
+        ;; Should not crash, buffer should exist
+        (should (buffer-live-p (get-buffer "*gptel-sessions*")))
+        ;; The ghost file should have been skipped (not in output)
+        (with-current-buffer (get-buffer "*gptel-sessions*")
+          (let ((content (buffer-string)))
+            (should (string-match-p "session-existing" content))
+            (should-not (string-match-p "ghost-vanished" content))))
+        ;; A warning should have been logged for the vanished file
+        (should (cl-some (lambda (w) (string-match-p "vanished" w)) warnings))))))
 
 (provide 'test-session)
