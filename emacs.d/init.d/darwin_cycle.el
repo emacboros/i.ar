@@ -117,10 +117,14 @@ Silently skips if either is empty.  Logs success or failure."
             (string-empty-p chat-id))
         (message "[darwin] Telegram notification skipped (no token/chat-id configured)")
       (let ((url (format "https://api.telegram.org/bot%s/sendMessage" token))
-            (payload (json-encode
-                      `(("chat_id" . ,chat-id)
-                        ("text" . ,message)
-                        ("parse_mode" . "Markdown")))))
+            ;; Use json-serialize (not json-encode) to avoid dependency on
+            ;; global json-encode-object-type.  Consistent with the pattern
+            ;; used in my-gptel--memory-build-payload.
+            ;; Note: if boolean fields are added, pass :false-object :json-false.
+            (payload (json-serialize
+                      `(:chat_id ,chat-id
+                        :text ,message
+                        :parse_mode "Markdown"))))
         (message "[darwin] Sending Telegram notification...")
         (let ((result (with-temp-buffer
                         (call-process "curl" nil t nil
