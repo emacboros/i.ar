@@ -41,6 +41,7 @@
 ;; for categories 4-6, but this guard provides protection even when mounts
 ;; are writable (e.g., during development).
 
+(require 'cl-lib)
 (require 'subr-x)
 
 ;;; --- Configuration ---
