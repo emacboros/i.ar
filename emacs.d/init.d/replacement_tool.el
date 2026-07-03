@@ -17,6 +17,7 @@
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+(require 'gptel)
 (require 'file_guard)
 (require 'audit_log)
 (require 'fs_tools)  ; my-gptel--with-suppressed-save-hooks macro

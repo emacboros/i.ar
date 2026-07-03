@@ -29,6 +29,7 @@
 ;; my-gptel--maybe-sanitize-exec-output to strip control sequences and
 ;; flag prompt injection patterns before returning to the AI.
 
+(require 'gptel)
 (require 'output_sanitizer)
 (require 'audit_log)
 

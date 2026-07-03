@@ -36,6 +36,7 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'task_tools)  ; my-gptel--get-agent-dir (canonical agent dir resolver)
+(declare-function my-gptel-tool-reload-agent "reload_tools" (&optional agent-name))
 
 ;;; --- Configuration ---
 

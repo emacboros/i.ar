@@ -26,6 +26,7 @@
 ;; Security: write_file and append_file check the file_guard before
 ;; writing. All write operations are logged to the audit log.
 
+(require 'gptel)
 (require 'cl-lib)
 (require 'file_guard)
 (require 'audit_log)
