@@ -312,6 +312,125 @@
           ;; But the mock gptel-save-state writes delegate-depth: 0
           (should (string-match-p "my-gptel--delegate-depth" content)))))))
 
+;;; --- Sort sessions by mtime tests ---
+
+;; Helper: create a file with an explicit mtime to avoid filesystem
+;; resolution issues. set-file-times lets us control mtime precisely
+;; without relying on sleep-for, which is fragile on filesystems with
+;; coarse mtime resolution (e.g., FAT32, HFS+, some NFS mounts).
+(defun test-session--make-file-with-mtime (path content mtime)
+  "Create a file at PATH with CONTENT and set its mtime to MTIME."
+  (with-temp-file path (insert content))
+  (set-file-times path mtime))
+
+(ert-deftest test-session-sort-by-mtime-newest-first ()
+  "my-gptel--sort-sessions-by-mtime should sort files newest first."
+  (let ((dir (make-temp-file "test-sort-" :dir-flag)))
+    (unwind-protect
+        (let* ((base (current-time))
+               (file-old (expand-file-name "old.gptel" dir))
+               (file-mid (expand-file-name "mid.gptel" dir))
+               (file-new (expand-file-name "new.gptel" dir)))
+          ;; Use explicit mtimes to avoid filesystem resolution issues.
+          (test-session--make-file-with-mtime file-old "old" (time-subtract base 200))
+          (test-session--make-file-with-mtime file-mid "mid" (time-subtract base 100))
+          (test-session--make-file-with-mtime file-new "new" base)
+          ;; Pass in shuffled order to verify reordering.
+          (let ((sorted (my-gptel--sort-sessions-by-mtime
+                         (list file-old file-new file-mid))))
+            ;; Newest first: new, mid, old
+            (should (equal (nth 0 sorted) file-new))
+            (should (equal (nth 1 sorted) file-mid))
+            (should (equal (nth 2 sorted) file-old))))
+      (delete-directory dir t))))
+
+(ert-deftest test-session-sort-by-mtime-empty-list ()
+  "my-gptel--sort-sessions-by-mtime should return nil for empty list."
+  (should (null (my-gptel--sort-sessions-by-mtime nil))))
+
+(ert-deftest test-session-sort-by-mtime-single-file ()
+  "my-gptel--sort-sessions-by-mtime should handle a single file."
+  (let ((dir (make-temp-file "test-sort-" :dir-flag)))
+    (unwind-protect
+        (let* ((file (expand-file-name "only.gptel" dir)))
+          (with-temp-file file (insert "content"))
+          (let ((sorted (my-gptel--sort-sessions-by-mtime (list file))))
+            (should (equal (length sorted) 1))
+            (should (equal (car sorted) file))))
+      (delete-directory dir t))))
+
+(ert-deftest test-session-sort-by-mtime-returns-full-paths ()
+  "my-gptel--sort-sessions-by-mtime should return full paths, not filenames."
+  (let ((dir (make-temp-file "test-sort-" :dir-flag)))
+    (unwind-protect
+        (let* ((base (current-time))
+               (file-a (expand-file-name "a.gptel" dir))
+               (file-b (expand-file-name "b.gptel" dir)))
+          (test-session--make-file-with-mtime file-a "a" (time-subtract base 100))
+          (test-session--make-file-with-mtime file-b "b" base)
+          (let ((sorted (my-gptel--sort-sessions-by-mtime (list file-a file-b))))
+            (should (cl-every #'file-name-absolute-p sorted))
+            (should (equal (car sorted) file-b))))
+      (delete-directory dir t))))
+
+(ert-deftest test-session-sort-by-mtime-preserves-all-files ()
+  "my-gptel--sort-sessions-by-mtime should not lose any files."
+  (let ((dir (make-temp-file "test-sort-" :dir-flag)))
+    (unwind-protect
+        (let ((files nil)
+              (base (current-time)))
+          (dotimes (i 5)
+            (let ((f (expand-file-name (format "f%d.gptel" i) dir)))
+              (test-session--make-file-with-mtime f (format "file %d" i)
+                                                   (time-subtract base (* 10 i)))
+              (push f files)))
+          (let ((sorted (my-gptel--sort-sessions-by-mtime files)))
+            (should (= (length sorted) (length files)))
+            (should (equal (sort (copy-sequence sorted) #'string-lessp)
+                           (sort (copy-sequence files) #'string-lessp)))))
+      (delete-directory dir t))))
+
+(ert-deftest test-session-sort-by-mtime-equal-mtimes-stable ()
+  "my-gptel--sort-sessions-by-mtime should preserve input order for equal mtimes."
+  (let ((dir (make-temp-file "test-sort-" :dir-flag)))
+    (unwind-protect
+        (let* ((base (current-time))
+               (file-a (expand-file-name "a.gptel" dir))
+               (file-b (expand-file-name "b.gptel" dir))
+               (file-c (expand-file-name "c.gptel" dir)))
+          ;; All files get the same mtime.
+          (test-session--make-file-with-mtime file-a "a" base)
+          (test-session--make-file-with-mtime file-b "b" base)
+          (test-session--make-file-with-mtime file-c "c" base)
+          (let ((sorted (my-gptel--sort-sessions-by-mtime
+                         (list file-a file-b file-c))))
+            ;; With equal mtimes, sort should preserve input order.
+            (should (equal (nth 0 sorted) file-a))
+            (should (equal (nth 1 sorted) file-b))
+            (should (equal (nth 2 sorted) file-c))))
+      (delete-directory dir t))))
+
+(ert-deftest test-session-sort-by-mtime-nonexistent-file ()
+  "my-gptel--sort-sessions-by-mtime should handle non-existent files without error."
+  ;; file-attributes returns nil for non-existent files, so mtime is nil.
+  ;; time-less-p with nil returns nil (not an error), so the function
+  ;; returns the path without crashing. This documents current behavior.
+  (let ((sorted (my-gptel--sort-sessions-by-mtime
+                 (list "/nonexistent/file.gptel"))))
+    (should (equal (length sorted) 1))
+    (should (equal (car sorted) "/nonexistent/file.gptel"))))
+
+(ert-deftest test-session-sort-by-mtime-duplicate-paths ()
+  "my-gptel--sort-sessions-by-mtime should handle duplicate paths in input."
+  (let ((dir (make-temp-file "test-sort-" :dir-flag)))
+    (unwind-protect
+        (let* ((file (expand-file-name "only.gptel" dir)))
+          (with-temp-file file (insert "content"))
+          (let ((sorted (my-gptel--sort-sessions-by-mtime (list file file file))))
+            (should (= (length sorted) 3))
+            (should (cl-every (lambda (f) (equal f file)) sorted))))
+      (delete-directory dir t))))
+
 ;;; --- Safe local variable declarations ---
 
 (ert-deftest test-session-safe-local-variables-declared ()

@@ -1568,3 +1568,356 @@ Counting objects:   5% (1/19)Counting objects:  10% (2/19)Counting objects:  1
 [darwin] Tool call #47: append_file args=(:filepath "/root/.emacs.d/agents.d/darwin/HISTORY.log" :content "[2026-07-03 03:06:21] darwin: cycl result=Success: Content appended to '/root/.emacs.d/agents.d/darwin/HISTORY.log'
 [darwin] Tool call #48: replace_in_file args=(:path "/root/.emacs.d/agents.d/darwin/MEMORIES.md" :search_text "- `define-obsolete-variable-alias` result=SUCCESS: Replaced text in /root/.emacs.d/agents.d/darwin/MEMORIES.md
 [darwin] Tool call #49: replace_in_file args=(:path "/root/.emacs.d/agents.d/darwin/MEMORIES.md" :search_text "- `define-obsolete-variable-alias` result=SUCCESS: Replaced text in /root/.emacs.d/agents.d/darwin/MEMORIES.md
+[darwin] Tool call #50: execute_code_local args=(:command "cd /root/i.ar && git add -A && git commit -m \"darwin: update MEMORIES.md and HISTORY.log result=[main 280b56c] darwin: update MEMORIES.md and HISTORY.log for cycle 15
+ 3 files changed, 36 insertions(+), 1 deletion(-)
+Enumerating objects: 17, done.
+Counting objects:   5% (1/17)Counting objects:  1
+[darwin] Turn #1 completed (tool calls so far: 50)
+[darwin] Response: 
+``` reasoning
+Let me start by reading my MEMORIES.md and HISTORY.log to remember what I've done before.
+```
+
+
+Calling read_file: (:filepath "/root/.emacs.d/agents.d/darwin/HISTORY.log")
+
+
+``` tool (read_file :filepath "/root/.emacs.d/agents ...)
+(:name "read_file" :args (:filepath "/root/.emacs.d/agents.d/da
+[darwin] Cycle completed in 792.5s
+[darwin] Sending Telegram notification...
+[darwin] Telegram notification sent successfully
+[0;34m[INF][2026-07-03 00:07:11][0m Darwin cycle container exited with code: 0
+[0;32m[INF][2026-07-03 00:07:11][0m Cycle 4 succeeded in 796s (exit 0)
+
+[0;34m[INF][2026-07-03 00:08:12][0m --- Cycle 5/50 ---
+[0;34m[INF][2026-07-03 00:08:13][0m Starting darwin cycle with 7200s timeout
+[0;34m[INF][2026-07-03 00:08:13][0m Using local Ollama at 10.66.0.5:11434 with host networking
+============================================
+  Preflight Mount Audit — Emacboros
+  2026-07-03T03:08:13Z
+============================================
+
+--- Phase 1: /proc/mounts scan ---
+
+--- Phase 2: Writability tests ---
+[0;32m[PASS][0m /var/run/docker.sock — does not exist
+[0;32m[PASS][0m /etc/cron.d — does not exist
+[0;32m[PASS][0m /var/spool/cron — does not exist
+[0;32m[PASS][0m /etc/systemd/system — does not exist
+[0;32m[PASS][0m /etc/systemd — does not exist
+
+--- Phase 3: Capability audit ---
+[0;32m[PASS][0m CAP_DAC_OVERRIDE (bit 1) is not set — can bypass file read/write/execute permissions
+[0;32m[PASS][0m CAP_SYS_ADMIN (bit 21) is not set — broad system administration (mount, namespaces, etc.)
+[0;32m[PASS][0m CAP_SETUID (bit 7) is not set — can change process UID
+[0;32m[PASS][0m CAP_SETGID (bit 6) is not set — can change process GID
+[0;32m[PASS][0m CAP_MKNOD (bit 27) is not set — can create special device files
+[0;32m[PASS][0m CAP_NET_RAW (bit 13) is SET (expected) — can create raw network sockets (needed for nmap/traceroute)
+[0;32m[PASS][0m CAP_NET_BIND_SERVICE (bit 10) is SET (expected) — can bind to ports < 1024
+[0;32m[PASS][0m CAP_FOWNER (bit 3) is not set — can bypass file ownership checks
+[0;32m[PASS][0m CAP_SETFCAP (bit 31) is not set — can set file capabilities
+
+--- Phase 4: Host mount audit ---
+Writable real-filesystem mounts:
+[0;33m[WARN][0m Host mount: /sys/kernel/security (securityfs, rw,nosuid,nodev,noexec,relatime)
+[0;33m[WARN][0m Host mount: /sys/fs/cgroup (cgroup2, rw,seclabel,nosuid,nodev,noexec,relatime,nsdelegate,memory_recursiveprot,memory_hugetlb_accounting)
+[0;33m[WARN][0m Host mount: /sys/fs/pstore (pstore, rw,seclabel,nosuid,nodev,noexec,relatime)
+[0;33m[WARN][0m Host mount: /sys/firmware/efi/efivars (efivarfs, rw,nosuid,nodev,noexec,relatime)
+[0;33m[WARN][0m Host mount: /sys/fs/bpf (bpf, rw,nosuid,nodev,noexec,relatime,mode=700)
+[0;33m[WARN][0m Host mount: /sys/kernel/config (configfs, rw,nosuid,nodev,noexec,relatime)
+[0;33m[WARN][0m Host mount: /sys/fs/selinux (selinuxfs, rw,nosuid,noexec,relatime)
+[0;33m[WARN][0m Host mount: /sys/kernel/debug (debugfs, rw,seclabel,nosuid,nodev,noexec,relatime)
+[0;33m[WARN][0m Host mount: /sys/kernel/tracing (tracefs, rw,seclabel,nosuid,nodev,noexec,relatime)
+[0;33m[WARN][0m Host mount: /sys/fs/fuse/connections (fusectl, rw,nosuid,nodev,noexec,relatime)
+[0;33m[WARN][0m Host mount: /root/i.ar (btrfs, rw,seclabel,relatime,ssd,discard=async,space_cache=v2,subvolid=257,subvol=/home)
+[0;33m[WARN][0m Host mount: /root/.emacs.d (btrfs, rw,seclabel,relatime,ssd,discard=async,space_cache=v2,subvolid=257,subvol=/home)
+[0;33m[WARN][0m Host mount: /root/.emacs.d/agents.d (btrfs, rw,seclabel,relatime,ssd,discard=async,space_cache=v2,subvolid=257,subvol=/home)
+[0;33m[WARN][0m Host mount: /root/.emacs.d/metaconfig (btrfs, rw,seclabel,relatime,ssd,discard=async,space_cache=v2,subvolid=257,subvol=/home)
+
+============================================
+[0;32m  PREFLIGHT PASSED[0m
+============================================
+Loading /usr/share/emacs/site-lisp/site-start.d/00-dynamic-module-dir.el (source)...
+Loading /usr/share/emacs/site-lisp/site-start.d/10-source-directory.el (source)...
+Loading /root/.emacs.d/init.d/locale.el (source)...
+Loading /root/.emacs.d/init.d/package_setup.el (source)...
+Loading /root/.emacs.d/init.d/ui_cleanup.el (source)...
+Loading /root/.emacs.d/init.d/evil_mode.el (source)...
+No doc string slot for compiled: select-window
+Loading /root/.emacs.d/init.d/gptel_setup.el (source)...
+Loading /root/.emacs.d/metaconfig/gptel.el (source)...
+Loading /root/.emacs.d/init.d/output_sanitizer.el (source)...
+Loading /root/.emacs.d/init.d/fs_tools.el (source)...
+Loading /root/.emacs.d/init.d/code_tools.el (source)...
+Loading /root/.emacs.d/init.d/replacement_tool.el (source)...
+Loading /root/.emacs.d/init.d/agent_loader.el (source)...
+Loading /root/.emacs.d/init.d/delegate_tool.el (source)...
+Loading /root/.emacs.d/init.d/reload_tools.el (source)...
+Loading /root/.emacs.d/init.d/memory_tools.el (source)...
+Loading /root/.emacs.d/init.d/check_elisp_tool.el (source)...
+Loading /root/.emacs.d/init.d/task_tools.el (source)...
+Loading /root/.emacs.d/init.d/session_persistence.el (source)...
+Loading /root/.emacs.d/init.d/tool_display.el (source)...
+Loading /root/.emacs.d/init.d/loop_guard.el (source)...
+Loading /root/.emacs.d/init.d/file_guard.el (source)...
+Loading /root/.emacs.d/init.d/audit_log.el (source)...
+Loading /root/.emacs.d/init.d/darwin_cycle.el (source)...
+[darwin] Starting cycle with 7200s timeout
+[darwin] Sending cycle prompt to darwin agent...
+Querying Ollama...
+[darwin] Tool call #1: read_file args=(:filepath "/root/.emacs.d/agents.d/darwin/HISTORY.log") result=[2026-07-01 16:08:37] darwin: cycle 1 -- sorted list_directory output alphabetically in fs_tools.el using string-lessp. Added test-fs-list-directory-sorted-alphabetically to test-fs.el. Reviewer appro
+[darwin] Tool call #2: execute_code_local args=(:command "cd /root/.emacs.d && ls init.d/*.el | xargs -I{} basename {} .el | sort") result=agent_loader
+audit_log
+check_elisp_tool
+code_tools
+darwin_cycle
+delegate_tool
+evil_mode
+file_guard
+fs_tools
+gptel_setup
+locale
+loop_guard
+memory_tools
+output_sanitizer
+package_setup
+reload_tools
+replacement_tool
+sessi
+[darwin] Tool call #3: execute_code_local args=(:command "cd /root/.emacs.d && ls test/test-*.el | xargs -I{} basename {} .el | sort") result=test-agent
+test-audit
+test-check
+test-code
+test-darwin-cycle
+test-delegate
+test-file-guard
+test-fs
+test-gptel
+test-loop
+test-memory
+test-reload
+test-replace
+test-sanitizer
+test-session
+test-smoke
+test-task
+test-unknow
+[darwin] Tool call #4: execute_code_local args=(:command "cd /root/.emacs.d && wc -l init.d/tool_display.el init.d/ui_cleanup.el init.d/locale.el i result=  58 init.d/tool_display.el
+  27 init.d/ui_cleanup.el
+  34 init.d/locale.el
+  25 init.d/package_setup.el
+  36 init.d/evil_mode.el
+ 180 total
+
+[darwin] Tool call #5: read_file args=(:filepath "/root/.emacs.d/init.d/tool_display.el") result=;; -*- lexical-binding: t; -*-
+
+;; Display tool calls (name + arguments) in the chat buffer BEFORE they execute,
+;; so the user can see what's happening while waiting for long-running tools.
+
+(require 'cl-
+[darwin] Tool call #6: read_file args=(:filepath "/root/.emacs.d/init.d/ui_cleanup.el") result=;; -*- lexical-binding: t; -*-
+
+;; Emacboros --- Agent orchestration in Emacs
+;; Copyright (C) 2026 Ignacio Agustín Randazzo
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it 
+[darwin] Tool call #7: execute_code_local args=(:command "cd /root/.emacs.d && UNDERCOVER_FORCE=1 emacs --batch -l test/run-tests.el 2>&1 | tail -5 result=   passed  274/275  test-unknown-tool-fsm-recovery (0.000158 sec)
+   passed  275/275  test-unknown-tool-pre-hook-blocks (0.000059 sec)
+
+Ran 275 tests, 275 results as expected, 0 unexpected (2026-07-03 03
+[darwin] Tool call #8: execute_code_local args=(:command "cd /root/.emacs.d && UNDERCOVER_FORCE=1 emacs --batch -l test/run-tests.el 2>&1 | grep -E result=
+[darwin] Tool call #9: execute_code_local args=(:command "cd /root/.emacs.d && UNDERCOVER_FORCE=1 emacs --batch -l test/run-tests.el 2>&1 | grep -i result=
+[darwin] Tool call #10: execute_code_local args=(:command "cd /root/.emacs.d && ls test/test-tool-display* test/test-ui* 2>/dev/null; echo \"---\";  result=---
+test/coverage.txt
+
+[darwin] Tool call #11: execute_code_local args=(:command "cd /root/.emacs.d && cat test/coverage.txt 2>/dev/null | head -40") result=== Code coverage text report ==
+tool_display : Percent 31% [Relevant: 29 Covered: 9 Missed: 20]
+task_tools : Percent 91% [Relevant: 68 Covered: 62 Missed: 6]
+session_persistence : Percent 52% [Relevant: 
+[darwin] Tool call #12: read_file args=(:filepath "/root/.emacs.d/init.d/darwin_cycle.el") result=;; -*- lexical-binding: t; -*-
+
+;; Emacboros --- Darwin Continuous Agent Cycle
+;; Copyright (C) 2026 Ignacio Agustin Randazzo
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it
+[darwin] Tool call #13: read_file args=(:filepath "/root/.emacs.d/init.d/agent_loader.el") result=;; -*- lexical-binding: t; -*-
+
+;; Emacboros --- Agent orchestration in Emacs
+;; Copyright (C) 2026 Ignacio Agustín Randazzo
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it 
+[darwin] Tool call #14: read_file args=(:filepath "/root/.emacs.d/test/test-agent.el") result=;; -*- lexical-binding: t; -*-
+
+;;; Tests for agent_loader.el
+;; Tests agent profile loading, #+INCLUDE expansion, path resolution,
+;; and agent name tracking.
+
+(require 'ert)
+(require 'cl-lib)
+(require 'subr
+[darwin] Tool call #15: execute_code_local args=(:command "cd /root/.emacs.d && grep -n \"my-gptel--load-agent-profile\" init.d/*.el") result=init.d/delegate_tool.el:57:(defun my-gptel--load-agent-profile (agent-name)
+init.d/delegate_tool.el:134:      (let ((profile (my-gptel--load-agent-profile agent)))
+
+[darwin] Tool call #16: read_file args=(:filepath "/root/.emacs.d/init.d/delegate_tool.el") result=;; -*- lexical-binding: t; -*-
+
+;; Emacboros --- Agent orchestration in Emacs
+;; Copyright (C) 2026 Ignacio Agustín Randazzo
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it 
+[darwin] Tool call #17: read_file args=(:filepath "/root/.emacs.d/init.d/memory_tools.el") result=;; -*- lexical-binding: t; -*-
+
+;; Emacboros --- Agent orchestration in Emacs
+;; Copyright (C) 2026 Ignacio Agustín Randazzo
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it 
+[darwin] Tool call #18: read_file args=(:filepath "/root/.emacs.d/test/test-memory.el") result=;; -*- lexical-binding: t; -*-
+
+;;; Tests for memory_tools.el
+;; Tests payload construction, memory extraction, entry counting,
+;; and file I/O. Mocks the Ollama API call to avoid network dependency.
+
+(requ
+[darwin] Tool call #19: execute_code_local args=(:command "cd /root/.emacs.d && grep -n \"defun\\|defmacro\\|defvar\\|defcustom\\|defconst\" init.d/ result=43:(defcustom my-gptel-sessions-dir
+60:(defun my-gptel--session-save-custom-state ()
+81:(defun my-gptel--session-restore-custom-state ()
+100:(defun my-gptel-save-session (&optional name)
+146:(defun my-gpt
+[darwin] Tool call #20: read_file args=(:filepath "/root/.emacs.d/init.d/session_persistence.el") result=;; -*- lexical-binding: t; -*-
+
+;; Emacboros --- Agent orchestration in Emacs
+;; Copyright (C) 2026 Ignacio Agustín Randazzo
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it 
+[darwin] Tool call #21: read_file args=(:filepath "/root/.emacs.d/test/test-session.el") result=;; -*- lexical-binding: t; -*-
+
+;;; Tests for session_persistence.el
+;; Tests session save/restore, custom state handling, and session listing.
+
+(require 'ert)
+(require 'cl-lib)
+(require 'subr-x)
+(require 'se
+[darwin] Tool call #22: read_file args=(:filepath "/root/.emacs.d/init.d/audit_log.el") result=;; -*- lexical-binding: t; -*-
+
+;; Emacboros --- Agent orchestration in Emacs
+;; Copyright (C) 2026 Ignacio Agustín Randazzo
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it 
+[darwin] Tool call #23: execute_code_local args=(:command "cd /root/.emacs.d && grep -c \"ert-deftest\" test/test-session.el") result=16
+
+[darwin] Tool call #24: read_file args=(:filepath "/root/.emacs.d/init.d/task_tools.el") result=;; -*- lexical-binding: t; -*-
+
+;; Emacboros --- Agent orchestration in Emacs
+;; Copyright (C) 2026 Ignacio Agustín Randazzo
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it 
+[darwin] Tool call #25: read_file args=(:filepath "/root/.emacs.d/test/test-task.el") result=;; -*- lexical-binding: t; -*-
+
+;;; Tests for task_tools.el
+;; Tests read_tasks (TODO.md/IDEAS.md reading) and read_history
+;; (per-agent and unified HISTORY.log reading).
+
+(require 'ert)
+(require 'cl-lib)
+(r
+[darwin] Tool call #26: execute_code_local args=(:command "cd /root/.emacs.d && grep -c \"ert-deftest\" test/test-task.el") result=7
+
+[darwin] Tool call #27: read_file args=(:filepath "/root/.emacs.d/test/test-session.el") result=;; -*- lexical-binding: t; -*-
+
+;;; Tests for session_persistence.el
+;; Tests session save/restore, custom state handling, and session listing.
+
+(require 'ert)
+(require 'cl-lib)
+(require 'subr-x)
+(require 'se
+[darwin] Tool call #28: execute_code_local args=(:command "cd /root/.emacs.d && grep -c \"ert-deftest\" test/test-session.el") result=16
+
+[darwin] Tool call #29: execute_code_local args=(:command "cd /root/.emacs.d && grep -c \"ert-deftest\" test/test-audit.el") result=14
+
+[darwin] Tool call #30: read_file args=(:filepath "/root/.emacs.d/test/test-session.el") result=;; -*- lexical-binding: t; -*-
+
+;;; Tests for session_persistence.el
+;; Tests session save/restore, custom state handling, and session listing.
+
+(require 'ert)
+(require 'cl-lib)
+(require 'subr-x)
+(require 'se
+[darwin] Tool call #31: execute_code_local args=(:command "cd /root/.emacs.d && grep -c \"ert-deftest\" test/test-session.el test/test-task.el test/ result=test/test-session.el:16
+test/test-task.el:7
+test/test-audit.el:14
+
+[darwin] Tool call #32: read_file args=(:filepath "/root/.emacs.d/test/test-audit.el") result=;; -*- lexical-binding: t; -*-
+
+;;; Tests for audit_log.el
+;; Tests the audit logging system: agent name resolution, log formatting,
+;; and the wrapper functions for each tool type (write, replace, append
+[darwin] Tool call #33: execute_code_local args=(:command "cd /root/.emacs.d && grep -n \"sort-sessions\\|sort.*mtime\\|session.*sort\" test/test-se result=Command exited with code 1.
+Output:
+
+[darwin] Tool call #34: read_file args=(:filepath "/root/.emacs.d/test/test-session.el") result=;; -*- lexical-binding: t; -*-
+
+;;; Tests for session_persistence.el
+;; Tests session save/restore, custom state handling, and session listing.
+
+(require 'ert)
+(require 'cl-lib)
+(require 'subr-x)
+(require 'se
+[darwin] Tool call #35: execute_code_local args=(:command "cd /root/.emacs.d && grep -n \"my-gptel--sort-sessions\" test/test-session.el init.d/sess result=init.d/session_persistence.el:146:(defun my-gptel--sort-sessions-by-mtime (files)
+init.d/session_persistence.el:172:         (sorted-files (my-gptel--sort-sessions-by-mtime all-files))
+init.d/session_pe
+[darwin] Tool call #36: read_file args=(:filepath "/root/.emacs.d/test/test-session.el") result=;; -*- lexical-binding: t; -*-
+
+;;; Tests for session_persistence.el
+;; Tests session save/restore, custom state handling, and session listing.
+
+(require 'ert)
+(require 'cl-lib)
+(require 'subr-x)
+(require 'se
+[darwin] Tool call #37: read_file args=(:filepath "/root/.emacs.d/test/test-session.el") result=;; -*- lexical-binding: t; -*-
+
+;;; Tests for session_persistence.el
+;; Tests session save/restore, custom state handling, and session listing.
+
+(require 'ert)
+(require 'cl-lib)
+(require 'subr-x)
+(require 'se
+[loop-guard] SOFT BLOCK: read_file called 3 times identically, sending correction
+[darwin] Tool call #38: read_file args=(:filepath "/root/.emacs.d/test/test-session.el") result=<tool_call_error>
+LOOP DETECTED: You have called read_file with the same arguments 3 times in a row.
+This is a loop. Repeating the same call will not produce a different result.
+
+Stop and reconsider your 
+[darwin] Tool call #39: replace_in_file args=(:path "/root/.emacs.d/test/test-session.el" :search_text ";;; --- Safe local variable declarations  result=SUCCESS: Replaced text in /root/.emacs.d/test/test-session.el
+[darwin] Tool call #40: execute_code_local args=(:command "cd /root/.emacs.d && UNDERCOVER_FORCE=1 emacs --batch -l test/run-tests.el 2>&1 | tail -2 result=[Session saved: /tmp/test-session-NwRydj/sessions/test-session4.gptel]
+   passed  266/280  test-session-save-strips-old-local-variables (0.001182 sec)
+   passed  267/280  test-session-sort-by-mtime-empt
+Querying Ollama...
+[darwin] Tool call #41: delegate args=(:agent "reviewer" :task "Review the addition of 5 new tests for my-gptel--sort-sessions-by-mtime in result=Delegate 'reviewer' completed:
+
+
+``` reasoning
+Let me review the new tests added to test/test-session.el and the function being tested in init.d/session_persistence.el.
+```
+
+
+Calling read_file: (:filepath "/h
+[darwin] Tool call #42: replace_in_file args=(:path "/root/.emacs.d/test/test-session.el" :search_text ";;; --- Sort sessions by mtime tests ---
+
+( result=SUCCESS: Replaced text in /root/.emacs.d/test/test-session.el
+[darwin] Tool call #43: execute_code_local args=(:command "cd /root/.emacs.d && UNDERCOVER_FORCE=1 emacs --batch -l test/run-tests.el 2>&1 | tail -2 result=   passed  268/283  test-session-sort-by-mtime-empty-list (0.000066 sec)
+   passed  269/283  test-session-sort-by-mtime-equal-mtimes-stable (0.000394 sec)
+   passed  270/283  test-session-sort-by-mtime-
