@@ -398,4 +398,40 @@ should not break the JSON payload. Verifies exact round-trip fidelity."
   (should (member 'darwin--notify-on-exit
                   (default-value 'kill-emacs-hook))))
 
+;;; --- darwin--cycle-complete-p expanded phrase tests ---
+
+(ert-deftest test-darwin-cycle-complete-cycle-is-done-phrase ()
+  "darwin--cycle-complete-p should match 'cycle is done' phrase.
+Tests the 'cycle is done' alternation which matches the exact phrase
+'The cycle is done' or 'cycle is done'."
+  (with-temp-buffer
+    (insert "The cycle is done. HISTORY.log updated.\n")
+    (should (eq (darwin--cycle-complete-p (current-buffer)) t))))
+
+(ert-deftest test-darwin-cycle-complete-finished-current-cycle ()
+  "darwin--cycle-complete-p should match 'finished.*cycle' with 'c' between.
+Tests that 'finished.*cycle' (using '.' which matches any char except
+newline) handles phrases like 'finished the current cycle' where words
+containing 'c' appear between 'finished' and 'cycle'."
+  (with-temp-buffer
+    (insert "I have finished the current cycle. HISTORY.log written.\n")
+    (should (eq (darwin--cycle-complete-p (current-buffer)) t))))
+
+(ert-deftest test-darwin-cycle-complete-not-done-yet-no-false-positive ()
+  "darwin--cycle-complete-p should NOT match 'not done yet' as completion.
+The model might say 'I'm working on the cycle. I'm not done yet.'
+which contains both 'cycle' and 'done' but is NOT a completion phrase.
+The regex should not match this, preventing premature cycle termination."
+  (with-temp-buffer
+    (insert "I'm working on the cycle. I need to update HISTORY.log. I'm not done yet.\n")
+    (should (null (darwin--cycle-complete-p (current-buffer))))))
+
+(ert-deftest test-darwin-cycle-complete-cycle-summary-no-false-positive ()
+  "darwin--cycle-complete-p should NOT match 'cycle summary' without HISTORY.
+Ensures the two-part check (completion phrase + HISTORY reference)
+still works with the expanded alternations."
+  (with-temp-buffer
+    (insert "Here is my cycle summary.\n")
+    (should (null (darwin--cycle-complete-p (current-buffer))))))
+
 (provide 'test-darwin-cycle)
