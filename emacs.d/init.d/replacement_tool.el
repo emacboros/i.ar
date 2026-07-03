@@ -19,6 +19,9 @@
 
 (require 'file_guard)
 (require 'audit_log)
+(require 'fs_tools)  ; my-gptel--with-suppressed-save-hooks macro
+
+(declare-function my-gptel--with-suppressed-save-hooks "fs_tools" (&rest body))
 
 (defun my-gptel--fs-replace (path search-text replace-text)
   "Find SEARCH-TEXT in PATH and replace it with REPLACE-TEXT.
@@ -55,7 +58,8 @@ with a misleading message."
                       (if (search-forward search-text nil t)
                           (progn
                             (replace-match replace-text t t)
-                            (save-buffer)
+                            (my-gptel--with-suppressed-save-hooks
+                              (save-buffer))
                             (my-gptel--audit-log-replace expanded-path)
                             (format "SUCCESS: Replaced text in %s" expanded-path))
                         (format "ERROR: Target string not found in %s" expanded-path))))))

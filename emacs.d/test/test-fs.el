@@ -695,4 +695,118 @@ is found regardless of which name was used to open it."
           (when (file-exists-p link)
             (delete-file link)))))))
 
+;;; --- Save hook isolation tests ---
+
+(ert-deftest test-fs-write-file-suppresses-before-save-hook ()
+  "write_file to an open buffer should NOT run user-configured before-save-hook.
+This prevents format-on-save, lint-on-save, and similar hooks from
+mutating content during programmatic saves."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "hook-test.txt" test-fs--tmpdir))
+           (hook-called nil))
+      (my-gptel--fs-write-file target "original\n")
+      (let ((buf (find-file target)))
+        (unwind-protect
+            (progn
+              (with-current-buffer buf
+                (add-hook 'before-save-hook
+                          (lambda () (setq hook-called t))
+                          nil t))
+              (let ((result (my-gptel--fs-write-file target "new content\n")))
+                (should (string-match-p "Success" result))
+                (should (null hook-called))
+                (with-current-buffer buf
+                  (should (string= (buffer-string) "new content\n")))))
+          (when (buffer-live-p buf)
+            (kill-buffer buf)))))))
+
+(ert-deftest test-fs-write-file-suppresses-after-save-hook ()
+  "write_file to an open buffer should NOT run user-configured after-save-hook."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "after-hook-test.txt" test-fs--tmpdir))
+           (hook-called nil))
+      (my-gptel--fs-write-file target "original\n")
+      (let ((buf (find-file target)))
+        (unwind-protect
+            (progn
+              (with-current-buffer buf
+                (add-hook 'after-save-hook
+                          (lambda () (setq hook-called t))
+                          nil t))
+              (let ((result (my-gptel--fs-write-file target "new content\n")))
+                (should (string-match-p "Success" result))
+                (should (null hook-called))))
+          (when (buffer-live-p buf)
+            (kill-buffer buf)))))))
+
+(ert-deftest test-fs-append-file-suppresses-before-save-hook ()
+  "append_file to an open buffer should NOT run user-configured before-save-hook."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "append-hook-test.txt" test-fs--tmpdir))
+           (hook-called nil))
+      (my-gptel--fs-write-file target "original\n")
+      (let ((buf (find-file target)))
+        (unwind-protect
+            (progn
+              (with-current-buffer buf
+                (add-hook 'before-save-hook
+                          (lambda () (setq hook-called t))
+                          nil t))
+              (let ((result (my-gptel--fs-append-file target "appended\n")))
+                (should (string-match-p "Success" result))
+                (should (null hook-called))
+                (with-current-buffer buf
+                  (should (string= (buffer-string) "original\nappended\n")))))
+          (when (buffer-live-p buf)
+            (kill-buffer buf)))))))
+
+(ert-deftest test-fs-write-file-prevents-content-mutation-hook ()
+  "write_file should prevent a before-save-hook that mutates content.
+This tests the actual threat model: a hook like delete-trailing-whitespace
+or format-on-save that modifies buffer content."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "mutation-test.txt" test-fs--tmpdir)))
+      (my-gptel--fs-write-file target "original\n")
+      (let ((buf (find-file target)))
+        (unwind-protect
+            (progn
+              (with-current-buffer buf
+                ;; Add a hook that mutates content (replaces "new" with "MUTATED")
+                (add-hook 'before-save-hook
+                          (lambda ()
+                            (save-excursion
+                              (goto-char (point-min))
+                              (when (search-forward "new content" nil t)
+                                (replace-match "MUTATED" nil t))))
+                          nil t))
+              (let ((result (my-gptel--fs-write-file target "new content\n")))
+                (should (string-match-p "Success" result))
+                ;; Content should be exactly what we wrote, NOT mutated by the hook
+                (with-current-buffer buf
+                  (should (string= (buffer-string) "new content\n"))
+                  (should-not (string-match-p "MUTATED" (buffer-string))))))
+          (when (buffer-live-p buf)
+            (kill-buffer buf)))))))
+
+(ert-deftest test-fs-write-file-suppresses-write-region-annotate-functions ()
+  "write_file should suppress write-region-annotate-functions during save.
+This hook runs inside write-region (called by save-buffer) and can
+annotate or alter the content being written."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "annotate-test.txt" test-fs--tmpdir))
+           (hook-called nil))
+      (my-gptel--fs-write-file target "original\n")
+      (let ((buf (find-file target)))
+        (unwind-protect
+            (progn
+              (with-current-buffer buf
+                (add-hook 'write-region-annotate-functions
+                          (lambda (_start _end) (setq hook-called t) nil)
+                          nil t))
+              (let ((result (my-gptel--fs-write-file target "new content\n")))
+                (should (string-match-p "Success" result))
+                (should (null hook-called))))
+          (when (buffer-live-p buf)
+            (kill-buffer buf)))))))
+
 (provide 'test-fs)

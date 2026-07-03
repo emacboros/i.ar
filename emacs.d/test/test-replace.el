@@ -246,4 +246,29 @@ via a symlink should find and update the buffer opened with the real path."
           (when (file-exists-p link)
             (delete-file link)))))))
 
+;;; --- Save hook isolation test ---
+
+(ert-deftest test-replace-suppresses-before-save-hook ()
+  "replace_in_file to an open buffer should NOT run user-configured before-save-hook."
+  (with-replace-fixture
+    (let* ((target (expand-file-name "hook-test.txt" test-replace--tmpdir))
+           (hook-called nil))
+      (my-gptel--fs-write-file target "old text\nkeep this\n")
+      (let ((buf (find-file-noselect target)))
+        (unwind-protect
+            (progn
+              (with-current-buffer buf
+                (add-hook 'before-save-hook
+                          (lambda () (setq hook-called t))
+                          nil t))
+              (let ((result (my-gptel--fs-replace target "old text" "new text")))
+                (should (string-match-p "SUCCESS" result))
+                ;; Hook should NOT have been called
+                (should (null hook-called))
+                ;; Content should be exactly what we expect, not modified by hooks
+                (with-current-buffer buf
+                  (should (string= (buffer-string) "new text\nkeep this\n")))))
+          (with-current-buffer buf (set-buffer-modified-p nil))
+          (kill-buffer buf))))))
+
 (provide 'test-replace)
