@@ -37,13 +37,14 @@
 Returns newline-separated file names, including hidden files (dotfiles).
 Excludes only the . and .. directory entries.
 On error, returns a string starting with \\='Error:\\='."
-  (condition-case nil
-      (mapconcat #'identity
-                 (sort (cl-remove-if (lambda (f) (member f '("." "..")))
-                                     (directory-files (expand-file-name path) nil))
-                       #'string-lessp)
-                 "\n")
-    (error (format "Error: Directory '%s' not found or permission denied." path))))
+  (let ((expanded-path (expand-file-name path)))
+    (condition-case nil
+        (mapconcat #'identity
+                   (sort (cl-remove-if (lambda (f) (member f '("." "..")))
+                                       (directory-files expanded-path nil))
+                         #'string-lessp)
+                   "\n")
+      (error (format "Error: Directory '%s' not found or permission denied." expanded-path)))))
 
 (add-to-list 'gptel-tools
  (gptel-make-tool
@@ -57,11 +58,12 @@ On error, returns a string starting with \\='Error:\\='."
 (defun my-gptel--fs-read-file (filepath)
   "Read the text contents of FILEPATH into a string.
 On error, returns a string starting with \\='Error:\\='."
-  (condition-case nil
-      (with-temp-buffer
-        (insert-file-contents filepath)
-        (buffer-string))
-    (error (format "Error: File '%s' not found or cannot be read." filepath))))
+  (let ((expanded-path (expand-file-name filepath)))
+    (condition-case nil
+        (with-temp-buffer
+          (insert-file-contents expanded-path)
+          (buffer-string))
+      (error (format "Error: File '%s' not found or cannot be read." expanded-path)))))
 
 (add-to-list 'gptel-tools
  (gptel-make-tool
@@ -141,7 +143,7 @@ Returns a string starting with \\='Success:\\=' or \\='Error:\\='."
             (my-gptel--audit-log-append expanded-path)
             (format "Success: Content appended to '%s'" expanded-path))
         (error (format "Error: Failed to append to '%s'. Emacs says: %s"
-                       filepath (error-message-string err)))))))
+                       expanded-path (error-message-string err)))))))
 
 (add-to-list 'gptel-tools
  (gptel-make-tool

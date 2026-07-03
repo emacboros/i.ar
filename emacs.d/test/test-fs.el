@@ -93,7 +93,9 @@ Binds `test-fs--tmpdir' to the temp dir path."
   "list_directory on nonexistent path should return error string."
   (let ((result (my-gptel--fs-list-directory "/nonexistent/path/xyzzy")))
     (should (stringp result))
-    (should (string-match-p "Error" result))))
+    (should (string-match-p "Error" result))
+    ;; Error message should contain the path
+    (should (string-match-p "/nonexistent/path/xyzzy" result))))
 
 ;;; --- read_file tests ---
 
@@ -122,7 +124,19 @@ Binds `test-fs--tmpdir' to the temp dir path."
   "read_file on nonexistent file should return error string."
   (let ((result (my-gptel--fs-read-file "/nonexistent/file/xyzzy.txt")))
     (should (stringp result))
-    (should (string-match-p "Error" result))))
+    (should (string-match-p "Error" result))
+    ;; Error message should contain the path
+    (should (string-match-p "/nonexistent/file/xyzzy.txt" result))))
+
+(ert-deftest test-fs-read-file-relative-path-expanded ()
+  "read_file should expand relative paths in both operation and error messages."
+  (let ((result (my-gptel--fs-read-file "nonexistent-relative-file.txt")))
+    (should (stringp result))
+    (should (string-match-p "Error" result))
+    ;; Error should NOT contain the raw relative path
+    (should-not (string-match-p "^Error: File 'nonexistent-relative-file.txt'" result))
+    ;; Error SHOULD contain the expanded (absolute) path
+    (should (string-match-p (regexp-quote (expand-file-name "nonexistent-relative-file.txt")) result))))
 
 ;;; --- write_file tests ---
 
@@ -240,6 +254,16 @@ Binds `test-fs--tmpdir' to the temp dir path."
                          (insert-file-contents target)
                          (buffer-string))
                        "created by append\n")))))
+
+(ert-deftest test-fs-append-file-error-uses-expanded-path ()
+  "append_file error message should contain the expanded path, not the raw input."
+  (let ((result (my-gptel--fs-append-file "nonexistent-dir-xyz/sub/file.txt" "content")))
+    (should (stringp result))
+    (should (string-match-p "Error" result))
+    ;; Error should NOT contain the raw relative path
+    (should-not (string-match-p "^Error: Failed to append to 'nonexistent-dir-xyz/sub/file.txt'" result))
+    ;; Error SHOULD contain the expanded (absolute) path
+    (should (string-match-p (regexp-quote (expand-file-name "nonexistent-dir-xyz/sub/file.txt")) result))))
 
 ;;; --- Round-trip integrity tests ---
 
