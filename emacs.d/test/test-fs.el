@@ -14,6 +14,7 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'subr-x)
+(require 'fs_tools)
 
 ;;; --- Test fixtures ---
 

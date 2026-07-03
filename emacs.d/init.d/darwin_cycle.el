@@ -101,7 +101,7 @@ Go."
   "The prompt sent to darwin at the start of each cycle.")
 
 (defconst darwin-cycle-continue-prompt
-  "Continue your cycle. You are not done yet. Pick up where you left off and complete all remaining steps. Remember: delegation to reviewer, commit, history log, and memories update are MANDATORY. Do not stop until all steps are complete."
+  "Continue your cycle. You are not done yet. Pick up where you left off and complete all remaining steps. Remember: delegation to reviewer, commit, history log, and memories update are MANDATORY. Do not stop until all steps are complete. When all steps are complete, end with the exact text CYCLE_COMPLETE on its own line."
   "Prompt sent to darwin when it produces a text-only response (no tool calls)
 to nudge it to continue the cycle.")
 
