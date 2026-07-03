@@ -32,6 +32,8 @@
 (require 'cl-lib)
 (require 'subr-x)
 
+(declare-function my-gptel-read-agent-profile "agent_loader" (file))
+
 ;;; Buffer-local state for tracking delegation depth
 
 (defvar-local my-gptel--delegate-depth 0
@@ -42,6 +44,13 @@
 (defconst my-gptel--delegate-max-depth 3
   "Maximum delegation depth allowed.
 Prevents infinite recursion while permitting multi-hop chains.")
+
+(defconst my-gptel--delegate-max-turns 15
+  "Maximum number of LLM response turns for a delegate session.
+When the sub-agent produces a text-only response (no tool calls)
+without having used any tools, it is re-prompted to continue.
+This prevents models that describe tool calls in text instead of
+actually calling them from terminating prematurely.")
 
 ;;; Internal functions
 
@@ -161,34 +170,89 @@ STREAM-POS-REF is a symbol holding the stream-pos marker (set dynamically)."
           (set-marker stream-pos (point-max))
           (set stream-pos-ref stream-pos))))))
 
+(defconst my-gptel--delegate-continue-prompt
+  "You have not used any tools yet. You MUST use the available tools to complete the task. Do not describe what you plan to do — actually call the tools. Read the relevant files, run commands, or delegate as needed. Then provide your final response."
+  "Prompt sent to a delegate when it produces a text-only response
+without calling any tools.  This nudges the model to actually use
+its tools instead of narrating its intentions.")
+
 (defun my-gptel--delegate-completion-fn (buf callback agent completed-sym
-                                             timer-sym timeout-secs)
+                                             timer-sym timeout-secs
+                                             tools-called-sym turn-count-sym
+                                             max-turns)
   "Return a completion hook function for the delegate buffer.
 BUF is the delegate buffer.  CALLBACK is gptel's async callback.
 AGENT is the agent name.  COMPLETED-SYM is a symbol holding the completed flag.
-TIMER-SYM is a symbol holding the timer.  TIMEOUT-SECS is the timeout."
+TIMER-SYM is a symbol holding the timer.  TIMEOUT-SECS is the timeout.
+TOOLS-CALLED-SYM is a symbol holding the tool-called flag for the current turn.
+TURN-COUNT-SYM is a symbol holding the turn counter.
+MAX-TURNS is the maximum number of text-only turns before forcing completion.
+
+When the sub-agent produces a text-only response (no tool calls), it is
+re-prompted with `my-gptel--delegate-continue-prompt' to encourage it to
+actually use its tools.  This prevents models that describe tool calls
+in text from terminating prematurely with a non-result."
   (lambda (start end)
     (unless (symbol-value completed-sym)
-      (set completed-sym t)
-      (when (symbol-value timer-sym)
-        (cancel-timer (symbol-value timer-sym)))
-      (let ((response
-             (if (and (numberp start) (numberp end) (< start end))
-                 (buffer-substring-no-properties start end)
-               "")))
-        ;; Delay buffer kill to allow gptel's sentinel and post-response
-        ;; hooks to finish accessing the buffer.  Killing immediately
-        ;; causes "Selecting deleted buffer" errors in the process
-        ;; sentinel when it tries to clean up.
-        (run-with-timer
-         5 nil
-         (lambda ()
-           (when (buffer-live-p buf) (kill-buffer buf))))
-        (funcall callback
-                 (if (and response (string-match-p "\\S-" response))
-                     (format "Delegate '%s' completed:\n\n%s" agent response)
-                   (format "Delegate '%s' returned empty response (timeout: %ds)."
-                           agent timeout-secs)))))))
+      (let ((tools-called (symbol-value tools-called-sym))
+            (turn-count (symbol-value turn-count-sym)))
+        (cond
+         ;; Case 1: Tools were called this turn — genuine response, return it.
+         (tools-called
+          (set completed-sym t)
+          (when (symbol-value timer-sym)
+            (cancel-timer (symbol-value timer-sym)))
+          (let ((response
+                 (if (and (numberp start) (numberp end) (< start end))
+                     (buffer-substring-no-properties start end)
+                   "")))
+            (run-with-timer
+             5 nil
+             (lambda ()
+               (when (buffer-live-p buf) (kill-buffer buf))))
+            (funcall callback
+                     (if (and response (string-match-p "\\S-" response))
+                         (format "Delegate '%s' completed:\n\n%s" agent response)
+                       (format "Delegate '%s' returned empty response (timeout: %ds)."
+                               agent timeout-secs)))))
+
+         ;; Case 2: No tools called, but under max turns — re-prompt.
+         ((< turn-count max-turns)
+          (set turn-count-sym (1+ turn-count))
+          (set tools-called-sym nil)   ; Reset for next turn
+          (message "[delegate] %s produced text-only response (turn %d/%d), re-prompting..."
+                   agent (1+ turn-count) max-turns)
+          (run-with-timer
+           1 nil
+           (lambda ()
+             (when (and (not (symbol-value completed-sym))
+                        (buffer-live-p buf))
+               (with-current-buffer buf
+                 (goto-char (point-max))
+                 (insert "\n\n" my-gptel--delegate-continue-prompt)
+                 (gptel-send))))))
+
+         ;; Case 3: No tools called and max turns reached — return whatever we have.
+         (t
+          (set completed-sym t)
+          (when (symbol-value timer-sym)
+            (cancel-timer (symbol-value timer-sym)))
+          (let ((response
+                 (if (and (numberp start) (numberp end) (< start end))
+                     (buffer-substring-no-properties start end)
+                   "")))
+            (message "[delegate] %s reached max text-only turns (%d), returning last response."
+                     agent max-turns)
+            (run-with-timer
+             5 nil
+             (lambda ()
+               (when (buffer-live-p buf) (kill-buffer buf))))
+            (funcall callback
+                     (if (and response (string-match-p "\\S-" response))
+                         (format "Delegate '%s' completed (max text-only turns reached):\n\n%s"
+                                 agent response)
+                       (format "Delegate '%s' returned empty response after %d text-only turns."
+                               agent max-turns))))))))))
 
 (defun my-gptel--spawn-async-delegate (callback agent task ctx timeout-secs profile)
   "Spawn an async delegate buffer and send the task.
@@ -207,11 +271,15 @@ so the user can watch progress in real time."
          (stream-pos-sym (make-symbol "stream-pos"))
          (completed-sym (make-symbol "completed"))
          (timer-sym (make-symbol "timer"))
+         (tools-called-sym (make-symbol "tools-called"))
+         (turn-count-sym (make-symbol "turn-count"))
          (resp-start nil))
     (set stream-marker-sym nil)
     (set stream-pos-sym nil)
     (set completed-sym nil)
     (set timer-sym nil)
+    (set tools-called-sym nil)
+    (set turn-count-sym 0)
     (with-current-buffer buf
       (text-mode)
       (gptel-mode 1)
@@ -223,6 +291,15 @@ so the user can watch progress in real time."
                     (cl-remove-if (lambda (tool)
                                     (equal (gptel-tool-name tool) "delegate"))
                                   (copy-sequence gptel-tools))))
+
+      ;; Tool call tracker: set tools-called flag when any tool is called.
+      ;; This lets the completion hook distinguish between a genuine final
+      ;; response (after tool use) and a premature text-only response where
+      ;; the model narrates its plan without actually calling tools.
+      (add-hook 'gptel-post-tool-call-functions
+                (lambda (_info)
+                  (set tools-called-sym t))
+                nil t)
 
       ;; Stream hook: mirror each chunk into the parent buffer.
       ;; gptel-post-stream-hook runs in the delegate buffer after each
@@ -241,7 +318,8 @@ so the user can watch progress in real time."
         ;; Completion hook: called by gptel at DONE, ERRS, or ABRT state.
         (let ((completion-fn
                (my-gptel--delegate-completion-fn
-                buf callback agent completed-sym timer-sym timeout-secs)))
+                buf callback agent completed-sym timer-sym timeout-secs
+                tools-called-sym turn-count-sym my-gptel--delegate-max-turns)))
           (add-hook 'gptel-post-response-functions completion-fn nil t)
 
           ;; Timeout timer: fires once after timeout-secs.

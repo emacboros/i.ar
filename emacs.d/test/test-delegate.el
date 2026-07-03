@@ -127,26 +127,71 @@ With a nonexistent agent, the callback should receive 'not found'."
 ;;; --- Completion hook tests ---
 
 (ert-deftest test-delegate-completion-hook-sets-response ()
-  "my-gptel--delegate-completion-fn should call the callback with the response text."
+  "my-gptel--delegate-completion-fn should call the callback with the response text.
+When tools were called (tools-called-sym is non-nil), the completion hook
+treats the response as genuine and calls the callback immediately."
   (with-temp-buffer
     (insert "prefix\nresponse text here\n")
     (let ((result nil)
           (completed-sym (make-symbol "completed"))
-          (timer-sym (make-symbol "timer")))
+          (timer-sym (make-symbol "timer"))
+          (tools-called-sym (make-symbol "tools-called"))
+          (turn-count-sym (make-symbol "turn-count")))
       (set completed-sym nil)
       (set timer-sym nil)
+      (set tools-called-sym t)         ; Simulate: tools were called
+      (set turn-count-sym 0)
       (let ((fn (my-gptel--delegate-completion-fn
                  (current-buffer)
                  (lambda (r) (setq result r))
                  "testagent"
                  completed-sym
                  timer-sym
-                 600)))
+                 600
+                 tools-called-sym
+                 turn-count-sym
+                 my-gptel--delegate-max-turns)))
         ;; Call with positions spanning "response text here\n"
         (funcall fn 8 26))
       (should result)
       (should (string-match-p "response text" result))
       ;; Completed flag should be set
       (should (symbol-value completed-sym)))))
+
+(ert-deftest test-delegate-completion-hook-reprompts-without-tools ()
+  "my-gptel--delegate-completion-fn should re-prompt when no tools were called.
+When tools-called-sym is nil and turn-count is under max-turns, the hook
+should NOT call the callback.  Instead it should increment the turn counter
+and schedule a re-prompt.  We verify the callback was not called and the
+turn counter was incremented."
+  (with-temp-buffer
+    (insert "prefix\nI will review the code now.\n")
+    (let ((result nil)
+          (completed-sym (make-symbol "completed"))
+          (timer-sym (make-symbol "timer"))
+          (tools-called-sym (make-symbol "tools-called"))
+          (turn-count-sym (make-symbol "turn-count")))
+      (set completed-sym nil)
+      (set timer-sym nil)
+      (set tools-called-sym nil)        ; No tools called
+      (set turn-count-sym 0)
+      (let ((fn (my-gptel--delegate-completion-fn
+                 (current-buffer)
+                 (lambda (r) (setq result r))
+                 "testagent"
+                 completed-sym
+                 timer-sym
+                 600
+                 tools-called-sym
+                 turn-count-sym
+                 my-gptel--delegate-max-turns)))
+        ;; Call with positions spanning the text-only response
+        (funcall fn 8 35))
+      ;; Callback should NOT have been called
+      (should (null result))
+      ;; Completed flag should NOT be set
+      (should (null (symbol-value completed-sym)))
+      ;; Turn count should have been incremented
+      (should (= (symbol-value turn-count-sym) 1)))))
 
 (provide 'test-delegate)
