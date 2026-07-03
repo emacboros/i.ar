@@ -68,26 +68,38 @@ Returns the profile string or nil if not found."
 
 ;;; Timeout handler (extracted to reduce nesting depth)
 
-(defun my-gptel--delegate-timeout-handler (buf callback agent completed
+(defun my-gptel--delegate-timeout-handler (buf callback agent completed-sym
                                                resp-start timeout-secs)
   "Handle a delegate timeout.
 This function is called by a timer when the sub-agent hasn't completed
 within TIMEOUT-SECS.  It aborts the gptel request and calls CALLBACK
-with a timeout message or partial response."
+with a timeout message or partial response.
+
+COMPLETED-SYM is a symbol whose value is checked dynamically (not a
+static boolean).  This is critical: gptel-abort may trigger the
+completion hook which sets the symbol to t before the fallback lambda
+runs.  Using a symbol ensures the fallback sees the updated value
+and avoids a double-callback race."
   (cond
    ((not (buffer-live-p buf))
-    (unless completed
+    (unless (symbol-value completed-sym)
+      (set completed-sym t)
       (funcall callback
                (format "Delegate '%s' buffer was killed before completion." agent))))
-   (completed)  ; Already done, nothing to do
+   ((symbol-value completed-sym))  ; Already done, nothing to do
    (t
     (gptel-abort buf)
     ;; Fallback: if gptel-abort doesn't trigger the post-response hook,
-    ;; force completion after a brief delay.
+    ;; force completion after a brief delay.  Check the symbol's current
+    ;; value (not a captured snapshot) so that if the completion hook
+    ;; fired between gptel-abort and this fallback, we skip the callback.
+    ;; Set completed-sym to t before calling the callback to prevent a
+    ;; double-callback if the completion hook fires after the fallback.
     (run-with-timer
      1 nil
      (lambda ()
-       (unless completed
+       (unless (symbol-value completed-sym)
+         (set completed-sym t)
          (let ((partial
                 (when (buffer-live-p buf)
                   (with-current-buffer buf
@@ -351,7 +363,7 @@ so the user can watch progress in real time."
                 timeout-secs nil
                 (lambda ()
                   (my-gptel--delegate-timeout-handler
-                   buf callback agent (symbol-value completed-sym)
+                   buf callback agent completed-sym
                    resp-start timeout-secs))))
 
           ;; Insert the prompt text into the buffer and send.

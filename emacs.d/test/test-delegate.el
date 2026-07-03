@@ -151,21 +151,25 @@ The error from my-gptel--load-agent-profile propagates through the callback."
 (ert-deftest test-delegate-timeout-handler-dead-buffer ()
   "Timeout handler should call callback when buffer is dead and not completed."
   (let ((result nil)
-        (dead-buf (generate-new-buffer "test-dead")))
+        (dead-buf (generate-new-buffer "test-dead"))
+        (completed-sym (make-symbol "completed")))
+    (set completed-sym nil)
     (kill-buffer dead-buf)
     (my-gptel--delegate-timeout-handler
-     dead-buf (lambda (r) (setq result r)) "testagent" nil 0 30)
+     dead-buf (lambda (r) (setq result r)) "testagent" completed-sym 0 30)
     (should result)
     (should (string-match-p "killed before completion" result))))
 
 (ert-deftest test-delegate-timeout-handler-already-completed ()
   "Timeout handler should do nothing when already completed."
   (let ((result nil)
-        (buf (generate-new-buffer "test-completed")))
+        (buf (generate-new-buffer "test-completed"))
+        (completed-sym (make-symbol "completed")))
+    (set completed-sym t)
     (unwind-protect
          (progn
            (my-gptel--delegate-timeout-handler
-            buf (lambda (r) (setq result r)) "testagent" t 0 30)
+            buf (lambda (r) (setq result r)) "testagent" completed-sym 0 30)
            (should (null result)))
       (when (buffer-live-p buf) (kill-buffer buf)))))
 
