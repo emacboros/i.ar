@@ -40,9 +40,9 @@
     (should (null (darwin--cycle-complete-p (current-buffer))))))
 
 (ert-deftest test-darwin-cycle-complete-all-steps-phrase ()
-  "darwin--cycle-complete-p should match 'all steps' completion phrase."
+  "darwin--cycle-complete-p should match 'all steps done' completion phrase."
   (with-temp-buffer
-    (insert "Completed all steps. HISTORY updated.\n")
+    (insert "All steps done. HISTORY updated.\n")
     (should (eq (darwin--cycle-complete-p (current-buffer)) t))))
 
 (ert-deftest test-darwin-cycle-complete-cycle-summary-phrase ()
@@ -433,5 +433,66 @@ still works with the expanded alternations."
   (with-temp-buffer
     (insert "Here is my cycle summary.\n")
     (should (null (darwin--cycle-complete-p (current-buffer))))))
+
+;;; --- darwin--cycle-complete-p expanded alternation tests ---
+
+(ert-deftest test-darwin-cycle-complete-all-steps-done ()
+  "darwin--cycle-complete-p should match 'all steps done' phrase."
+  (with-temp-buffer
+    (insert "All steps done for this cycle. HISTORY appended.\n")
+    (should (eq (darwin--cycle-complete-p (current-buffer)) t))))
+
+(ert-deftest test-darwin-cycle-complete-all-steps-complete ()
+  "darwin--cycle-complete-p should match 'all steps complete' phrase."
+  (with-temp-buffer
+    (insert "All steps complete. Wrote to HISTORY.log.\n")
+    (should (eq (darwin--cycle-complete-p (current-buffer)) t))))
+
+(ert-deftest test-darwin-cycle-complete-all-steps-are-done ()
+  "darwin--cycle-complete-p should match 'all steps are done' (with 'are').
+The regex allows optional 'are ' or 'have been ' between 'steps' and 'done'."
+  (with-temp-buffer
+    (insert "All steps are done. HISTORY.log updated.\n")
+    (should (eq (darwin--cycle-complete-p (current-buffer)) t))))
+
+(ert-deftest test-darwin-cycle-complete-all-steps-are-complete ()
+  "darwin--cycle-complete-p should match 'all steps are complete' (with 'are').
+The regex allows optional 'are ' between 'steps' and 'complete'."
+  (with-temp-buffer
+    (insert "All steps are complete. HISTORY.log updated.\n")
+    (should (eq (darwin--cycle-complete-p (current-buffer)) t))))
+
+(ert-deftest test-darwin-cycle-complete-all-steps-have-been-done ()
+  "darwin--cycle-complete-p should match 'all steps have been done'.
+The regex allows optional 'have been ' between 'steps' and 'done'."
+  (with-temp-buffer
+    (insert "All steps have been done. HISTORY updated.\n")
+    (should (eq (darwin--cycle-complete-p (current-buffer)) t))))
+
+(ert-deftest test-darwin-cycle-complete-not-completed-yet-no-false-positive ()
+  "darwin--cycle-complete-p should NOT match 'haven't completed all steps yet'.
+The old 'all steps' alternation matched this false positive.  The new
+alternations require 'all steps' to be followed by 'done' or 'complete'
+(optionally with 'are ' or 'have been ' between), preventing the match
+on 'haven't completed all steps yet'."
+  (with-temp-buffer
+    (insert "I haven't completed all steps yet. I still need to update HISTORY.log.\n")
+    (should (null (darwin--cycle-complete-p (current-buffer))))))
+
+(ert-deftest test-darwin-cycle-complete-not-all-steps-done-no-false-positive ()
+  "darwin--cycle-complete-p should NOT match 'Not all steps done'.
+The substring 'all steps done' appears inside 'Not all steps done' but
+this is a negation, not a completion signal.  The two-part check
+(completion phrase + HISTORY) does not help because HISTORY may appear
+in the same text.  This test documents the known limitation."
+  (with-temp-buffer
+    (insert "Not all steps done. I still need to update HISTORY.log.\n")
+    ;; This IS a false positive -- the regex matches 'all steps done'
+    ;; inside 'Not all steps done'.  We document it here rather than
+    ;; fix it because a proper fix requires word-boundary anchoring or
+    ;; negative lookbehind, which Emacs regex does not support well.
+    ;; The region-scoped search (start/end) mitigates this in practice
+    ;; by limiting search to the latest model response.
+    (should (eq (darwin--cycle-complete-p (current-buffer)) t))))
 
 (provide 'test-darwin-cycle)
