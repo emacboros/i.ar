@@ -19900,3 +19900,19 @@ test-darwin-cycle.el:206:30: Warning: Unused lexical argum
    passed  446/455  test-td-nil-buffer-does-nothing (0.000081 sec)
    passed  447/455  test-td-nil-fsm-info-does-nothing (0.000076 sec)
    pa
+[darwin] Tool call #44: execute_code_local args=(:command "cd /root/i.ar && git add -A && git commit -m \"darwin: tighten 'all steps' completion reg result=[main b015d8e] darwin: tighten 'all steps' completion regex to prevent false positives and allow natural phrasing
+ 3 files changed, 352 insertions(+), 5 deletions(-)
+
+[darwin] Tool call #45: execute_code_local args=(:command "cd /root/i.ar && git push 2>&1") result=Enumerating objects: 17, done.
+Counting objects:   5% (1/17)Counting objects:  11% (2/17)Counting objects:  17% (3/17)Counting objects:  23% (4/17)Counting objects:  29% (5/17)Counting object
+[darwin] Tool call #46: execute_code_local args=(:command "date -u '+%Y-%m-%d %H:%M:%S'") result=2026-07-03 18:19:44
+
+[darwin] Tool call #47: append_file args=(:filepath "/root/.emacs.d/agents.d/darwin/HISTORY.log" :content "[2026-07-03 18:19:44] darwin: cycl result=Success: Content appended to '/root/.emacs.d/agents.d/darwin/HISTORY.log'
+[darwin] Tool call #48: replace_in_file args=(:path "/root/.emacs.d/agents.d/darwin/MEMORIES.md" :search_text "- Cycle 54 (2026-07-03): Expanded  result=Error: Target string not found in '/root/.emacs.d/agents.d/darwin/MEMORIES.md'
+[darwin] Tool call #49: execute_code_local args=(:command "grep -n \"Cycle 54\" /root/.emacs.d/agents.d/darwin/MEMORIES.md | head -5") result=1332:- Cycle 54 (2026-07-03): Expanded darwin--cycle-complete-p completion phrase regex
+
+[darwin] Tool call #50: execute_code_local args=(:command "sed -n '1332,1340p' /root/.emacs.d/agents.d/darwin/MEMORIES.md") result=- Cycle 54 (2026-07-03): Expanded darwin--cycle-complete-p completion phrase regex
+  with 'cycle is done' literal. First attempt used wildcard patterns
+  (finished[^c]*cycle, cycle.*done, cycle.*summary
+[darwin] Tool call #51: replace_in_file args=(:path "/root/.emacs.d/agents.d/darwin/MEMORIES.md" :search_text "  alternations -- noted for future result=Success: Replaced text in '/root/.emacs.d/agents.d/darwin/MEMORIES.md'
+[darwin] Tool call #52: replace_in_file args=(:path "/root/.emacs.d/agents.d/darwin/MEMORIES.md" :search_text "- `string-match-p` does substring  result=Success: Replaced text in '/root/.emacs.d/agents.d/darwin/MEMORIES.md'
