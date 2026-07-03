@@ -39,7 +39,7 @@
     (let* ((target (expand-file-name "multi.txt" test-replace--tmpdir)))
       (my-gptel--fs-write-file target "foo\nbar\nfoo\nbar\n")
       (let ((result (my-gptel--fs-replace target "foo" "FOO")))
-        (should (string-match-p "SUCCESS" result))
+        (should (string-match-p "Success" result))
         (should (string= (my-gptel--fs-read-file target)
                          "FOO\nbar\nfoo\nbar\n"))))))
 
@@ -61,7 +61,7 @@
                                "\n")))
       (my-gptel--fs-write-file target (concat lines "\n"))
       (let ((result (my-gptel--fs-replace target search replace)))
-        (should (string-match-p "SUCCESS" result))
+        (should (string-match-p "Success" result))
         (let ((content (my-gptel--fs-read-file target)))
           (should (string-match-p "REPLACED 10" content))
           (should (string-match-p "REPLACED 20" content))
@@ -73,7 +73,7 @@
     (let* ((target (expand-file-name "special.txt" test-replace--tmpdir)))
       (my-gptel--fs-write-file target "price: $100 (USD)\n")
       (let ((result (my-gptel--fs-replace target "$100 (USD)" "$200 (EUR)")))
-        (should (string-match-p "SUCCESS" result))
+        (should (string-match-p "Success" result))
         (should (string= (my-gptel--fs-read-file target)
                          "price: $200 (EUR)\n"))))))
 
@@ -83,7 +83,7 @@
     (let* ((target (expand-file-name "delete.txt" test-replace--tmpdir)))
       (my-gptel--fs-write-file target "keep\nremove\nkeep\n")
       (let ((result (my-gptel--fs-replace target "remove\n" "")))
-        (should (string-match-p "SUCCESS" result))
+        (should (string-match-p "Success" result))
         (should (string= (my-gptel--fs-read-file target)
                          "keep\nkeep\n"))))))
 
@@ -99,7 +99,7 @@
         (unwind-protect
             (progn
               (let ((result (my-gptel--fs-replace target "old text" "new text")))
-                (should (string-match-p "SUCCESS" result))
+                (should (string-match-p "Success" result))
                 ;; Buffer content should be updated
                 (with-current-buffer buf
                   (should (string-match-p "new text" (buffer-string)))
@@ -118,7 +118,7 @@
       ;; No buffer is open for this file
       (should-not (find-buffer-visiting target))
       (let ((result (my-gptel--fs-replace target "original" "replaced")))
-        (should (string-match-p "SUCCESS" result))
+        (should (string-match-p "Success" result))
         (should (string= (my-gptel--fs-read-file target)
                          "replaced\n")))
       ;; Verify no .tmp file left behind
@@ -132,7 +132,7 @@
       (let ((buf (find-file-noselect target)))
         (unwind-protect
             (let ((result (my-gptel--fs-replace target "nonexistent" "replacement")))
-              (should (string-match-p "ERROR" result))
+              (should (string-match-p "Error" result))
               (should (string-match-p "not found" result))
               ;; Buffer should be unchanged
               (with-current-buffer buf
@@ -150,7 +150,7 @@
             (progn
               (with-current-buffer buf (read-only-mode 1))
               (let ((result (my-gptel--fs-replace target "content" "CHANGED")))
-                (should (string-match-p "ERROR" result))
+                (should (string-match-p "Error" result))
                 (should (string-match-p "read-only" result))
                 ;; File on disk should be unchanged
                 (should (string= (my-gptel--fs-read-file target)
@@ -174,7 +174,7 @@
                 (goto-char (point-min))
                 (insert "UNSAVED PREFIX\n"))
               (let ((result (my-gptel--fs-replace target "original" "REPLACED")))
-                (should (string-match-p "ERROR" result))
+                (should (string-match-p "Error" result))
                 (should (string-match-p "unsaved" result))
                 ;; File on disk should be unchanged (unsaved changes NOT persisted)
                 (should (string= (my-gptel--fs-read-file target)
@@ -198,7 +198,7 @@
                 (narrow-to-region (point) (point-max)))
               ;; Replace should find "AAAA" despite narrowing
               (let ((result (my-gptel--fs-replace target "AAAA" "REPLACED")))
-                (should (string-match-p "SUCCESS" result))
+                (should (string-match-p "Success" result))
                 (should (string= (my-gptel--fs-read-file target)
                                  "REPLACED\nsearchme\nBBBB\n"))))
           (with-current-buffer buf (set-buffer-modified-p nil))
@@ -210,7 +210,7 @@
     (let* ((target (expand-file-name "pathcheck.txt" test-replace--tmpdir)))
       (my-gptel--fs-write-file target "content\n")
       (let ((result (my-gptel--fs-replace target "content" "changed")))
-        (should (string-match-p "SUCCESS" result))
+        (should (string-match-p "Success" result))
         ;; The expanded path should appear in the message
         (should (string-match-p target result))))))
 
@@ -233,7 +233,7 @@ via a symlink should find and update the buffer opened with the real path."
             (progn
               ;; Replace via the symlink path -- should find the buffer
               (let ((result (my-gptel--fs-replace link "old text" "new text")))
-                (should (string-match-p "SUCCESS" result))
+                (should (string-match-p "Success" result))
                 ;; Buffer content should be updated
                 (with-current-buffer buf
                   (should (string-match-p "new text" (buffer-string)))
@@ -262,7 +262,7 @@ via a symlink should find and update the buffer opened with the real path."
                           (lambda () (setq hook-called t))
                           nil t))
               (let ((result (my-gptel--fs-replace target "old text" "new text")))
-                (should (string-match-p "SUCCESS" result))
+                (should (string-match-p "Success" result))
                 ;; Hook should NOT have been called
                 (should (null hook-called))
                 ;; Content should be exactly what we expect, not modified by hooks

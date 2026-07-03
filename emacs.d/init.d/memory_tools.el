@@ -238,7 +238,7 @@ Uses atomic write (temp file + rename) for safety."
       (insert new-memories)
       (insert "\n"))
     (rename-file tmp-file memories-file t)
-    (format "SUCCESS: Updated MEMORIES.md in %s" agent-dir)))
+    (format "Success: Updated MEMORIES.md in '%s'" agent-dir)))
 
 (defun my-gptel--memory-count-entries (memories-text)
   "Count the number of bullet-point entries in MEMORIES-TEXT."

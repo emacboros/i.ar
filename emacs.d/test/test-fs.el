@@ -493,7 +493,7 @@ have a trailing newline even though the appended content did not include one."
     (let* ((target (expand-file-name "replace.txt" test-fs--tmpdir)))
       (my-gptel--fs-write-file target "alpha\nbeta\ngamma\n")
       (let ((result (my-gptel--fs-replace target "beta" "BETA")))
-        (should (string-match-p "SUCCESS" result))
+        (should (string-match-p "Success" result))
         (should (string= (my-gptel--fs-read-file target)
                          "alpha\nBETA\ngamma\n"))))))
 
@@ -503,7 +503,7 @@ have a trailing newline even though the appended content did not include one."
     (let* ((target (expand-file-name "replace2.txt" test-fs--tmpdir)))
       (my-gptel--fs-write-file target "alpha\nbeta\ngamma\n")
       (let ((result (my-gptel--fs-replace target "nonexistent" "whatever")))
-        (should (string-match-p "ERROR" result))
+        (should (string-match-p "Error" result))
         ;; File should be unchanged
         (should (string= (my-gptel--fs-read-file target)
                          "alpha\nbeta\ngamma\n"))))))
@@ -517,7 +517,7 @@ have a trailing newline even though the appended content did not include one."
            (replace "function foo() {\n  return 2;\n}"))
       (my-gptel--fs-write-file target original)
       (let ((result (my-gptel--fs-replace target search replace)))
-        (should (string-match-p "SUCCESS" result))
+        (should (string-match-p "Success" result))
         (should (string= (my-gptel--fs-read-file target)
                          "function foo() {\n  return 2;\n}\n"))))))
 
@@ -528,10 +528,10 @@ have a trailing newline even though the appended content did not include one."
       (my-gptel--fs-write-file target "  indented line\n  other line\n")
       ;; Search with leading spaces -- should match
       (let ((result (my-gptel--fs-replace target "  indented line" "  replaced line")))
-        (should (string-match-p "SUCCESS" result)))
+        (should (string-match-p "Success" result)))
       ;; Search without leading spaces -- should NOT match the indented version
       (let ((result (my-gptel--fs-replace target "indented line" "should not match")))
-        (should (string-match-p "ERROR" result))))))
+        (should (string-match-p "Error" result))))))
 
 (ert-deftest test-fs-replace-missing-file ()
   "replace_in_file on missing file should return clean error."

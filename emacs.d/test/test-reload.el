@@ -27,27 +27,27 @@
   :tags '(integration)
   (let ((result (my-gptel-tool-reload-agent "mccarthy")))
     (should (stringp result))
-    (should (string-match-p "SUCCESS" result))
+    (should (string-match-p "Success" result))
     (should (equal my-gptel--current-agent-name "mccarthy"))))
 
 (ert-deftest test-reload-agent-rejects-invalid-name ()
   "reload_agent should reject agent names with special characters."
   (let ((result (my-gptel-tool-reload-agent "../../etc/passwd")))
     (should (stringp result))
-    (should (string-match-p "ERROR" result))))
+    (should (string-match-p "Error" result))))
 
 (ert-deftest test-reload-agent-missing-agent-error ()
   "reload_agent should return error for nonexistent agent."
   (let ((result (my-gptel-tool-reload-agent "nonexistent_xyzzy_agent")))
     (should (stringp result))
-    (should (string-match-p "ERROR" result))))
+    (should (string-match-p "Error" result))))
 
 (ert-deftest test-reload-agent-sets-current-agent-name ()
   "reload_agent should set my-gptel--current-agent-name in current buffer."
   :tags '(integration)
   (with-temp-buffer
     (let ((result (my-gptel-tool-reload-agent "mccarthy")))
-      (should (string-match-p "SUCCESS" result))
+      (should (string-match-p "Success" result))
       (should (equal my-gptel--current-agent-name "mccarthy")))))
 
 ;;; --- reload_os tests ---
@@ -57,7 +57,7 @@
   :tags '(integration)
   (let ((result (my-gptel-tool-reload-os)))
     (should (stringp result))
-    (should (string-match-p "SUCCESS" result))
+    (should (string-match-p "Success" result))
     (should (string-match-p "tools" result))))
 
 (ert-deftest test-reload-os-rebuilds-tools ()
@@ -75,7 +75,7 @@ fallback. Uses with-temp-buffer to ensure no agent is loaded."
   (with-temp-buffer
     (let ((result (my-gptel-tool-reload-agent "")))
       (should (stringp result))
-      (should (string-match-p "ERROR" result)))))
+      (should (string-match-p "Error" result)))))
 
 (ert-deftest test-reload-agent-whitespace-name-errors ()
   "reload_agent should error when agent name is only whitespace.
@@ -85,7 +85,7 @@ is loaded."
   (with-temp-buffer
     (let ((result (my-gptel-tool-reload-agent "   ")))
       (should (stringp result))
-      (should (string-match-p "ERROR" result)))))
+      (should (string-match-p "Error" result)))))
 
 (ert-deftest test-reload-agent-nil-name-uses-current ()
   "reload_agent with nil name should try to use current agent or error.
@@ -94,7 +94,7 @@ current-agent check which errors with 'No agent'."
   (with-temp-buffer
     (let ((result (my-gptel-tool-reload-agent nil)))
       (should (stringp result))
-      (should (string-match-p "ERROR" result))
+      (should (string-match-p "Error" result))
       (should (string-match-p "No agent" result)))))
 
 (ert-deftest test-reload-agent-non-string-name-errors ()
@@ -105,14 +105,14 @@ is loaded."
   (with-temp-buffer
     (let ((result (my-gptel-tool-reload-agent 123)))
       (should (stringp result))
-      (should (string-match-p "ERROR" result)))))
+      (should (string-match-p "Error" result)))))
 
 (ert-deftest test-reload-agent-success-sets-agent-file ()
   "reload_agent should set my-gptel--current-agent-file on success."
   :tags '(integration)
   (with-temp-buffer
     (let ((result (my-gptel-tool-reload-agent "mccarthy")))
-      (should (string-match-p "SUCCESS" result))
+      (should (string-match-p "Success" result))
       (should (stringp my-gptel--current-agent-file))
       (should (string-match-p "mccarthy" my-gptel--current-agent-file))
       (should (string-match-p "prompt\\.org" my-gptel--current-agent-file)))))
@@ -122,7 +122,7 @@ is loaded."
   :tags '(integration)
   (with-temp-buffer
     (let ((result (my-gptel-tool-reload-agent "mccarthy")))
-      (should (string-match-p "SUCCESS" result))
+      (should (string-match-p "Success" result))
       (should (stringp gptel-system-prompt))
       (should (> (length gptel-system-prompt) 0))
       (should (string-match-p "McCarthy" gptel-system-prompt)))))
@@ -136,7 +136,7 @@ should also echo the offending name for debugging."
                       "foo.bar" "../foo" "foo\\bar"))
     (let ((result (my-gptel-tool-reload-agent bad-name)))
       (should (stringp result))
-      (should (string-match-p "ERROR" result))
+      (should (string-match-p "Error" result))
       (should (string-match-p (regexp-quote bad-name) result)))))
 
 (ert-deftest test-reload-agent-success-message-contains-name ()
@@ -144,7 +144,7 @@ should also echo the offending name for debugging."
   :tags '(integration)
   (with-temp-buffer
     (let ((result (my-gptel-tool-reload-agent "mccarthy")))
-      (should (string-match-p "SUCCESS" result))
+      (should (string-match-p "Success" result))
       (should (string-match-p "mccarthy" result)))))
 
 (ert-deftest test-reload-agent-success-message-contains-char-count ()
@@ -153,7 +153,7 @@ The count should be at least 1 (non-empty profile)."
   :tags '(integration)
   (with-temp-buffer
     (let ((result (my-gptel-tool-reload-agent "mccarthy")))
-      (should (string-match-p "SUCCESS" result))
+      (should (string-match-p "Success" result))
       (should (string-match-p "[1-9][0-9]* chars" result)))))
 
 (ert-deftest test-reload-agent-darwin-loads ()
@@ -161,7 +161,7 @@ The count should be at least 1 (non-empty profile)."
   :tags '(integration)
   (with-temp-buffer
     (let ((result (my-gptel-tool-reload-agent "darwin")))
-      (should (string-match-p "SUCCESS" result))
+      (should (string-match-p "Success" result))
       (should (equal my-gptel--current-agent-name "darwin"))
       (should (stringp gptel-system-prompt))
       (should (string-match-p "Darwin" gptel-system-prompt)))))
@@ -171,7 +171,7 @@ The count should be at least 1 (non-empty profile)."
   :tags '(integration)
   (with-temp-buffer
     (let ((result (my-gptel-tool-reload-agent "reviewer")))
-      (should (string-match-p "SUCCESS" result))
+      (should (string-match-p "Success" result))
       (should (equal my-gptel--current-agent-name "reviewer"))
       (should (stringp gptel-system-prompt))
       (should (string-match-p "reviewer" gptel-system-prompt)))))
@@ -191,7 +191,7 @@ calls set-default 'gptel-tools nil before attempting the load."
               (let ((user-emacs-directory tmp-dir))
                 (let ((result (my-gptel-tool-reload-os)))
                   (should (stringp result))
-                  (should (string-match-p "ERROR" result))))
+                  (should (string-match-p "Error" result))))
             (delete-directory tmp-dir t)))
       (set-default 'gptel-tools old-tools))))
 

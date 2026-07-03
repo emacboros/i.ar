@@ -46,11 +46,11 @@ in the current buffer so it inherits the fresh defaults."
           (kill-local-variable 'gptel-tools))
         ;; Re-load init.el (suppress errors visually, capture in condition-case)
         (load init-path nil t)
-        (format "SUCCESS: Reloaded init.el (%s). All .el files re-evaluated. gptel-tools rebuilt with %d tools."
+        (format "Success: Reloaded init.el (%s). All .el files re-evaluated. gptel-tools rebuilt with %d tools."
                 init-path
                 (length (default-value 'gptel-tools))))
     (error
-     (format "ERROR reloading init.el: %s" (error-message-string err)))))
+     (format "Error: Failed to reload init.el: %s" (error-message-string err)))))
 
 (add-to-list 'gptel-tools
  (gptel-make-tool
@@ -93,10 +93,10 @@ instead of the currently loaded one."
         ;; Track the loaded agent file and name
         (setq-local my-gptel--current-agent-file target-file)
         (setq-local my-gptel--current-agent-name target-name)
-        (format "SUCCESS: Reloaded agent profile '%s'. System message updated in current buffer (%d chars)."
+        (format "Success: Reloaded agent profile '%s'. System message updated in current buffer (%d chars)."
                 target-name (length profile)))
     (error
-     (format "ERROR reloading agent: %s" (error-message-string err)))))
+     (format "Error: Failed to reload agent: %s" (error-message-string err)))))
 
 (add-to-list 'gptel-tools
  (gptel-make-tool

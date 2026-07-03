@@ -37,7 +37,7 @@ with a misleading message."
   (let* ((expanded-path (expand-file-name path))
          (guard-reason (my-gptel--guard-check-replace expanded-path)))
     (if guard-reason
-        (format "ERROR: %s" guard-reason)
+        (format "Error: %s" guard-reason)
       (condition-case err
           (let ((buf (find-buffer-visiting expanded-path)))
             (if buf
@@ -47,9 +47,9 @@ with a misleading message."
                 (with-current-buffer buf
                   (cond
                    (buffer-read-only
-                    (format "ERROR: Buffer for %s is read-only" expanded-path))
+                    (format "Error: Buffer for '%s' is read-only" expanded-path))
                    ((buffer-modified-p)
-                    (format "ERROR: Buffer for %s has unsaved modifications. Save or revert the buffer first."
+                    (format "Error: Buffer for '%s' has unsaved modifications. Save or revert the buffer first."
                             expanded-path))
                    (t
                     (save-restriction
@@ -61,8 +61,8 @@ with a misleading message."
                             (my-gptel--with-suppressed-save-hooks
                               (save-buffer))
                             (my-gptel--audit-log-replace expanded-path)
-                            (format "SUCCESS: Replaced text in %s" expanded-path))
-                        (format "ERROR: Target string not found in %s" expanded-path))))))
+                            (format "Success: Replaced text in '%s'" expanded-path))
+                        (format "Error: Target string not found in '%s'" expanded-path))))))
               ;; File not open -- use temp file + rename for atomicity
               (with-temp-buffer
                 (insert-file-contents expanded-path)
@@ -74,8 +74,8 @@ with a misleading message."
                         (write-region (point-min) (point-max) tmp-file nil 'silent)
                         (rename-file tmp-file expanded-path t))
                       (my-gptel--audit-log-replace expanded-path)
-                      (format "SUCCESS: Replaced text in %s" expanded-path))
-                  (format "ERROR: Target string not found in %s" expanded-path)))))
+                      (format "Success: Replaced text in '%s'" expanded-path))
+                  (format "Error: Target string not found in '%s'" expanded-path)))))
         (error (format "Error: Could not modify file '%s'. Reason: %s"
                        expanded-path (error-message-string err)))))))
 

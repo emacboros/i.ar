@@ -148,7 +148,7 @@ Temporarily rebinds `my-gptel--memory-get-agent-dir' to return the temp dir."
     (let* ((dir (expand-file-name "testagent" test-memory--tmpdir))
            (new-content "- New memory 1\n- New memory 2")
            (result (my-gptel--memory-write-memories dir new-content)))
-      (should (string-match-p "SUCCESS" result))
+      (should (string-match-p "Success" result))
       (let ((written (with-temp-buffer
                        (insert-file-contents (expand-file-name "MEMORIES.md" dir))
                        (buffer-string))))
@@ -161,7 +161,7 @@ Temporarily rebinds `my-gptel--memory-get-agent-dir' to return the temp dir."
     (let* ((dir (expand-file-name "testagent" test-memory--tmpdir))
            (new-content "- Replaced content\n")
            (result (my-gptel--memory-write-memories dir new-content)))
-      (should (string-match-p "SUCCESS" result))
+      (should (string-match-p "Success" result))
       (let ((written (with-temp-buffer
                        (insert-file-contents (expand-file-name "MEMORIES.md" dir))
                        (buffer-string))))
