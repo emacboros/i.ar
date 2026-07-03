@@ -397,7 +397,15 @@ until it either completes all steps or reaches the turn limit."
                     (setq darwin-cycle-result-message
                           (format "*Darwin Cycle: No FSM*\nTool calls: %d\nTurns: %d\nNo FSM found and idle for 60s."
                                   tool-call-count turn-count))
-                    (run-with-timer 1 nil (lambda () (kill-emacs exit-code))))))
+                    (run-with-timer 1 nil (lambda () (kill-emacs exit-code))))
+                   ;; FSM in a non-terminal state (or no FSM with low
+                   ;; idle-count).  This is anomalous -- if the FSM is
+                   ;; mid-cycle, there should be an active process.
+                   ;; Increment idle-count so the 1800s safety net below
+                   ;; can eventually bail out.  Without this, a stuck
+                   ;; non-terminal FSM spins forever.
+                   (t
+                    (cl-incf idle-count))))
                 ;; Safety: if idle for too long with no requests, bail out
                 (when (> idle-count 1800)
                   (setq completed t)
