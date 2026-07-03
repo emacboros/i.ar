@@ -31,6 +31,23 @@
 
 ;;; --- read_tasks ---
 
+(defun my-gptel--valid-agent-name-p (name)
+  "Return non-nil if NAME is a valid agent name.
+Valid names consist only of alphanumeric characters, hyphens, and
+underscores, with at least one character.  Uses string anchors
+to prevent multi-line bypass (line anchors match at each newline
+boundary, so a string like \"valid\\n../../etc\" would pass
+^...$ but is correctly rejected by \\`...\\')."
+  (and (stringp name)
+       (string-match-p "\\`[a-zA-Z0-9_-]+\\'" name)))
+
+(defun my-gptel--validate-agent-name (name)
+  "Validate that NAME is a safe agent name, or signal an error.
+Returns NAME if valid."
+  (unless (my-gptel--valid-agent-name-p name)
+    (error "Invalid agent name: '%s'. Only letters, digits, hyphens, and underscores are allowed." name))
+  name)
+
 (defun my-gptel--get-agent-dir ()
   "Return the directory path for the currently loaded agent.
 Validates the agent name against path traversal before constructing
@@ -50,8 +67,7 @@ file could set it to an arbitrary string."
                 (file-name-directory my-gptel--current-agent-file)))))))
     (if agent-name
         (progn
-          (unless (string-match-p "^[a-zA-Z0-9_-]+$" agent-name)
-            (error "Invalid agent name: '%s'" agent-name))
+          (my-gptel--validate-agent-name agent-name)
           (let ((resolved (expand-file-name agent-name agent-dir)))
             ;; Defense-in-depth: verify the resolved path hasn't escaped
             ;; agents.d via symlinks.  The regex blocks direct traversal
@@ -107,8 +123,7 @@ If omitted, merges all per-agent HISTORY.log files sorted by timestamp."
         (if (and agent-name (stringp agent-name) (string-match-p "\\S-" agent-name))
             ;; Single agent history
             (progn
-              (unless (string-match-p "^[a-zA-Z0-9_-]+$" agent-name)
-                (error "Invalid agent name: '%s'" agent-name))
+              (my-gptel--validate-agent-name agent-name)
               (let ((log-file (expand-file-name (format "%s/HISTORY.log" agent-name) agents-dir)))
                 (if (file-exists-p log-file)
                     (with-temp-buffer
@@ -121,7 +136,7 @@ If omitted, merges all per-agent HISTORY.log files sorted by timestamp."
                    (lambda (name)
                      (let ((log-path (expand-file-name (format "%s/HISTORY.log" name) agents-dir)))
                        (file-exists-p log-path)))
-                   (directory-files agents-dir nil "^[a-zA-Z0-9_-]+$" t)))
+                   (directory-files agents-dir nil "\\`[a-zA-Z0-9_-]+\\'" t)))
                  (all-entries nil))
             (dolist (agent-dir agent-dirs)
               (let ((log-file (expand-file-name (format "%s/HISTORY.log" agent-dir) agents-dir)))

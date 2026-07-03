@@ -26,8 +26,10 @@
 ;;               the gptel system message in the current chat buffer.
 
 (require 'gptel)
+(require 'task_tools)
 
 (declare-function my-gptel--load-agent-profile "delegate_tool" (agent-name))
+(declare-function my-gptel--validate-agent-name "task_tools" (name))
 
 ;;; --- reload_os ---
 
@@ -72,9 +74,10 @@ instead of the currently loaded one."
              (target-name
               (if (and agent-name (stringp agent-name) (string-match-p "\\S-" agent-name))
                   (progn
-                    (unless (string-match-p "^[a-zA-Z0-9_-]+$" agent-name)
-                      (error "Invalid agent name: '%s'" agent-name))
+                    (my-gptel--validate-agent-name agent-name)
                     agent-name)
+                 ;; Note: my-gptel--load-agent-profile also validates,
+                 ;; so this is defense-in-depth, not the primary check.
                 (if (and (boundp 'my-gptel--current-agent-name)
                          my-gptel--current-agent-name)
                     my-gptel--current-agent-name
