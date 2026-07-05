@@ -1,5 +1,9 @@
 ;; -*- lexical-binding: t; -*-
 
+;; Always load the newest .el file, even if a stale .elc exists.
+;; This prevents stale byte-compiled code from shadowing source fixes.
+(setq load-prefer-newer t)
+
 (add-to-list 'load-path (expand-file-name "init.d" user-emacs-directory))
 
 ;; Locale and UTF-8 configuration (must load before anything else)
