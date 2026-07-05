@@ -118,6 +118,26 @@ whether to list_directory into a path or read_file from it."
     ;; Error message should contain the path
     (should (string-match-p "/nonexistent/path/xyzzy" result))))
 
+(ert-deftest test-fs-list-directory-error-includes-detail ()
+  "list_directory error should include the actual error message, not a generic string.
+The error handler should capture the condition-case err and include
+(error-message-string err) so the caller can see the real reason
+(e.g., 'Not a directory', 'Permission denied')."
+  ;; Use a path that exists but is a file, not a directory
+  (with-fs-fixture
+    (let ((result (my-gptel--fs-list-directory
+                   (expand-file-name "hello.txt" test-fs--tmpdir))))
+      (should (stringp result))
+      (should (string-match-p "Error" result))
+      ;; Should contain the expanded path
+      (should (string-match-p (regexp-quote (expand-file-name "hello.txt" test-fs--tmpdir)) result))
+      ;; Should contain the actual error detail (not just generic "permission denied")
+      ;; The actual error from directory-files on a file is "Not a directory" or similar
+      (should (string-match-p "not found or cannot be read" result))
+      ;; Should contain the OS-level error detail (the dynamic part from error-message-string)
+      ;; This verifies the condition-case err capture, not just the template string
+      (should (string-match-p "Not a directory" result)))))
+
 ;;; --- read_file tests ---
 
 (ert-deftest test-fs-read-file-returns-content ()

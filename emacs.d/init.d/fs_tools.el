@@ -57,7 +57,7 @@ Excludes only the . and .. directory entries.
 Directory entries are suffixed with \"/\" to distinguish them from files.
 On error, returns a string starting with \\='Error:\\='."
   (let ((expanded-path (expand-file-name path)))
-    (condition-case nil
+    (condition-case err
         (mapconcat
          (lambda (name)
            (if (file-directory-p (expand-file-name name expanded-path))
@@ -67,7 +67,8 @@ On error, returns a string starting with \\='Error:\\='."
                               (directory-files expanded-path nil))
                #'string-lessp)
          "\n")
-      (error (format "Error: Directory '%s' not found or permission denied." expanded-path)))))
+      (error (format "Error: Directory '%s' not found or cannot be read: %s"
+                     expanded-path (error-message-string err))))))
 
 (add-to-list 'gptel-tools
  (gptel-make-tool
