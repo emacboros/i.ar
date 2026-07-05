@@ -348,7 +348,8 @@ until it either completes all steps or reaches the turn limit."
              (setq darwin-cycle-result-message
                    (format "*Darwin Cycle: Timed Out*\nTimeout: %ds\nTool calls: %d\nTurns: %d\nThe cycle exceeded its time limit."
                            timeout tool-call-count turn-count))
-             (gptel-abort cycle-buf)
+             (when (buffer-live-p cycle-buf)
+               (gptel-abort cycle-buf))
              (run-with-timer 3 nil (lambda () (kill-emacs 1)))))
 
         ;; Insert prompt and send
