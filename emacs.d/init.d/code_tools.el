@@ -81,7 +81,8 @@ to prevent interactive pagers (less/more) from hanging in batch mode."
                                   (format "Command exited with code %d.\nOutput:\n%s" exit-code output))
                                  (t output))))
                            (my-gptel--audit-log-exec cmd
-                             (if (and exit-code (/= exit-code 0)) exit-code 0))
+                             (if timed-out -1
+                               (if (and exit-code (/= exit-code 0)) exit-code 0)))
                            (funcall cb
                                     (my-gptel--maybe-sanitize-exec-output result)))))))
                 (error

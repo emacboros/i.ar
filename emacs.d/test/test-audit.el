@@ -248,5 +248,20 @@ A command containing a newline should not inject a fake audit entry."
         ;; The newline should be escaped
         (should (string-match-p "\\\\n" (car lines)))))))
 
+;;; --- Timeout audit logging test ---
+
+(ert-deftest test-audit-log-exec-timeout-exit-code ()
+  "my-gptel--audit-log-exec should log exit=-1 for timed-out commands.
+When a command times out, the sentinel in code_tools.el passes -1
+as the exit code to my-gptel--audit-log-exec. This test verifies
+that -1 is a valid exit-code argument and appears correctly in the
+audit log as exit=-1."
+  (with-audit-fixture
+    (my-gptel--audit-log-exec "sleep 999" -1)
+    (let ((content (test-audit--read-log)))
+      (should (string-match-p "execute_code_local" content))
+      (should (string-match-p "exit=-1" content))
+      (should (string-match-p "sleep 999" content)))))
+
 (provide 'test-audit)
 ;;; test-audit.el ends here

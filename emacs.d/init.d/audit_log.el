@@ -87,7 +87,9 @@ neither is sanitized.  If this invariant changes, sanitize them too."
   (my-gptel--audit-log "append_file" filepath))
 
 (defun my-gptel--audit-log-exec (command exit-code)
-  "Audit log entry for execute_code_local with COMMAND and EXIT-CODE."
+  "Audit log entry for execute_code_local with COMMAND and EXIT-CODE.
+EXIT-CODE is 0 for success, the process exit code for non-zero exits,
+or -1 if the command was killed due to timeout."
   (let ((truncated-cmd
          (if (> (length command) 200)
              (concat (substring command 0 197) "...")
