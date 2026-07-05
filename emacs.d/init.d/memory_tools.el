@@ -192,14 +192,32 @@ this limit, causing execve to fail with E2BIG."
                       (process-live-p proc)
                       (time-less-p (current-time) deadline))
             (accept-process-output nil 0.1))
-          (let ((raw-output (with-current-buffer buf (buffer-string))))
+          (let ((raw-output
+                 (if (buffer-live-p buf)
+                     (with-current-buffer buf (buffer-string))
+                   ;; Buffer was killed during event processing (unlikely
+                   ;; but possible if a sentinel/filter killed it).
+                   ;; Return empty string so parsing produces a clear error.
+                   "")))
             (cond
+             ((not (buffer-live-p buf))
+              ;; Buffer was killed during event processing.  This is
+              ;; distinct from a timeout -- the process may still be
+              ;; running.  Delete the process and report the real cause.
+              (when (and proc (process-live-p proc))
+                (delete-process proc))
+              "Error: Process buffer was killed during summarization.")
              ((not done)
+              ;; Timeout: delete-process doesn't modify buffer contents
+              ;; and no accept-process-output runs between raw-output and
+              ;; here, so raw-output is still current.  No need to re-read.
+              ;; Note: delete-process fires the sentinel synchronously,
+              ;; setting done/exit-code, but we've already branitched here
+              ;; so it has no effect on the current flow.
               (delete-process proc)
-              (let ((partial (with-current-buffer buf (buffer-string))))
-                (if (string-match-p "\\S-" partial)
-                    (format "Error: Timeout after %ds. Partial output:\n%s" timeout partial)
-                  (format "Error: Timeout after %ds. No output received." timeout))))
+              (if (string-match-p "\\S-" raw-output)
+                  (format "Error: Timeout after %ds. Partial output:\n%s" timeout raw-output)
+                (format "Error: Timeout after %ds. No output received." timeout)))
              ((and exit-code (/= exit-code 0))
               (format "Error: curl exited with code %d. Output:\n%s" exit-code raw-output))
              (t
