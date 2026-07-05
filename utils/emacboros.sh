@@ -132,13 +132,7 @@ run() {
         -v "${REPO_DIR}/metaconfig:/root/.emacs.d/metaconfig:z" \
         -v "${REPO_DIR}/knowledge/prompts:/root/.emacs.d/agents.d:z" \
         \
-        -v "${REPO_DIR}/emacs.d:/root/i.ar/emacs.d:z" \
-        -v "${REPO_DIR}/metaconfig:/root/i.ar/metaconfig:z" \
-        -v "${REPO_DIR}/knowledge:/root/i.ar/knowledge:z" \
-        -v "${REPO_DIR}/containers:/root/i.ar/containers:z" \
-        -v "${REPO_DIR}/infra:/root/i.ar/infra:z" \
-        -v "${REPO_DIR}/utils:/root/i.ar/utils:z" \
-        -v "${REPO_DIR}/README.org:/root/i.ar/README.org:z" \
+        -v "${REPO_DIR}/:/root/i.ar/:z" \
         ${DYNAMIC_MOUNT_OPTS[@]+"${DYNAMIC_MOUNT_OPTS[@]}"} \
         "${IMAGE_NAME}" && \
         info "Container started" || \

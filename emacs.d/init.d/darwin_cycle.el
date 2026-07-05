@@ -424,12 +424,24 @@ until it either completes all steps or reaches the turn limit."
                           (format "*Darwin Cycle: No FSM*\nTool calls: %d\nTurns: %d\nNo FSM found and idle for 60s."
                                   tool-call-count turn-count))
                     (run-with-timer 1 nil (lambda () (kill-emacs exit-code))))
-                   ;; FSM in a non-terminal state (or no FSM with low
-                   ;; idle-count).  This is anomalous -- if the FSM is
-                   ;; mid-cycle, there should be an active process.
-                   ;; Increment idle-count so the 1800s safety net below
-                   ;; can eventually bail out.  Without this, a stuck
-                   ;; non-terminal FSM spins forever.
+                   ;; FSM in a non-terminal state (TOOL, WAIT, TRET, etc.)
+                   ;; This means an async tool is running or a request is
+                   ;; in flight.  The FSM is NOT idle -- don't increment
+                   ;; idle-count.  Async tools (execute_code_local, delegate)
+                   ;; keep the FSM in TOOL state while their processes run,
+                   ;; but these processes are NOT in gptel--request-alist
+                   ;; (they are plain Emacs processes, not gptel requests),
+                   ;; so the active-requests check above misses them.
+                   ;; Similarly, a delegate's curl process is removed from
+                   ;; gptel--request-alist once it completes, but the delegate
+                   ;; may still be processing its own async tools.
+                   ;; The tool's own timeout (3600s for execute_code_local,
+                   ;; 600s for delegate) handles hung tools.
+                   ((and fsm (gptel-fsm-p fsm)
+                         (not (memq (gptel-fsm-state fsm) '(DONE ERRS ABRT))))
+                    (setq idle-count 0))
+                   ;; Catch-all: no FSM with low idle-count.
+                   ;; Increment so the 60s no-FSM exit above can trigger.
                    (t
                     (cl-incf idle-count))))
                 ;; Safety: if idle for too long with no requests, bail out
