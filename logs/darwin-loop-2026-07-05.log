@@ -9183,3 +9183,12 @@ Calli
    passed  493/496  test-unknown-tool-fsm-recovery (0.000909 sec)
    passed  494/496  test-unknown-tool-pre-hook-blocks (0.000099 sec)
    passed  495/496  tes
+[darwin] Tool call #100: execute_code_local args=(:command "cd /root/i.ar && git add -A && git commit -m \"darwin: replace simulated hook test with r result=[main a3903db] darwin: replace simulated hook test with real function call + case-sensitivity test
+ 2 files changed, 531 insertions(+), 20 deletions(-)
+
+[darwin] Tool call #101: execute_code_local args=(:command "cd /root/i.ar && git push 2>&1") result=Enumerating objects: 13, done.
+Counting objects:   7% (1/13)Counting objects:  15% (2/13)Counting objects:  23% (3/13)Counting objects:  30% (4/13)Counting objects:  38% (5/13)Counting object
+[darwin] Tool call #102: execute_code_local args=(:command "date '+%Y-%m-%d %H:%M:%S'") result=2026-07-05 11:49:38
+
+[darwin] Tool call #103: append_file args=(:filepath "/root/.emacs.d/agents.d/darwin/HISTORY.log" :content "[2026-07-05 11:49:38] darwin: cycl result=Success: Content appended to '/root/.emacs.d/agents.d/darwin/HISTORY.log'
+[darwin] Tool call #104: replace_in_file args=(:path "/root/.emacs.d/agents.d/darwin/MEMORIES.md" :search_text "- Not all defcustoms need :safe. V result=Success: Replaced text in '/root/.emacs.d/agents.d/darwin/MEMORIES.md'
