@@ -41,6 +41,10 @@
 
 ;;; --- Configuration ---
 
+(defgroup darwin nil
+  "Darwin autonomous self-improvement cycle configuration."
+  :group 'gptel)
+
 (defcustom darwin-cycle-timeout 7200
   "Default timeout for a darwin cycle in seconds (120 minutes)."
   :type 'integer
