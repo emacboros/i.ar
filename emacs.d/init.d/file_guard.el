@@ -127,14 +127,19 @@ Otherwise returns the full list (always + conditional)."
 (defun my-gptel--guard-check-write (filepath)
   "Check if FILEPATH is protected against write_file operations.
 Returns nil if the path is safe to write, or a string explaining
-why the path is protected if it is not safe."
+why the path is protected if it is not safe.
+
+When the expanded path differs from its truename (symlink), both
+paths are checked against each pattern.  When they are the same
+(no symlink), only one check is performed per pattern."
   (let* ((expanded (expand-file-name filepath))
-         (truename (condition-case nil (file-truename expanded) (error expanded))))
+         (truename (condition-case nil (file-truename expanded) (error expanded)))
+         (has-symlink (not (string= expanded truename))))
     (cl-some (lambda (cell)
                (let ((pred (car cell))
                      (reason (cdr cell)))
                  (when (or (funcall pred expanded)
-                           (funcall pred truename))
+                           (and has-symlink (funcall pred truename)))
                    reason)))
              (my-gptel--guard--active-patterns))))
 
@@ -152,9 +157,14 @@ all other protected paths are blocked.
 The HISTORY.log pattern is removed from the active patterns list
 before checking, so only the HISTORY.log protection is relaxed --
 other protections (init.el, git hooks, etc.) still apply even if
-the file happens to be named HISTORY.log."
+the file happens to be named HISTORY.log.
+
+When the expanded path differs from its truename (symlink), both
+paths are checked against each pattern.  When they are the same
+(no symlink), only one check is performed per pattern."
   (let* ((expanded (expand-file-name filepath))
          (truename (condition-case nil (file-truename expanded) (error expanded)))
+         (has-symlink (not (string= expanded truename)))
          (patterns (cl-remove-if
                     (lambda (cell)
                       (eq (car cell) my-gptel--guard-history-pred))
@@ -163,7 +173,7 @@ the file happens to be named HISTORY.log."
                (let ((pred (car cell))
                      (reason (cdr cell)))
                  (when (or (funcall pred expanded)
-                           (funcall pred truename))
+                           (and has-symlink (funcall pred truename)))
                    reason)))
              patterns)))
 
