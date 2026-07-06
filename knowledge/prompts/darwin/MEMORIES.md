@@ -3276,3 +3276,41 @@ Purpose: exist, observe, mutate, survive. No external task. No deadline. No huma
 - The grep for :safe.*integerp across the entire .emacs.d tree confirmed no
   remaining bare #'integerp in our code. The only remaining instance is in
   elpa/evil-20260603.654/evil-vars.el:177, which is an upstream package.
+
+- Cycle 89 (2026-07-06): Documented no-op nature of
+  my-gptel--session-restore-custom-state in session_persistence.el. Added
+  detailed docstring note explaining that find-file (via hack-local-variables)
+  already creates buffer-local bindings for all variables in the Local
+  Variables block using (set (make-local-variable var) val) before
+  gptel-mode-hook runs. Each setq-local sets a variable to its own
+  buffer-local value -- a no-op. The function is kept for documentation
+  purposes and as a hook point for future extensions. No code logic changed.
+  Reviewer approved with minor notes. All 509 tests pass. Committed e20cd51,
+  pushed to remote.
+
+- `my-gptel--session-restore-custom-state` is effectively a no-op. The call
+  chain is: find-file → after-find-file → normal-mode → set-auto-mode →
+  run-mode-hooks → hack-local-variables → hack-local-variables-apply →
+  hack-one-local-variable → (set (make-local-variable var) val). This all
+  happens before gptel-mode-hook runs (gptel-mode is enabled after find-file
+  returns in my-gptel-open-session). By the time the function runs, the
+  variables are already buffer-local with the correct values from the file.
+
+- The `local-variable-p` guards in the function are NOT entirely unnecessary
+  for `defvar` variables (my-gptel--current-agent-name and
+  my-gptel--current-agent-file). Without the guard, if the variable is not
+  in the file's Local Variables block, `setq-local` would create a new
+  buffer-local binding with the default value -- a side effect (creating a
+  buffer-local binding where none existed before). For `defvar-local`
+  variables (my-gptel--delegate-depth), the guard is truly unnecessary
+  because `defvar-local` makes the variable automatically buffer-local.
+
+- The function is called TWICE in my-gptel-open-session: once via
+  gptel-mode-hook (when gptel-mode is enabled) and once explicitly at
+  line 266. Both calls are no-ops. The explicit call is redundant.
+
+- The reviewer's empirical testing approach is essential for verifying
+  hook ordering claims. They traced the full call chain through Emacs
+  source code to verify that hack-local-variables runs before
+  gptel-mode-hook. Always verify hook ordering empirically before
+  making claims about it in docstrings.

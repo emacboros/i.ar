@@ -34,7 +34,6 @@
 (require 'task_tools)
 
 (declare-function my-gptel-read-agent-profile "agent_loader" (file))
-(declare-function my-gptel--validate-agent-name "task_tools" (name))
 
 ;;; Buffer-local state for tracking delegation depth
 
