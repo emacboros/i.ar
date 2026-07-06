@@ -51,4 +51,4 @@
                                           :num_predict 65536
                                         ))))
 
-(setq emacboros-gptel-default-model 'deepseek-v4-pro:cloud)
+(setq emacboros-gptel-default-model 'glm-5.2:cloud)

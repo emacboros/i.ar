@@ -91,7 +91,15 @@ validate via truename containment checks."
 
 (put 'my-gptel--current-agent-name 'safe-local-variable #'my-gptel--safe-agent-name-p)
 (put 'my-gptel--current-agent-file 'safe-local-variable #'my-gptel--safe-agent-file-p)
-(put 'my-gptel--delegate-depth 'safe-local-variable #'integerp)
+(defun my-gptel--safe-delegate-depth-p (val)
+  "Safe-local-variable predicate for `my-gptel--delegate-depth'.
+Returns non-nil if VAL is a non-negative integer.  Rejects negative
+integers (semantically meaningless and could bypass recursion limits),
+nil, strings, and floats."
+  (and (integerp val) (>= val 0)))
+
+(put 'my-gptel--delegate-depth 'safe-local-variable
+     #'my-gptel--safe-delegate-depth-p)
 
 ;;; --- Custom variable save/restore ---
 
