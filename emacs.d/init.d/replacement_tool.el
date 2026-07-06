@@ -75,7 +75,7 @@ with a misleading message."
                       (my-gptel--audit-log-replace expanded-path)
                       (format "Success: Replaced text in '%s'" expanded-path))
                   (format "Error: Target string not found in '%s'" expanded-path)))))
-        (error (format "Error: Could not modify file '%s'. Reason: %s"
+        (error (format "Error: Failed to replace text in '%s'. Emacs says: %s"
                        expanded-path (error-message-string err)))))))
 
 (add-to-list 'gptel-tools
