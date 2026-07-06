@@ -767,8 +767,40 @@ Tests that 'our' is accepted as one of the 0-2 lowercase words."
   (with-temp-buffer
     (insert "Finished our cycle. HISTORY updated.\n")
     (should (eq (darwin--cycle-complete-p (current-buffer)) t))))
-(provide 'test-darwin-cycle)
-;;; test-darwin-cycle.el ends here
+
+;;; --- Telegram curl error handling test ---
+
+(ert-deftest test-darwin-notify-telegram-handles-curl-error ()
+  "darwin--notify-telegram should catch curl errors and log FAILED message.
+When call-process signals an error (e.g., curl not found), the
+condition-case should catch it, log a FAILED message with the error
+detail, and return without crashing.  The error message should contain
+'curl error' to distinguish it from API-level failures."
+  (let ((darwin-telegram-bot-token "test-token")
+        (darwin-telegram-chat-id "123")
+        (logged-messages nil))
+    (cl-letf (((symbol-function 'call-process)
+               (lambda (&rest _)
+                 (signal 'file-missing
+                         '("Searching for program"
+                           "No such file or directory"
+                           "/nonexistent/curl"))))
+              ((symbol-function 'message)
+               (lambda (fmt &rest args)
+                 (push (apply #'format fmt args) logged-messages))))
+      (darwin--notify-telegram "test"))
+    ;; Should log a FAILED message with curl error detail
+    (should (cl-some (lambda (msg)
+                       (and (string-match-p "FAILED" msg)
+                            (string-match-p "curl error" msg)))
+                     logged-messages))
+    ;; Should NOT log success
+    (should-not (cl-some (lambda (msg)
+                           (string-match-p "sent successfully" msg))
+                         logged-messages))))
+
+;;; --- darwin--cycle-complete-p word-boundary test ---
+
 (ert-deftest test-darwin-cycle-complete-finished-cycles-no-false-positive ()
   "darwin--cycle-complete-p should NOT match 'finished the cycles'.
 The word-boundary anchor \\\\> after 'cycle' prevents matching 'cycle'
@@ -778,3 +810,6 @@ completion signal."
   (with-temp-buffer
     (insert "I finished the cycles of debugging. HISTORY.log next.\n")
     (should (null (darwin--cycle-complete-p (current-buffer))))))
+
+(provide 'test-darwin-cycle)
+;;; test-darwin-cycle.el ends here

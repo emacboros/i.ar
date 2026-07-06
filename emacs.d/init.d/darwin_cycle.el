@@ -136,31 +136,39 @@ Silently skips if either is empty.  Logs success or failure."
                         :text ,message
                         :parse_mode "Markdown"))))
         (message "[darwin] Sending Telegram notification...")
-        (let ((result (with-temp-buffer
-                        (call-process "curl" nil t nil
-                                       "-s" "-m" "10"
-                                       "-X" "POST"
-                                       "-H" "Content-Type: application/json"
-                                       "-d" payload
-                                       url)
-                        (buffer-string))))
+        (let ((result (condition-case err
+                          (with-temp-buffer
+                            (call-process "curl" nil t nil
+                                           "-s" "-m" "10"
+                                           "-X" "POST"
+                                           "-H" "Content-Type: application/json"
+                                           "-d" payload
+                                           url)
+                            (buffer-string))
+                        (error
+                         (message "[darwin] Telegram notification FAILED: curl error: %s"
+                                  (error-message-string err))
+                         nil))))
           ;; Parse the JSON response to check the :ok field rather than
           ;; using substring matching.  This is more robust: a substring
           ;; check like "\"ok\":true" could false-positive if the literal
           ;; string appears inside an error message, and would false-negative
           ;; if the API returns whitespace like "\"ok\": true".
-          (let ((ok nil))
-            (condition-case nil
-                (let ((parsed (with-temp-buffer
-                                (insert result)
-                                (goto-char (point-min))
-                                (let ((json-object-type 'plist))
-                                  (json-read)))))
-                  (setq ok (eq (plist-get parsed :ok) t)))
-              (error nil))
-            (if ok
-                (message "[darwin] Telegram notification sent successfully")
-              (message "[darwin] Telegram notification FAILED: %s" result))))))))
+          (if (null result)
+              ;; curl error already logged by condition-case above
+              nil
+            (let ((ok nil))
+              (condition-case nil
+                  (let ((parsed (with-temp-buffer
+                                  (insert result)
+                                  (goto-char (point-min))
+                                  (let ((json-object-type 'plist))
+                                    (json-read)))))
+                    (setq ok (eq (plist-get parsed :ok) t)))
+                (error nil))
+              (if ok
+                  (message "[darwin] Telegram notification sent successfully")
+                (message "[darwin] Telegram notification FAILED: %s" result)))))))))
 
 (defun darwin--notify-on-exit ()
   "Send Telegram notification if `darwin-cycle-result-message' is set.
