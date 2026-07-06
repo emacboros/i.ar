@@ -22,8 +22,6 @@
 (require 'audit_log)
 (require 'fs_tools)  ; my-gptel--with-suppressed-save-hooks macro
 
-(declare-function my-gptel--with-suppressed-save-hooks "fs_tools" (&rest body))
-
 (defun my-gptel--fs-replace (path search-text replace-text)
   "Find SEARCH-TEXT in PATH and replace it with REPLACE-TEXT.
 SEARCH-TEXT is matched exactly as provided -- whitespace is significant.
