@@ -287,7 +287,9 @@ until it either completes all steps or reaches the turn limit."
                              (if (stringp result) result (prin1-to-string result)))))
                 nil t)
 
-      ;; Unknown tool guard: block hallucinated tool names to prevent FSM hang.
+      ;; Unknown tool guard: provide early interception of hallucinated tool
+      ;; names at TPRE stage with a cleaner error message than gptel's
+      ;; built-in handling in gptel--handle-tool-use (TOOL state).
       (add-hook 'gptel-pre-tool-call-functions
                 #'my-gptel--block-unknown-tools
                 nil t)

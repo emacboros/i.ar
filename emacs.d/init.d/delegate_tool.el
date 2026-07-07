@@ -374,7 +374,9 @@ so the user can watch progress in real time."
                   (set tools-called-sym t))
                 nil t)
 
-      ;; Unknown tool guard: block hallucinated tool names to prevent FSM hang.
+      ;; Unknown tool guard: provide early interception of hallucinated tool
+      ;; names at TPRE stage with a cleaner error message than gptel's
+      ;; built-in handling in gptel--handle-tool-use (TOOL state).
       (add-hook 'gptel-pre-tool-call-functions
                 #'my-gptel--block-unknown-tools
                 nil t)
