@@ -368,10 +368,12 @@ until it either completes all steps or reaches the turn limit."
                       (lambda ()
                         (when (and (not completed) (buffer-live-p cycle-buf))
                           (with-current-buffer cycle-buf
-                            (goto-char (point-max))
-                            (insert darwin-cycle-continue-prompt)
-                            (setq continuation-pending nil)
-                            (gptel-send))))))))))))
+                            (save-restriction
+                              (widen)
+                              (goto-char (point-max))
+                              (insert darwin-cycle-continue-prompt)
+                              (setq continuation-pending nil)
+                              (gptel-send)))))))))))))
         (add-hook 'gptel-post-response-functions cont-hook nil t)
 
         ;; Timeout handler

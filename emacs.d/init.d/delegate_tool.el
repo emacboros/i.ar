@@ -297,9 +297,11 @@ in text from terminating prematurely with a non-result."
              (when (and (not (symbol-value completed-sym))
                         (buffer-live-p buf))
                (with-current-buffer buf
-                 (goto-char (point-max))
-                 (insert "\n\n" my-gptel--delegate-continue-prompt)
-                 (gptel-send))))))
+                 (save-restriction
+                   (widen)
+                   (goto-char (point-max))
+                   (insert "\n\n" my-gptel--delegate-continue-prompt)
+                   (gptel-send)))))))
 
          ;; Case 3: No tools called and max turns reached — return whatever we have.
          (t
