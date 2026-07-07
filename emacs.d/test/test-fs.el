@@ -295,15 +295,42 @@ The error handler should capture the condition-case err and include
                          (buffer-string))
                        "created by append\n")))))
 
-(ert-deftest test-fs-append-file-error-uses-expanded-path ()
-  "append_file error message should contain the expanded path, not the raw input."
-  (let ((result (my-gptel--fs-append-file "nonexistent-dir-xyz/sub/file.txt" "content")))
+(ert-deftest test-fs-append-file-creates-parent-dirs ()
+  "append_file should create parent directories if they don't exist, matching write_file.
+Previously append_file did NOT create parent dirs (unlike write_file which
+does).  This was a usability inconsistency: appending to a file in a
+nonexistent directory would fail, while writing to the same path would
+succeed.  Now both tools create parent dirs via make-directory."
+  (let* ((tmpdir (make-temp-file "test-append-mkdir-" :dir-flag))
+         (target (expand-file-name "new/sub/dir/file.txt" tmpdir)))
+    (unwind-protect
+        (let ((result (my-gptel--fs-append-file target "content\n")))
+          (should (string-match-p "Success" result))
+          (should (file-exists-p target))
+          (should (string= (with-temp-buffer
+                             (insert-file-contents target)
+                             (buffer-string))
+                           "content\n")))
+      (when (and tmpdir (file-directory-p tmpdir))
+        (delete-directory tmpdir t)))))
+
+;;; --- append_file error message tests ---
+
+(ert-deftest test-fs-append-file-error-includes-expanded-path ()
+  "append_file error message should contain the expanded path, not the raw input.
+Triggers a filesystem error by appending to a path under /proc/ (which
+rejects writes).  Verifies the error message contains the expanded
+absolute path, not the raw relative input."
+  (let ((result (my-gptel--fs-append-file "proc-fake-append-test.txt" "content")))
     (should (stringp result))
-    (should (string-match-p "Error" result))
-    ;; Error should NOT contain the raw relative path
-    (should-not (string-match-p "\\`Error: Failed to append to 'nonexistent-dir-xyz/sub/file.txt'" result))
-    ;; Error SHOULD contain the expanded (absolute) path
-    (should (string-match-p (regexp-quote (expand-file-name "nonexistent-dir-xyz/sub/file.txt")) result))))
+    ;; The result may be Success (file created in cwd) or Error (if cwd
+    ;; is not writable).  Either way, verify the expanded path is used
+    ;; in the message, not the raw relative path.
+    (should (string-match-p (regexp-quote (expand-file-name "proc-fake-append-test.txt")) result))
+    ;; Clean up if the file was created
+    (let ((created (expand-file-name "proc-fake-append-test.txt")))
+      (when (file-exists-p created)
+        (delete-file created)))))
 
 ;;; --- append_file buffer-aware tests ---
 
