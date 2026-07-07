@@ -83,25 +83,34 @@ On error, returns a string starting with \\='Error:\\='."
   "Read the text contents of FILEPATH into a string.
 On error, returns a string starting with \\='Error:\\='.
 
-When `my-gptel--fs-read-max-size' is non-nil and the file has more
-characters than that limit, only the first `my-gptel--fs-read-max-size'
-characters are returned, followed by a truncation notice.  This
-prevents loading huge files into the AI context.  Uses character
-count (not byte count) because insert-file-contents decodes the
-file, and token consumption correlates with characters."
+When `my-gptel--fs-read-max-size' is a positive integer and the file
+has more characters than that limit, only the first
+`my-gptel--fs-read-max-size' characters are returned, followed by a
+truncation notice.  This prevents loading huge files into the AI
+context.  Uses character count (not byte count) because
+insert-file-contents decodes the file, and token consumption
+correlates with characters."
   (let ((expanded-path (expand-file-name filepath)))
     (condition-case err
         (with-temp-buffer
           (insert-file-contents expanded-path)
-          (if (and my-gptel--fs-read-max-size
-                   (> (buffer-size) my-gptel--fs-read-max-size))
-              (let ((max my-gptel--fs-read-max-size))
-                (goto-char (1+ max))
-                (delete-region (point) (point-max))
-                (goto-char (point-max))
-                (insert (format "\n\n[... file truncated at %d characters ...]" max))
-                (buffer-string))
-            (buffer-string)))
+          (let ((max my-gptel--fs-read-max-size))
+            ;; Guard against non-positive max-size: the :safe predicate
+            ;; rejects non-positive values at the file-local-variable
+            ;; level, but a direct setq to 0, -1, or nil bypasses it.
+            ;; A negative value would cause (goto-char 0) -> args-out-of-range.
+            ;; When max is not a positive integer, skip truncation (return
+            ;; full file).  Matches the defense-in-depth pattern from
+            ;; cycles 112-113 (memory_tools defcustom guards).
+            (if (and (integerp max) (> max 0)
+                     (> (buffer-size) max))
+                (progn
+                  (goto-char (1+ max))
+                  (delete-region (point) (point-max))
+                  (goto-char (point-max))
+                  (insert (format "\n\n[... file truncated at %d characters ...]" max))
+                  (buffer-string))
+              (buffer-string))))
       (error (format "Error: Failed to read file '%s'. Emacs says: %s"
                       expanded-path (error-message-string err))))))
 

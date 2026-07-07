@@ -1076,4 +1076,58 @@ keep exactly 50 characters and truncate the rest."
           (should-not (string= (substring result 0 51) (make-string 51 ?\u3042)))))))))
 
 
+;;; --- read_file truncation defensive guard tests ---
+
+(ert-deftest test-fs-read-file-no-truncation-when-max-size-zero ()
+  "read_file should return full content when max-size is 0.
+A direct setq to 0 bypasses the :safe predicate.  Without the guard,
+(goto-char (1+ 0)) = (goto-char 1) followed by delete-region would
+truncate everything.  With the guard, 0 is not a positive integer so
+truncation is skipped and the full file is returned."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "zero-max.txt" test-fs--tmpdir))
+           (content (make-string 200 ?x)))
+      (with-temp-file target (insert content))
+      (let ((my-gptel--fs-read-max-size 0))
+        (let ((result (my-gptel--fs-read-file target)))
+          (should (string= result content)))))))
+
+(ert-deftest test-fs-read-file-no-truncation-when-max-size-negative ()
+  "read_file should return full content when max-size is negative.
+A direct setq to -1 bypasses the :safe predicate.  Without the guard,
+(goto-char (1+ -1)) = (goto-char 0) would signal args-out-of-range.
+With the guard, -1 is not a positive integer so truncation is skipped."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "neg-max.txt" test-fs--tmpdir))
+           (content (make-string 200 ?x)))
+      (with-temp-file target (insert content))
+      (let ((my-gptel--fs-read-max-size -1))
+        (let ((result (my-gptel--fs-read-file target)))
+          (should (string= result content)))))))
+
+(ert-deftest test-fs-read-file-no-truncation-when-max-size-nil ()
+  "read_file should return full content when max-size is nil.
+This is the documented behavior (nil disables truncation).  The guard
+should handle nil gracefully since (integerp nil) is nil."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "nil-max.txt" test-fs--tmpdir))
+           (content (make-string 200 ?x)))
+      (with-temp-file target (insert content))
+      (let ((my-gptel--fs-read-max-size nil))
+        (let ((result (my-gptel--fs-read-file target)))
+          (should (string= result content)))))))
+
+(ert-deftest test-fs-read-file-no-truncation-when-max-size-non-integer ()
+  "read_file should return full content when max-size is a non-integer.
+A direct setq to a string or float bypasses the :safe predicate.
+Without the guard, (> (buffer-size) \"100\") would signal wrong-type-argument.
+With the guard, non-integers are rejected and truncation is skipped."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "str-max.txt" test-fs--tmpdir))
+           (content (make-string 200 ?x)))
+      (with-temp-file target (insert content))
+      (let ((my-gptel--fs-read-max-size "100"))
+        (let ((result (my-gptel--fs-read-file target)))
+          (should (string= result content)))))))
+
 (provide 'test-fs)
