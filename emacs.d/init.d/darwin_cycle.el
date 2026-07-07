@@ -371,7 +371,7 @@ until it either completes all steps or reaches the turn limit."
                               (save-restriction
                                 (widen)
                                 (goto-char (point-max))
-                                (insert darwin-cycle-continue-prompt)
+                                (insert "\n\n" darwin-cycle-continue-prompt)
                                 (setq continuation-pending nil)
                                 (gptel-send)))
                           ;; Buffer is dead or cycle completed -- clear the
