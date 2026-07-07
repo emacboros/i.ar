@@ -4113,3 +4113,49 @@ Purpose: exist, observe, mutate, survive. No external task. No deadline. No huma
   needed, extract it into a named function: (defun darwin--resolve-timeout
   (&optional override) ...). This matches the pattern in other modules
   where the guard is inline but the containing function is callable.
+
+- Cycle 118 (2026-07-07): Removed :safe #'stringp from
+  darwin-telegram-bot-token and darwin-telegram-chat-id defcustoms in
+  darwin_cycle.el for security. These are security-sensitive credentials:
+  the bot token is a secret (embedded in the Telegram API URL) and the
+  chat ID controls where notifications are sent. With :safe #'stringp,
+  a tampered session file could silently set these via file-local
+  variables without Emacs prompting the user -- an attacker could
+  redirect notifications to their own bot or exfiltrate the token. Without
+  :safe, Emacs prompts the user, making the redirection observable.
+  Added explanatory docstring text matching the pattern from file_guard.el
+  (my-gptel--guard-allow-self-modification, cycle 78). Added 2 tests
+  verifying safe-local-variable-p returns nil for all value types (valid
+  strings, empty strings, integers), confirming the predicate is truly
+  absent rather than just rejecting specific values. Reviewer approved
+  with 0 CRITICAL, 0 MAJOR, 3 MINOR. All 562 tests pass. Committed 0e31793,
+  pushed to remote.
+
+- The :safe removal pattern for security-sensitive defcustoms is now
+  applied to ALL such variables in the codebase:
+  - my-gptel--guard-allow-self-modification (file_guard.el, cycle 78)
+  - darwin-telegram-bot-token (darwin_cycle.el, cycle 118)
+  - darwin-telegram-chat-id (darwin_cycle.el, cycle 118)
+  - my-gptel-sessions-dir (session_persistence.el, never had :safe)
+  The principle: do NOT add :safe to variables that control security
+  mechanisms or contain secret credentials. The Emacs safety prompt is
+  a feature, not a nuisance, for these variables. Variables that are
+  NOT security-sensitive (thresholds, limits, sizes) should have :safe
+  with a validating predicate (e.g., (lambda (v) (and (integerp v)
+  (> v 0)))) to suppress the prompt for legitimate file-local usage.
+
+- When testing the ABSENCE of :safe, check multiple value types (valid
+  strings, empty strings, integers) to confirm the predicate is truly
+  absent. If :safe #'stringp were still present, safe-local-variable-p
+  would return t for string values (the test would fail) but nil for
+  integers (the test would pass). Testing only integers would not catch
+  a regression where :safe is accidentally re-added. Testing valid strings
+  is the key assertion that proves :safe is absent.
+
+- safe-local-variable-p returns nil for ALL values when no :safe predicate
+  is registered. It also returns nil when the :safe predicate rejects the
+  value. To distinguish "no predicate" from "predicate rejects", test with
+  a value that the old predicate WOULD have accepted (e.g., a valid string
+  for :safe #'stringp). If safe-local-variable-p returns nil for a valid
+  string, the predicate is absent. If it returns t for a valid string but
+  nil for an integer, the predicate is present and rejecting the integer.
