@@ -203,13 +203,15 @@ alphanumeric characters, dots, hyphens, and underscores are allowed."
     ;; after it). add-file-local-variable would create a SECOND block at
     ;; the end instead of updating the old one. We remove all old blocks
     ;; first so only one clean block is written.
-    (save-excursion
-      (goto-char (point-min))
-      (while (re-search-forward "^;; Local Variables:" nil t)
-        (let ((start (line-beginning-position))
-              (end (re-search-forward "^;; End:" nil t)))
-          (when end
-            (delete-region start (min (1+ end) (point-max)))))))
+    (save-restriction
+      (widen)
+      (save-excursion
+        (goto-char (point-min))
+        (while (re-search-forward "^;; Local Variables:" nil t)
+          (let ((start (line-beginning-position))
+                (end (re-search-forward "^;; End:" nil t)))
+            (when end
+              (delete-region start (min (1+ end) (point-max))))))))
     ;; Set the buffer's file name. This triggers gptel--save-state via
     ;; before-save-hook when we save. Our gptel-save-state-hook then
     ;; adds custom variables in the same pass -- no second save needed.

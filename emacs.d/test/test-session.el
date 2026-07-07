@@ -692,6 +692,43 @@ handle nil attrs gracefully (skip with warning, not crash)."
       (when (file-exists-p ghost-path)
         (delete-file ghost-path)))))
 
+;;; --- Narrowing tests ---
+
+(ert-deftest test-session-save-strips-old-local-variables-when-narrowed ()
+  "my-gptel-save-session should strip old Local Variables blocks even
+when the buffer is narrowed.  The save-excursion that searches for
+old Local Variables blocks uses re-search-forward which only searches
+within the accessible (narrowed) region.  If the buffer is narrowed
+and the Local Variables block is outside the narrowed region, the old
+block would not be stripped, resulting in two blocks in the saved file.
+The fix wraps the search in save-restriction (widen) to ensure the
+full buffer is searched."
+  (with-session-fixture
+    (with-temp-buffer
+      (text-mode)
+      (gptel-mode 1)
+      (setq-local my-gptel--current-agent-name "testagent")
+      (insert "User: hello\n")
+      ;; Add a fake Local Variables block at the end
+      (save-excursion
+        (goto-char (point-max))
+        (insert "\n;; Local Variables:\n;; my-gptel--current-agent-name: \"oldagent\"\n;; End:\n"))
+      ;; Narrow the buffer to exclude the Local Variables block
+      (narrow-to-region (point-min) (save-excursion
+                                      (goto-char (point-min))
+                                      (line-end-position)))
+      (cl-letf (((symbol-function 'gptel--save-state) #'test-session--mock-gptel-save-state))
+        (my-gptel-save-session "test-narrowed"))
+      ;; Check that only ONE Local Variables block exists in the saved file
+      (with-temp-buffer
+        (insert-file-contents (expand-file-name "test-narrowed.gptel" my-gptel-sessions-dir))
+        (let ((count 0))
+          (save-excursion
+            (goto-char (point-min))
+            (while (re-search-forward "^;; Local Variables:" nil t)
+              (cl-incf count)))
+          (should (= count 1)))))))
+
 ;;; --- Hook registration tests ---
 
 (ert-deftest test-session-save-custom-state-registered-in-hook ()
