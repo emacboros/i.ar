@@ -84,6 +84,9 @@
 ;; Dynamic agent loader
 (load (expand-file-name "agent_loader.el" init-agent-dir))
 
+;; Dynamic knowledge loader
+(load (expand-file-name "knowledge_loader.el" init-agent-dir))
+
 ;; Multi-agent delegation tool
 (load (expand-file-name "delegate_tool.el" init-agent-dir))
 
