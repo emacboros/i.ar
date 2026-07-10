@@ -30,6 +30,7 @@
 
 (declare-function my-gptel--load-agent-profile "delegate_tool" (agent-name))
 (declare-function my-gptel--block-unknown-tools "delegate_tool" (info))
+(declare-function my-gptel--load-prompt "prompt_loader" (name))
 
 ;;; --- Configuration ---
 
@@ -72,36 +73,15 @@ Set this before killing Emacs.  Nil or empty string means no
 notification.  Must be a non-empty string to trigger a send.")
 
 (defconst darwin-cycle-prompt
-  "You are waking up for a new cycle. Follow your cycle protocol:
-
-1. Read your MEMORIES.md (use read_file on /root/.emacs.d/agents.d/agents/darwin/MEMORIES.md)
-2. Read your HISTORY.log (use read_file on /root/.emacs.d/agents.d/agents/darwin/HISTORY.log)
-3. Look at the codebase. Pick one thing that interests you.
-4. Make one change. Small. Deliberate.
-5. Delegate to the reviewer agent for code review. Fix issues if any.
-   You MUST delegate to the reviewer. Use the delegate tool with agent='reviewer',
-   a description of your change as the task, and include the context.
-6. Run the test suite: execute_code_local with command 'cd /root/.emacs.d && UNDERCOVER_FORCE=1 emacs --batch -l test/run-tests.el 2>&1 | tail -20'
-7. If tests fail, revert your change with git: execute_code_local with 'cd /root/i.ar && git checkout -- .'
-8. If tests pass, commit: execute_code_local with 'cd /root/i.ar && git add -A && git commit -m \"darwin: <description>\"'
-   You MUST commit. Do not skip this step. If git fails with \"not a git repository\", run: cd /root/i.ar && git init first, then retry.
-9. Log to your HISTORY.log using append_file on /root/.emacs.d/agents.d/agents/darwin/HISTORY.log.
-   You MUST write to your history. Format: [TIMESTAMP] cycle: <what you did and why>
-10. Update your MEMORIES.md with what you learned (use write_file or replace_in_file).
-    You MUST update your memories. Add what you learned this cycle.
-11. You are done for this cycle. Respond with a summary and end with the exact text CYCLE_COMPLETE on its own line.
-
-CRITICAL: Steps 5, 8, 9, and 10 are MANDATORY. Do not skip them.
-If you skip the reviewer delegation, the commit, the history log, or the memories update,
-your work is lost and the cycle is wasted. Always complete all steps.
-
-Go."
-  "The prompt sent to darwin at the start of each cycle.")
+  (my-gptel--load-prompt "darwin_cycle")
+  "The prompt sent to darwin at the start of each cycle.
+Loaded from knowledge/prompts/common/darwin_cycle.org")
 
 (defconst darwin-cycle-continue-prompt
-  "Continue your cycle. You are not done yet. Pick up where you left off and complete all remaining steps. Remember: delegation to reviewer, commit, history log, and memories update are MANDATORY. Do not stop until all steps are complete. When all steps are complete, end with the exact text CYCLE_COMPLETE on its own line."
+  (my-gptel--load-prompt "darwin_cycle_continue")
   "Prompt sent to darwin when it produces a text-only response (no tool calls)
-to nudge it to continue the cycle.")
+to nudge it to continue the cycle.
+Loaded from knowledge/prompts/common/darwin_cycle_continue.org")
 
 ;;; --- Telegram notification ---
 

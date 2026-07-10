@@ -20,6 +20,7 @@
 (require 'subr-x)
 (require 'task_tools)  ; my-gptel--get-agent-dir (canonical agent dir resolver)
 (declare-function my-gptel-tool-reload-agent "reload_tools" (&optional agent-name))
+(declare-function my-gptel--load-prompt "prompt_loader" (name))
 
 ;;; --- Configuration ---
 ;; Parameters my-gptel-memory-max-entries, my-gptel-memory-timeout,
@@ -39,22 +40,8 @@ effect without reloading the module."
     ;; format with wrong-type-argument.  Fall back to default 20.
     (unless (and (integerp max-entries) (> max-entries 0))
       (setq max-entries 20))
-    (concat
-   "You are a memory summarization engine for an AI agent system.\n"
-   "Your job is to maintain a concise, rolling memory log for an agent.\n\n"
-   "You will receive:\n"
-   "1. CURRENT MEMORIES: The agent's existing memory entries.\n"
-   "2. CONVERSATION: The recent conversation between the user and the agent.\n\n"
-   "Produce an updated set of memory entries that:\n"
-   "- Retains all critical facts: agent identity, capabilities, key decisions, persistent notes.\n"
-   "- Adds new important information from the conversation: tasks completed, files modified, bugs found, architecture decisions, tool changes.\n"
-   (format "- Drops or merges obsolete entries to keep the total under %d bullet points.\n"
-           max-entries)
-   "- Each entry is a single line starting with '- ' (markdown bullet).\n"
-   "- Entries are factual, concise, and specific (no vague statements).\n"
-   "- Do NOT include operational logs -- those go to HISTORY.log separately.\n"
-   "- Do NOT include a header or any text outside the bullet list.\n\n"
-   "Output ONLY the bullet-point memory entries. No preamble, no explanation.")))
+    (format (my-gptel--load-prompt "memory_summarizer")
+            max-entries)))
 
 ;;; --- Internal functions ---
 

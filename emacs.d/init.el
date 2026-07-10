@@ -24,6 +24,11 @@
 ;; GPTEL backend configuration
 (load "gptel_setup.el")
 
+;; Prompt loader -- load prompt templates from common/ directory
+;; Must load before delegate_tool, memory_tools, and loop_guard which
+;; call my-gptel--load-prompt at load time (in defconst forms).
+(load "prompt_loader.el")
+
 ;; Output sanitizer (must load before code_tools.el)
 (load "output_sanitizer.el")
 ;; Native filesystem tools for gptel
@@ -70,7 +75,8 @@
                         "code_tools" "replacement_tool" "agent_loader"
                         "delegate_tool" "reload_tools" "memory_tools"
                         "check_elisp_tool" "task_tools"
-                        "loop_guard" "file_guard" "audit_log"))
+                        "loop_guard" "file_guard" "audit_log"
+                        "prompt_loader"))
       (init-dir (expand-file-name "init.d" user-emacs-directory)))
   (dolist (file (directory-files init-dir nil "\\.el\\'"))
     (let ((basename (file-name-sans-extension file)))

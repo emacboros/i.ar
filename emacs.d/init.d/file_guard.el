@@ -61,6 +61,10 @@ to ensure single-source-of-truth for the HISTORY.log regex.")
    (cons (lambda (path)
            (string-match-p "/agents\\.d/base_context\\.org\\'" path))
          "Shared context file (base_context.org) is protected. Agents cannot modify the shared context.")
+   ;; Common prompt templates -- no agent may modify shared prompt templates
+   (cons (lambda (path)
+           (string-match-p "/agents\\.d/common/[^/]+\\.org\\'" path))
+         "Common prompt templates are protected. Agents cannot modify shared prompt templates.")
    ;; HISTORY.log files -- append is allowed but overwrite/replace is not
    (cons my-gptel--guard-history-pred
          "HISTORY.log files can only be appended to, not overwritten or modified via replace."))

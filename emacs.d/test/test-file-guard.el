@@ -388,11 +388,11 @@
                       "/some/other/path/HISTORY.log")))))
 
 (ert-deftest test-fg-active-patterns-count ()
-  "Active patterns should return 3 with self-mod, 6 without."
+  "Active patterns should return 4 with self-mod, 7 without."
   (with-fg-fixture
-    (should (= (length (my-gptel--guard--active-patterns)) 6)))
+    (should (= (length (my-gptel--guard--active-patterns)) 7)))
   (with-fg-self-mod
-    (should (= (length (my-gptel--guard--active-patterns)) 3))))
+    (should (= (length (my-gptel--guard--active-patterns)) 4))))
 
 (ert-deftest test-fg-guard-reasons-are-descriptive ()
   "Guard check returns should include human-readable reason strings."

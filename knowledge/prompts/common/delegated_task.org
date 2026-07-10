@@ -1,0 +1,8 @@
+DELEGATED TASK FROM PARENT AGENT
+==============================
+
+CONTEXT:
+%s
+
+TASK:
+%s

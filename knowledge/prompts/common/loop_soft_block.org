@@ -1,0 +1,9 @@
+LOOP DETECTED: You have called %s with the same arguments %d times in a row.
+This is a loop. Repeating the same call will not produce a different result.
+
+Stop and reconsider your approach:
+1. If the tool result is not what you expected, the tool is working correctly -- your approach is wrong.
+2. If you are waiting for something to change, it won't change from repeating the same command.
+3. Try a different command, a different approach, or explain what you are trying to accomplish.
+
+DO NOT call %s with the same arguments again. Change something.

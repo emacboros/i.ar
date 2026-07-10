@@ -17,6 +17,7 @@
 (require 'task_tools)
 
 (declare-function my-gptel-read-agent-profile "agent_loader" (file))
+(declare-function my-gptel--load-prompt "prompt_loader" (name))
 
 ;;; Buffer-local state for tracking delegation depth
 
@@ -62,7 +63,7 @@ hallucinated tool names."
                           (equal (gptel-tool-name ts) name))
                         gptel-tools)
       (list :block
-            (format "Unknown tool '%s'. Check the tool name and use one of the available tools."
+            (format (my-gptel--load-prompt "unknown_tool")
                     name)))))
 
 (defun my-gptel--load-agent-profile (agent-name)
@@ -203,11 +204,12 @@ STREAM-POS-REF is a symbol holding the stream-pos marker (set dynamically)."
             (set stream-pos-ref stream-pos)))))))
 
 (defconst my-gptel--delegate-continue-prompt
-  "Your last response did not include any tool calls. If the task is complete, provide your final response now. If you still need to take action, call the available tools instead of describing what you plan to do. Read the relevant files, run commands, or delegate as needed."
+  (my-gptel--load-prompt "delegate_continue")
   "Prompt sent to a delegate when it produces a text-only response
 without calling any tools in the current turn.  This nudges the model
 to either call its tools (instead of narrating intentions) or produce
-its final response if the task is already complete.")
+its final response if the task is already complete.
+Loaded from knowledge/prompts/common/delegate_continue.org")
 
 (defun my-gptel--delegate-completion-fn (buf callback agent completed-sym
                                              timer-sym timeout-secs
@@ -306,7 +308,7 @@ so the user can watch progress in real time."
                                    my-gptel--delegate-depth 0)))
          (task-id (format "delegate-%s-%d-%d" agent (emacs-pid) (float-time)))
          (buf (get-buffer-create (format "*gptel-delegate-%s*" task-id)))
-         (full-prompt (format "DELEGATED TASK FROM PARENT AGENT\n==============================\n\nCONTEXT:\n%s\n\nTASK:\n%s"
+         (full-prompt (format (my-gptel--load-prompt "delegated_task")
                               ctx task))
          (parent-buf (current-buffer))
          (parent-marker (point-marker))

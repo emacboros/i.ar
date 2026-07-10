@@ -22,6 +22,7 @@
 
 (require 'cl-lib)
 (require 'subr-x)
+(declare-function my-gptel--load-prompt "prompt_loader" (name))
 
 ;;; --- Configuration ---
 ;; Parameters my-gptel-loop-soft-threshold, my-gptel-loop-hard-threshold,
@@ -78,17 +79,8 @@ loop detection (history always trimmed to empty).  Falls back to 20."
 (defun my-gptel--loop-soft-message (name repeat-count)
   "Build the correction message for a soft block.
 NAME is the tool name.  REPEAT-COUNT is total identical calls so far."
-  (format
-   "LOOP DETECTED: You have called %s with the same arguments %d times in a row.
-This is a loop. Repeating the same call will not produce a different result.
-
-Stop and reconsider your approach:
-1. If the tool result is not what you expected, the tool is working correctly — your approach is wrong.
-2. If you are waiting for something to change, it won't change from repeating the same command.
-3. Try a different command, a different approach, or explain what you are trying to accomplish.
-
-DO NOT call %s with the same arguments again. Change something."
-   name repeat-count name))
+  (format (my-gptel--load-prompt "loop_soft_block")
+          name repeat-count name))
 
 (defun my-gptel--loop-hard-message (name repeat-count block-count)
   "Build the stop reason for a hard stop.
@@ -98,11 +90,8 @@ from `my-gptel--loop-block-count'.  This is more accurate than
 computing an estimate from thresholds, especially if the block
 count was affected by intervening different calls or threshold
 reconfiguration."
-  (format
-   "Request stopped: agent called %s with identical arguments %d times.
-The loop guard has blocked %d attempt%s and the model has not self-corrected.
-Stopping to prevent resource waste."
-   name repeat-count block-count (if (= block-count 1) "" "s")))
+  (format (my-gptel--load-prompt "loop_hard_stop")
+          name repeat-count block-count (if (= block-count 1) "" "s")))
 
 ;;; --- Hook function ---
 

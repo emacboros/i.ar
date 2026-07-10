@@ -60,6 +60,12 @@
 
 (load-file (expand-file-name "metaconfig/parameters.el" user-emacs-directory))
 
+;; --- Load prompt loader (must be before modules that use prompts) ---
+
+(let ((init-dir (expand-file-name "init.d" user-emacs-directory)))
+  (add-to-list 'load-path init-dir)
+  (load (expand-file-name "prompt_loader.el" init-dir) nil t))
+
 ;; --- Load all source modules ---
 
 (let ((init-dir (expand-file-name "init.d" user-emacs-directory)))
