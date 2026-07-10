@@ -10,9 +10,10 @@
 ;; 5. Exits Emacs when done (or on timeout)
 ;;
 ;; Any orchestrator agent can be run autonomously.  The agent's cycle
-;; prompt is loaded from agents.d/common/<agent>_cycle.org and the
-;; continue prompt from agents.d/common/<agent>_cycle_continue.org.
-;; If the continue prompt is not found, a generic default is used.
+;; prompt is loaded from agents.d/common/agent_cycle.org and the
+;; continue prompt from agents.d/common/agent_cycle_continue.org.
+;; These are shared by all agents -- the agent's personality (prompt.org)
+;; provides the identity, the cycle prompt provides the workflow.
 ;;
 ;; Usage (batch mode):
 ;;   emacs --batch -l /root/.emacs.d/init.el \
@@ -160,20 +161,20 @@ expands #+INCLUDE directives."
       (error "Agent profile '%s' not found in agents.d/agents/%s/prompt.org"
              agent-name agent-name)))
 
-(defun agent--load-cycle-prompt (agent-name)
-  "Load the cycle prompt for AGENT-NAME from agents.d/common/<agent>_cycle.org.
-Signals an error if not found -- every autonomous agent must have a cycle prompt."
-  (my-gptel--load-prompt (format "%s_cycle" agent-name)))
+(defun agent--load-cycle-prompt (_agent-name)
+  "Load the shared cycle prompt from agents.d/common/agent_cycle.org.
+This prompt is shared by all autonomous agents.  The agent's personality
+(prompt.org) provides the identity, the cycle prompt provides the workflow."
+  (my-gptel--load-prompt "agent_cycle"))
 
-(defun agent--load-continue-prompt (agent-name)
-  "Load the continue prompt for AGENT-NAME from agents.d/common/<agent>_cycle_continue.org.
-Returns a generic default if the agent-specific continue prompt is not found."
-  (let ((name (format "%s_cycle_continue" agent-name)))
-    (condition-case nil
-        (my-gptel--load-prompt name)
-      (error
-       (message "[agent] No continue prompt '%s', using default" name)
-       agent-cycle-default-continue-prompt))))
+(defun agent--load-continue-prompt (_agent-name)
+  "Load the shared continue prompt from agents.d/common/agent_cycle_continue.org.
+Returns a generic default if the file is not found."
+  (condition-case nil
+      (my-gptel--load-prompt "agent_cycle_continue")
+    (error
+     (message "[agent] No continue prompt found, using default")
+     agent-cycle-default-continue-prompt)))
 
 (defun agent--cycle-complete-p (buf &optional start end)
   "Check if the cycle is truly complete by scanning BUF for completion markers.
@@ -425,4 +426,3 @@ until it either completes all steps or reaches the turn limit."
 (defalias 'darwin-run-cycle #'agent-run-cycle)
 
 (provide 'agent_cycle)
-(provide 'darwin_cycle)
