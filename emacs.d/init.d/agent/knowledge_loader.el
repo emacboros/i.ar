@@ -8,9 +8,10 @@
 ;; (knowledge files).  An agent's prompt.org defines who it is; the
 ;; knowledge files define what it knows about a specific subject.
 ;;
-;; Usage: C-c k in gptel-mode.  Select a knowledge folder or a specific
-;; file.  The content is appended to the system prompt with clear
-;; delimiters so the LLM can distinguish personality from knowledge.
+;; Usage: C-c k in gptel-mode.  Select a knowledge folder.  All .md and
+;; .org files in that folder are read and appended to the system prompt
+;; with clear delimiters so the LLM can distinguish personality from
+;; knowledge.
 ;;
 ;; Multiple C-c k calls stack: you can load linux/ then iar/ then
 ;; personal-infra/ and all three knowledge bases will be present in
@@ -49,36 +50,25 @@ Each entry is (LABEL . CONTENT-STRING).")
 (defun my-gptel--knowledge-candidates ()
   "Build a list of selectable knowledge candidates.
 Returns a list of cons cells (DISPLAY . PATH) where:
-- For folders: DISPLAY is \"folder/\" and PATH is the directory
-- For files:   DISPLAY is \"folder/file.org\" and PATH is the file"
+- DISPLAY is \"folder/\" and PATH is the directory"
   (let ((kdir (my-gptel--knowledge-dir))
         candidates)
     (when (file-directory-p kdir)
-      ;; List subdirectories (knowledge folders)
+      ;; List subdirectories (knowledge folders) only
       (dolist (entry (directory-files kdir nil "\\`[a-zA-Z0-9_-]+\\'" t))
         (let ((full-path (expand-file-name entry kdir)))
           (when (file-directory-p full-path)
-            ;; Add the folder itself
-            (push (cons (format "%s/" entry) full-path) candidates)
-            ;; Add individual files within the folder
-            (dolist (file (directory-files full-path nil
-                                          "\\.\\(md\\|org\\)\\'" t))
-              (push (cons (format "%s/%s" entry file)
-                          (expand-file-name file full-path))
-                    candidates))))))
+            (push (cons (format "%s/" entry) full-path) candidates)))))
     (nreverse candidates)))
 
 (defun my-gptel--read-knowledge-files (path)
-  "Read all .md and .org files from PATH and return them as a string.
-If PATH is a directory, reads all .md/.org files in it (non-recursive).
-If PATH is a file, reads just that file.
+  "Read all .md and .org files from PATH (a directory) and return them as a string.
+Reads all .md/.org files in the directory (non-recursive).
 Returns nil if no content was found."
   (let ((files
-         (if (file-directory-p path)
-             (sort
-              (directory-files path t "\\.\\(md\\|org\\)\\'" t)
-              #'string<)
-           (and (file-exists-p path) (list path))))
+         (sort
+          (directory-files path t "\\.\\(md\\|org\\)\\'" t)
+          #'string<))
         (parts nil))
     (dolist (file files)
       (let* ((fname (file-name-nondirectory file))
@@ -90,13 +80,11 @@ Returns nil if no content was found."
     (when parts
       (mapconcat #'identity (nreverse parts) "\n\n"))))
 
-(defun my-gptel--knowledge-label (display path)
+(defun my-gptel--knowledge-label (display _path)
   "Generate a human-readable label for the loaded knowledge.
 DISPLAY is the completing-read selection string.
-PATH is the resolved filesystem path."
-  (if (file-directory-p path)
-      display  ; e.g., "linux/"
-    (file-name-directory display)))  ; e.g., "linux/" from "linux/backups.org"
+Since only directories are selectable, DISPLAY is always the label."
+  display)
 
 (defun my-gptel--knowledge-rebuild-prompt ()
   "Rebuild the system prompt from the personality + all loaded knowledge blocks.
@@ -112,9 +100,10 @@ Uses `my-gptel--knowledge-base-prompt' as the personality and
     prompt))
 
 (defun my-gptel-load-knowledge ()
-  "Prompt user to select a knowledge folder or file and inject it
-into the current agent's system prompt.  Knowledge content is appended
-after the agent's personality prompt with clear delimiters.
+  "Prompt user to select a knowledge folder and inject it
+into the current agent's system prompt.  All .md and .org files in
+the selected folder are read and appended after the agent's
+personality prompt with clear delimiters.
 
 Multiple C-c k calls stack: each new knowledge base is added on top
 of the previous ones.  Selecting a knowledge base that is already
