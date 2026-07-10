@@ -37,19 +37,8 @@
   "Darwin autonomous self-improvement cycle configuration."
   :group 'gptel)
 
-(defcustom darwin-cycle-timeout 7200
-  "Default timeout for a darwin cycle in seconds (120 minutes)."
-  :type 'integer
-  :safe (lambda (v) (and (integerp v) (> v 0)))
-  :group 'darwin)
-
-(defcustom darwin-cycle-max-turns 40
-  "Maximum number of LLM response turns before forcing cycle end.
-Each turn is one model response (with or without tool calls).
-This prevents infinite loops."
-  :type 'integer
-  :safe (lambda (v) (and (integerp v) (> v 0)))
-  :group 'darwin)
+;; Parameters darwin-cycle-timeout and darwin-cycle-max-turns are defined
+;; in metaconfig/parameters.el (loaded early in init.el).
 
 (defcustom darwin-telegram-bot-token
   (or (getenv "DARWIN_TELEGRAM_BOT_TOKEN") "")

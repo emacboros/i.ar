@@ -25,23 +25,9 @@
 0 = top-level agent (not spawned via delegate).
 1+ = spawned via delegate. Used to limit recursion depth.")
 
-(defcustom my-gptel--delegate-max-depth 3
-  "Maximum delegation depth allowed.
-Prevents infinite recursion while permitting multi-hop chains.
-Depth 0 = top-level agent, 1 = first delegate, etc."
-  :type 'integer
-  :safe (lambda (v) (and (integerp v) (> v 0)))
-  :group 'gptel)
-
-(defcustom my-gptel--delegate-max-turns 15
-  "Maximum number of LLM response turns for a delegate session.
-When the sub-agent produces a text-only response (no tool calls
-in the current turn), it is re-prompted to continue.
-This prevents models that describe tool calls in text instead of
-actually calling them from terminating prematurely."
-  :type 'integer
-  :safe (lambda (v) (and (integerp v) (> v 0)))
-  :group 'gptel)
+;; Parameters my-gptel--delegate-max-depth and my-gptel--delegate-max-turns
+;; are defined in metaconfig/parameters.el (loaded early in init.el).
+;; No defcustom here -- the module references them as dynamic variables.
 
 ;;; Internal functions
 

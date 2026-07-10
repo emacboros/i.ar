@@ -22,32 +22,9 @@
 (declare-function my-gptel-tool-reload-agent "reload_tools" (&optional agent-name))
 
 ;;; --- Configuration ---
-
-(defcustom my-gptel-memory-max-entries 20
-  "Maximum number of memory entries the summarizer should retain.
-The summarizer is instructed to keep at most this many concise bullet points,
-prioritizing the most important and recent information."
-  :type 'integer
-  :safe (lambda (v) (and (integerp v) (> v 0)))
-  :group 'gptel)
-
-(defcustom my-gptel-memory-timeout 300
-  "Timeout in seconds for the summarization API call.
-If the model does not respond within this time, the operation is aborted
-and a partial result (if any) is returned.
-Default is 300 (5 minutes) to accommodate large contexts with slow models."
-  :type 'integer
-  :safe (lambda (v) (and (integerp v) (> v 0)))
-  :group 'gptel)
-
-(defcustom my-gptel-memory-max-conversation-chars 100000
-  "Maximum number of characters of conversation text to send to the summarizer.
-If the conversation exceeds this length, it is truncated to the most recent
-portion. This prevents extremely large payloads that could cause timeouts or
-exceed API limits. 100000 chars is roughly 25K tokens."
-  :type 'integer
-  :safe (lambda (v) (and (integerp v) (> v 0)))
-  :group 'gptel)
+;; Parameters my-gptel-memory-max-entries, my-gptel-memory-timeout,
+;; and my-gptel-memory-max-conversation-chars are defined in
+;; metaconfig/parameters.el (loaded early in init.el).
 
 (defun my-gptel--memory-build-system-prompt ()
   "Build the system prompt for the summarizer.

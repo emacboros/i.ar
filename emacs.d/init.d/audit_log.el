@@ -16,19 +16,8 @@
   (expand-file-name "workspace/audit.log" user-emacs-directory)
   "Path to the central audit log for all agent file operations.")
 
-(defcustom my-gptel--audit-log-max-size (* 10 1024 1024)
-  "Maximum size in bytes before the audit log is rotated.
-When the log exceeds this size, it is renamed to `audit.log.1'
-(overwriting any previous rotation) and a fresh log is started.
-Set to nil to disable rotation.
-
-Note: Only one generation of rotated log is retained (audit.log.1).
-Each rotation overwrites the previous .1 file.  For compliance-grade
-retention, configure external log rotation (e.g., logrotate) instead."
-  :type '(choice (integer :tag "Max size in bytes")
-                 (const :tag "No rotation" nil))
-  :safe (lambda (v) (or (and (integerp v) (> v 0)) (null v)))
-  :group 'gptel)
+;; Parameter my-gptel--audit-log-max-size is defined in
+;; metaconfig/parameters.el (loaded early in init.el).
 
 (defun my-gptel--audit-get-agent-name ()
   "Return the current agent name for audit logging."

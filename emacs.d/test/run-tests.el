@@ -56,6 +56,10 @@
            (list (list :report-file report-path)
                  (list :report-format 'text)))))
 
+;; --- Load central parameters (must be before init.d modules) ---
+
+(load-file (expand-file-name "metaconfig/parameters.el" user-emacs-directory))
+
 ;; --- Load all source modules ---
 
 (let ((init-dir (expand-file-name "init.d" user-emacs-directory)))

@@ -15,21 +15,8 @@
 (require 'audit_log)
 
 ;;; --- Configuration ---
-
-(defcustom my-gptel--fs-read-max-size (* 1024 1024)
-  "Maximum number of characters that read_file will return without truncation.
-Files with more characters than this are truncated to this limit and a
-truncation notice is appended.  This prevents accidentally loading huge
-files (e.g., large log files, binary blobs) into the AI context, which
-would consume excessive tokens and slow down responses.
-Uses character count (not byte count) because insert-file-contents
-decodes the file into Emacs internal representation, and AI token
-consumption correlates more with character count than byte count.
-Set to nil to disable truncation (read full file regardless of size)."
-  :type '(choice (integer :tag "Max characters")
-                 (const :tag "No limit" nil))
-  :safe (lambda (v) (or (and (integerp v) (> v 0)) (null v)))
-  :group 'gptel)
+;; Parameter my-gptel--fs-read-max-size is defined in
+;; metaconfig/parameters.el (loaded early in init.el).
 
 ;;; --- list_directory ---
 

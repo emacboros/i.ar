@@ -74,3 +74,4 @@ RISKS FLAGGED:
 FOLLOW-UP: Nacho to check in after sprint to debrief what went right, what went wrong, and draw conclusions.
 [2026-07-10 03:35:58] Nacho: Created new agent 'sage' -- practical Elisp expert for i.ar codebase analysis, bug tracing, and fix proposals. Complements mccarthy with debugging-focused expertise.
 [2026-07-10 04:18:57] Nacho: Removed session_persistence.el and tool_display.el (plus their tests) from init.d and init.el load list. Cleaned up stale references to session_persistence in audit_log.el and task_tools.el docstrings. Reloaded OS - 12 tools registered, down from 14.
+[2026-07-10 04:38:35] nacho: Task 1 complete - restructured agent prompts from knowledge/prompts/<name>/ to knowledge/prompts/agents/<name>/. Updated all code references in agent_loader.el, delegate_tool.el, reload_tools.el, task_tools.el, darwin_cycle.el, file_guard.el, and all test files. Updated #+INCLUDE paths in agent prompts. 519/520 tests passing.

@@ -6,6 +6,9 @@
 
 (add-to-list 'load-path (expand-file-name "init.d" user-emacs-directory))
 
+;; Central parameter configuration (must load before any init.d modules)
+(load-file (expand-file-name "metaconfig/parameters.el" user-emacs-directory))
+
 ;; Locale and UTF-8 configuration (must load before anything else)
 (load "locale.el")
 
