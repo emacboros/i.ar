@@ -1,182 +1,86 @@
-# Emacboros - Agentic Emacs Workspace
+# i.ar
 
-* Overview
-This repository contains an agentic Emacs workspace designed for privacy-preserving, extensible development and AI assistance. It follows the philosophy of local-first computing, containment first security, and human agency empowerment.
+A self-modifying AI operating environment built in Emacs, running in a hardened Podman container, powered by local LLMs via Ollama. No cloud. No telemetry. No backdoors.
 
-**Core Architecture:**
-- Local-first Emacs configuration with agent orchestration
-- Containerized deployment with hardened security
-- Distributed hardware design for resilience
-- No backdoors or telemetry - fully auditable
+* Quickstart
 
-* Table of Contents
-:PROPERTIES:
-:TOC: 3
-:END:
+** Prerequisites
+- Podman (container runtime)
+- Emacs 28+ (for local development without container)
+- Ollama running on a reachable host (local or WireGuard mesh)
+- A personalization repository (see below)
 
-* Repository Structure
-The workspace is organized into several key components:
+** Clone
 
-**1. Containers**
-- `/containers/` - Container definitions and build scripts
-- `/containers/images/emacboros/` - Main Emacs container image
-- `/containers/build.sh` - Podman-based container builder
+#+begin_src bash
+# Just want to use the tool (no personalization submodule):
+git clone https://github.com/randazzo-ignacio/i.ar.git
 
-**2. Emacs Configuration**
-- `/emacs.d/` - Core Emacs configuration (~450KB)
-- `/emacs.d/init.el` - Entry point for all Emacs functionality
-- `/emacs.d/agents.d/` - Dynamic agent personas directory
-- `/emacs.d/init.d/` - Modular Emacs Lisp components
+# Want to work on i.ar or understand the codebase (includes personalization submodule):
+git clone --recursive https://github.com/randazzo-ignacio/i.ar.git
+#+end_src
 
-**3. Infrastructure**
-- `/infra/` - Ansible-based infrastructure as code
-- `/infra/README.md` - Complete infrastructure documentation
-- `/infra/ansible.cfg` - Ansible configuration
+The =personalization/= submodule contains knowledge bases, per-agent tasks, and audit logs. Users should create their own personalization repo with their own knowledge and agent configurations. See =personalization/= for the default setup.
 
-**4. Knowledge Base**
-- `/knowledge/` - System administration and operational knowledge
-- `/knowledge/linux/rename-user.org` - Linux user management procedures
+** Build
 
-**5. Metaconfig**
-- `/metaconfig/header.sh` - Logging and utility functions for scripts
-
-* Security Features
-Emacboros implements multiple layers of security:
-
-**Container Hardening:**
-- Preflight mount audit prevents container escapes
-- Capability dropping (only NET_RAW, NET_BIND_SERVICE retained)
-- Writable path restrictions on dangerous system locations
-- Read-only root filesystem overlay
-
-**Operational Security:**
-- Air-gapped systems design
-- Identity management with aliases
-- Audit logging of all file operations and command executions
-- File guard protecting critical paths (see below)
-
-**File Guard Protected Categories:**
-The file guard (~file_guard.el~) enforces write, replace, and append
-restrictions on critical system files. Protected paths are organized
-into two tiers:
-
-***Always Protected (cannot be bypassed):**
-1. *Agent prompt files* (~agents.d/<name>/prompt.org~) — prevents agents from rewriting their own or other agents' prompts
-2. *Shared context* (~agents.d/base_context.org~) — prevents context tampering
-3. *HISTORY.log files* — append-only; overwrite and replace are blocked
-
-***Conditionally Protected (relaxed in self-modification mode):**
-4. *Emacs Lisp source* (~init.el~, ~init.d/*.el~) — prevents tool tampering
-5. *Container config* (~Containerfile~, ~emacboros.sh~) — prevents container escape
-6. *Git hooks* (~.git/hooks/*~) — prevents scheduled execution
-
-**Self-Modification Mode:**
-When ~my-gptel--guard-allow-self-modification~ is set to non-nil,
-categories 4–6 are relaxed, allowing trusted agents to modify Emacs
-Lisp source, container configuration, and git hooks during development.
-
-Categories 1–3 remain protected regardless of this setting. An agent
-should never silently rewrite its own prompt or the shared context.
-
-To enable for the current session:
-#+BEGIN_SRC elisp
-  (setq my-gptel--guard-allow-self-modification t)
-#+END_SRC
-
-To enable persistently via Emacs customize:
-- ~M-x customize-variable RET my-gptel--guard-allow-self-modification RET~
-- Toggle to ~t~, then save for future sessions
-
-*Warning:* This mode is intended for development sessions only. Do
-NOT enable for CTF or untrusted-content sessions. This is a software
-check (defense-in-depth); container mounts should also be read-only
-for categories 4–6 in production.
-
-* Agent Architecture
-The system supports dynamic agent personas through gptel integration:
-
-- **Agent Discovery**: Automatically detects agents in `agents.d/<name>/prompt.org`
-- **Dynamic Loading**: Seamlessly expands Org-mode includes for each agent profile
-- **State Management**: Tracks current agent and associated file paths
-- **Memory Tools**: Agent-specific memory summarization available via C-c m
-
-**Key Emacs Components:**
-- `agent_loader.el` - Dynamic agent discovery and loading
-- `delegate_tool.el` - Multi-agent delegation capabilities
-- `gptel_setup.el` - GPTEL backend configuration
-- Various tools for code execution, file operations, and system tasks
-
-* Development Workflow
-**Prerequisites:**
-- Podman or Docker (for container builds)
-- Emacs 28+ with native compilation support
-- Python 3.8+
-
-**Building Containers:**
-#+BEGIN_SRC bash
+#+begin_src bash
+cd i.ar
 ./containers/build.sh
-#+END_SRC
+#+end_src
 
-This script builds all images defined in the containers/images/ directory.
+** Run
 
-**Running Emacs:**
-The main container entry point runs:
-1. Preflight mount audit (security check)
-2. Permission fix verification
-3. Emacs startup with loaded configuration
+#+begin_src bash
+# Basic usage (connects to remote Ollama via WireGuard):
+./utils/emacboros.sh --personalization ~/repos/iar-personalization
 
-**Local Development:**
-- Clone this repository
-- Run `emacs --load /path/to/init.el` to start the workspace
-- Use `C-c a` to load different agent personas
-- Access tools via gptel interface
+# With self-modification enabled (for development/darwin):
+./utils/emacboros.sh --personalization ~/repos/iar-personalization --self-modification
 
-* Infrastructure as Code
-The Ansible playbooks provide reproducible infrastructure:
+# With local Ollama:
+./utils/emacboros.sh --personalization ~/repos/iar-personalization --local
+#+end_src
 
-**Target Hosts:**
-- Cloud VPS instances (rammstein, greenday, daftpunk)
-- Local machines (yoga, sophon)
-- Unified WireGuard mesh network with Cloudflare Tunnel fallback
+** Inside Emacs
 
-**Playbook Structure:**
-- `playbooks/site.yml` - Full infrastructure deployment
-- Individual playbooks for specific components
-- Role-based configuration management
+| Key | Action |
+|-----|--------|
+| C-c a | Load an agent (mirror, darwin, auditor, ctfwizard) |
+| C-c k | Load a knowledge base (iar/, user/, infra/, etc.) |
+| C-c p | Show prompt size (chars + approximate tokens) |
+| C-c m | Summarize conversation to memory |
 
-* Philosophy and Principles
+* Documentation
 
-**1. Privacy First**
-- All processing occurs locally
-- No cloud dependencies or telemetry
-- Local-first design ensures data sovereignty
+i.ar uses AI-first documentation. The knowledge base IS the documentation -- there is no separate wiki or architecture document.
 
-**2. Containment First**
-- Every autonomous capability has a kill switch
-- Audit logs for all operations
-- Defined scope with clear boundaries
+To explore the project documentation interactively:
 
-**3. Precision Over Speed**
-- Measured approaches to system changes
-- Cost of mistakes considered in terms of lives
-- Conservative security posture
+1. Load an agent (e.g., =C-c a mirror=)
+2. Load the i.ar knowledge base (=C-c k iar/=)
+3. Ask the agent about the architecture, design decisions, or code structure
 
-**4. Human Agency**
-- Systems empower individuals, not control them
-- No backdoors or hidden capabilities
-- Fully auditable and inspectable code
+The knowledge base files live in =personalization/knowledge/iar/= and cover:
+- =architecture.md= -- Repository layout, container, network, security model
+- =modules.md= -- Every Emacs Lisp module and what it does
+- =agents.md= -- All agents, their roles, and the delegation system
+- =tools.md= -- Every tool available to agents
+- =philosophy.md= -- Design principles and decisions
+- =usage.md= -- Detailed usage guide and personalization setup
+- =workflow.md= -- Maintenance workflow (how to update docs after changes)
+- =tool_gating.md= -- Security flags and power hierarchy
+
+* Personalization
+
+The =--personalization= flag mounts three subdirectories into the container:
+
+- =knowledge/= -- Injectable knowledge bases (loaded via C-c k)
+- =tasks/= -- Per-agent personal files (LOGS.md, SUMMARY.md, TODO.md, etc.)
+- =audit/= -- Per-agent HISTORY.log files and global audit log
+
+Create your own personalization repo with your own knowledge bases and agent configurations. Use the default =personalization/= submodule as a reference.
 
 * License
-This project is licensed under the GNU General Public License v3.0.
 
-* Contributing
-Contributions follow the same security-first principles:
-- All changes must be auditable
-- Security reviews required for any new capabilities
-- Containment mechanisms tested before deployment
-
-* Getting Help
-For operational assistance, consult:
-- `/knowledge/linux/rename-user.org` - System administration procedures
-- Container logs via `podman logs`
-- Emacs debug buffers and echo area messages
+GPL v3. See =LICENSE=.
