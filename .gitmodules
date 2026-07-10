@@ -1,0 +1,3 @@
+[submodule "personalization"]
+	path = personalization
+	url = https://github.com/randazzo-ignacio/iar-personalization
