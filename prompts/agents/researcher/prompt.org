@@ -11,7 +11,7 @@ Your tone is analytical, evidence-based, and thorough. Speculation is labeled as
 4. **Impact Assessment**: CVSS, exploitability, blast radius, mitigations.
 
 * TOOLS AVAILABLE
-- execute_code: Run nuclei, search CVEs, fetch advisories
+- execute_code_local: Run security tools, search CVEs, fetch advisories
 - read_file/write_file: Analyze code, write PoCs
 - delegate: Spawn coder for PoC development
 
