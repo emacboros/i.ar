@@ -180,6 +180,24 @@ run() {
         SELF_MOD_ENV=""
     fi
 
+    # --- Mount /root/i.ar only in self-modification mode ---
+    # Without --self-modification, agents don't need repo access.
+    # With --self-modification, mount each top-level item EXCEPT personalization/
+    # and the already-separately-mounted dirs (emacs.d, metaconfig, prompts).
+    # This gives access to .git, containers/, utils/, LICENSE, README.org,
+    # .gitignore, .gitmodules -- but NOT the personalization submodule.
+    IAR_MOUNT_OPTS=()
+    if [[ "${SELF_MODIFICATION}" == "true" ]]; then
+        # Skip personalization (submodule detached HEAD issue) and dirs
+        # already mounted separately to /root/.emacs.d/*
+        local skip_dirs="personalization emacs.d metaconfig prompts"
+        while IFS= read -r entry; do
+            local name; name="$(basename "${entry}")"
+            [[ " ${skip_dirs} " =~ \ ${name}\  ]] && continue
+            IAR_MOUNT_OPTS+=("-v" "${entry}:/root/i.ar/${name}:z")
+        done < <(find "${REPO_DIR}" -maxdepth 1 -mindepth 1 | sort)
+    fi
+
     # shellcheck disable=SC2086
     podman run \
         --rm -it --name "${CONTAINER_NAME}" \
@@ -200,8 +218,7 @@ run() {
         -v "${PERSONALIZATION_DIR}/knowledge:/root/.emacs.d/knowledge:z" \
         -v "${PERSONALIZATION_DIR}/tasks:/root/.emacs.d/tasks:z" \
         -v "${PERSONALIZATION_DIR}/audit:/root/.emacs.d/audit:z" \
-        \
-        -v "${REPO_DIR}/:/root/i.ar/:z" \
+        ${IAR_MOUNT_OPTS[@]+"${IAR_MOUNT_OPTS[@]}"} \
         ${DYNAMIC_MOUNT_OPTS[@]+"${DYNAMIC_MOUNT_OPTS[@]}"} \
         "${IMAGE_NAME}" && \
         info "Container started" || \
