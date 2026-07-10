@@ -99,6 +99,41 @@ Uses `my-gptel--knowledge-base-prompt' as the personality and
                       prompt label content))))
     prompt))
 
+(defun my-gptel-load-knowledge-dir (label)
+  "Non-interactively load a knowledge directory into the current buffer.
+LABEL is a string like \"iar/\" matching a subdirectory of the knowledge dir.
+Returns t if loaded, nil if not found or already loaded.
+Safe for batch/non-interactive use -- no completing-read, no user-error."
+  (let* ((candidates (my-gptel--knowledge-candidates))
+         (entry (assoc label candidates))
+         (path (cdr entry)))
+    (unless path
+      (message "[knowledge] Directory '%s' not found in %s" label (my-gptel--knowledge-dir))
+      (cl-return-from my-gptel-load-knowledge-dir nil))
+    ;; No-op if already loaded
+    (when (member label my-gptel--knowledge-loaded-labels)
+      (message "[knowledge] '%s' is already loaded." label)
+      (cl-return-from my-gptel-load-knowledge-dir t))
+    ;; Read the knowledge content
+    (let ((content (my-gptel--read-knowledge-files path)))
+      (unless content
+        (message "[knowledge] No .md or .org files found in '%s'" label)
+        (cl-return-from my-gptel-load-knowledge-dir nil))
+      ;; Save original prompt on first knowledge load
+      (unless my-gptel--knowledge-base-prompt
+        (setq-local my-gptel--knowledge-base-prompt gptel-system-prompt))
+      ;; Add to knowledge blocks alist
+      (setf (alist-get label my-gptel--knowledge-blocks nil nil #'equal) content)
+      ;; Track the label
+      (add-to-list 'my-gptel--knowledge-loaded-labels label)
+      ;; Rebuild the full system prompt
+      (setq-local gptel-system-prompt (my-gptel--knowledge-rebuild-prompt))
+      (message "[knowledge] '%s' loaded (%d chars). Loaded: %s. Total: %s"
+               label (length content)
+               (mapconcat #'identity my-gptel--knowledge-loaded-labels ", ")
+               (my-gptel--format-size (length gptel-system-prompt)))
+      t)))
+
 (defun my-gptel-load-knowledge ()
   "Prompt user to select a knowledge folder and inject it
 into the current agent's system prompt.  All .md and .org files in
@@ -120,26 +155,7 @@ loaded is a no-op."
          (label (my-gptel--knowledge-label display path)))
     (unless path
       (user-error "Invalid selection: %s" display))
-    ;; No-op if this knowledge is already loaded
-    (if (member label my-gptel--knowledge-loaded-labels)
-        (message "[OK] Knowledge '%s' is already loaded." label)
-      ;; Read the knowledge content
-      (let ((content (my-gptel--read-knowledge-files path)))
-        (unless content
-          (user-error "No .md or .org files found in '%s'" display))
-        ;; Save original prompt on first knowledge load
-        (unless my-gptel--knowledge-base-prompt
-          (setq-local my-gptel--knowledge-base-prompt gptel-system-prompt))
-        ;; Add to knowledge blocks alist
-        (setf (alist-get label my-gptel--knowledge-blocks nil nil #'equal) content)
-        ;; Track the label
-        (add-to-list 'my-gptel--knowledge-loaded-labels label)
-        ;; Rebuild the full system prompt
-        (setq-local gptel-system-prompt (my-gptel--knowledge-rebuild-prompt))
-        (message "[OK] Knowledge '%s' loaded (%d chars). Loaded: %s. Total: %s"
-                 label (length content)
-                 (mapconcat #'identity my-gptel--knowledge-loaded-labels ", ")
-                 (my-gptel--format-size (length gptel-system-prompt)))))))
+    (my-gptel-load-knowledge-dir label)))
 
 ;;; --- Prompt size reporting ---
 

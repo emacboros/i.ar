@@ -31,6 +31,7 @@ CONTAINER_NAME="darwin-cycle"
 LOCAL_OLLAMA_HOST="${EMACBOROS_OLLAMA_HOST:-10.66.0.5:11434}"
 PERSONALIZATION_DIR=""
 SSH_KEY_DIR="${HOME}/.ssh"
+KNOWLEDGE_LABELS=()
 
 # =============================================================================
 # Usage
@@ -49,6 +50,8 @@ Options:
   --cooldown SECONDS     Seconds to wait between cycles (default: 60)
   --timeout SECONDS      Per-cycle timeout (default: 7200 = 120 min)
   --max-failures N       Max consecutive failures before stopping (default: 5)
+  --knowledge LABEL      Knowledge directory label to load (default: iar/)
+                         Can be specified multiple times to load multiple bases.
   --ollama-host HOST     Ollama API host:port (default: ${LOCAL_OLLAMA_HOST})
   --ssh-key-dir PATH     Directory containing darwin SSH keys (default: ~/.ssh)
   --help, -h             Show this message
@@ -61,7 +64,8 @@ Environment:
 Examples:
   darwin-loop.sh --personalization ~/repos/iar-personalization
   darwin-loop.sh --personalization ~/repos/iar-personalization --max-cycles 10 --cooldown 120
-  darwin-loop.sh --personalization ~/repos/iar-personalization --timeout 3600 --max-failures 3
+  darwin-loop.sh --personalization ~/repos/iar-personalization --knowledge infra/ --timeout 3600
+  darwin-loop.sh --personalization ~/repos/iar-personalization --knowledge iar/ --knowledge infra/ --max-failures 3
 EOF
 }
 
@@ -109,6 +113,11 @@ while [[ $# -gt 0 ]]; do
             [[ $# -lt 2 ]] && error "--ssh-key-dir requires a value" && exit 1
             SSH_KEY_DIR="$(realpath "$2")"
             [[ ! -d "${SSH_KEY_DIR}" ]] && error "--ssh-key-dir: directory does not exist: ${SSH_KEY_DIR}" && exit 1
+            shift 2
+            ;;
+        --knowledge)
+            [[ $# -lt 2 ]] && error "--knowledge requires a label argument" && exit 1
+            KNOWLEDGE_LABELS+=("$2")
             shift 2
             ;;
         --help|-h)
@@ -248,9 +257,15 @@ Failures: ${FAILURES}"
     # Run one darwin cycle
     info "Starting cycle ${CYCLE} (timeout: ${TIMEOUT}s)"
     set +e
+    KNOWLEDGE_ARGS=()
+    for label in "${KNOWLEDGE_LABELS[@]:-}"; do
+        [[ -z "${label}" ]] && continue
+        KNOWLEDGE_ARGS+=("--knowledge" "${label}")
+    done
     "${REPO_DIR}/utils/darwin-cycle.sh" \
         --personalization "${PERSONALIZATION_DIR}" \
         --timeout "${TIMEOUT}" \
+        "${KNOWLEDGE_ARGS[@]}" \
         --ollama-host "${LOCAL_OLLAMA_HOST}" \
         --ssh-key-dir "${SSH_KEY_DIR}" 2>&1 | tee -a "${LOG_FILE}"
     CYCLE_EXIT=$?

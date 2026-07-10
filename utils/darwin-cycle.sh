@@ -37,6 +37,9 @@ Required:
 
 Options:
   --timeout SECONDS    Maximum time for the cycle (default: 7200 = 120 min)
+  --knowledge LABEL     Knowledge directory label to load (default: iar/)
+                       Can be specified multiple times to load multiple bases.
+                       Examples: --knowledge iar/ --knowledge infra/
   --ollama-host HOST    Ollama API host:port (default: ${LOCAL_OLLAMA_HOST})
   --mount PATH          Mount a host directory read-write inside the container
                        at the same absolute path. Can be specified multiple times.
@@ -53,6 +56,8 @@ Environment:
 Examples:
   darwin-cycle.sh --personalization ~/repos/iar-personalization
   darwin-cycle.sh --personalization ~/repos/iar-personalization --timeout 3600
+  darwin-cycle.sh --personalization ~/repos/iar-personalization --knowledge infra/
+  darwin-cycle.sh --personalization ~/repos/iar-personalization --knowledge iar/ --knowledge infra/
   darwin-cycle.sh --personalization ~/repos/iar-personalization --ollama-host localhost:11434
 EOF
 }
@@ -66,6 +71,7 @@ PERSONALIZATION_DIR=""
 SSH_KEY_DIR="${HOME}/.ssh"
 MOUNT_ARGS=()
 MOUNT_RO_ARGS=()
+KNOWLEDGE_LABELS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -110,6 +116,11 @@ while [[ $# -gt 0 ]]; do
             [[ ! -d "${SSH_KEY_DIR}" ]] && error "--ssh-key-dir: directory does not exist: ${SSH_KEY_DIR}" && exit 1
             shift 2
             ;;
+        --knowledge)
+            [[ $# -lt 2 ]] && error "--knowledge requires a label argument" && exit 1
+            KNOWLEDGE_LABELS+=("$2")
+            shift 2
+            ;;
         --help|-h)
             usage
             exit 0
@@ -148,6 +159,19 @@ for path in "${MOUNT_RO_ARGS[@]:-}"; do
 done
 
 # =============================================================================
+# Build knowledge labels for Emacs eval
+# =============================================================================
+KNOWLEDGE_EVAL=""
+if [[ ${#KNOWLEDGE_LABELS[@]} -gt 0 ]]; then
+    # Build a Lisp list: ("iar/" "infra/")
+    LABELS_LISP=""
+    for label in "${KNOWLEDGE_LABELS[@]}"; do
+        LABELS_LISP+="\"${label}\" "
+    done
+    KNOWLEDGE_EVAL=":knowledge (list ${LABELS_LISP})"
+fi
+
+# =============================================================================
 # Run the container
 # =============================================================================
 info "Starting darwin cycle"
@@ -155,6 +179,11 @@ info "  Personalization: ${PERSONALIZATION_DIR}"
 info "  Timeout: ${TIMEOUT}s"
 info "  Ollama: ${OLLAMA_HOST}"
 info "  SSH keys: ${SSH_KEY_DIR}"
+if [[ ${#KNOWLEDGE_LABELS[@]} -gt 0 ]]; then
+    info "  Knowledge: ${KNOWLEDGE_LABELS[*]}"
+else
+    info "  Knowledge: iar/ (default)"
+fi
 
 podman run \
     --rm \
@@ -189,7 +218,7 @@ podman run \
     -e "TERM=dumb" \
     --entrypoint /bin/bash \
     "${IMAGE_NAME}" \
-    -c "preflight.sh && emacs --batch -l /root/.emacs.d/init.el --eval '(darwin-run-cycle :timeout ${TIMEOUT})'" 2>&1
+    -c "preflight.sh && emacs --batch -l /root/.emacs.d/init.el --eval '(darwin-run-cycle :timeout ${TIMEOUT} ${KNOWLEDGE_EVAL})'" 2>&1
 
 EXIT_CODE=$?
 info "Darwin cycle container exited with code: ${EXIT_CODE}"

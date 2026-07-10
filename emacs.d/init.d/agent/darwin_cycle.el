@@ -31,6 +31,7 @@
 (declare-function my-gptel--load-agent-profile "delegate_tool" (agent-name))
 (declare-function my-gptel--block-unknown-tools "delegate_tool" (info))
 (declare-function my-gptel--load-prompt "prompt_loader" (name))
+(declare-function my-gptel-load-knowledge-dir "knowledge_loader" (label))
 
 ;;; --- Configuration ---
 
@@ -206,6 +207,9 @@ args-out-of-range errors from stale positions."
 Keywords args:
   :timeout SECONDS -- override darwin-cycle-timeout
   :prompt STRING   -- override darwin-cycle-prompt
+  :knowledge LABEL -- knowledge directory label to load (default: \"iar/\")
+                     Can be a single label string or a list of labels.
+                     Each label must match a subdirectory of the knowledge dir.
 
 Creates a gptel buffer with darwin's profile, sends the cycle prompt,
 and waits for completion.  Sends a Telegram notification and exits Emacs
@@ -225,6 +229,12 @@ until it either completes all steps or reaches the turn limit."
                     7200))
          (prompt (or (plist-get args :prompt) darwin-cycle-prompt))
          (profile (darwin--load-profile))
+         (knowledge-labels (let ((k (plist-get args :knowledge)))
+                             (cond
+                              ((null k) '("iar/"))
+                              ((stringp k) (list k))
+                              ((listp k) k)
+                              (t '("iar/")))))
          (cycle-buf (get-buffer-create "*darwin-cycle*"))
          (completed nil)
          (exit-code 0)
@@ -248,6 +258,13 @@ until it either completes all steps or reaches the turn limit."
       ;; value and cannot modify init.d/**/*.el.  The global value remains nil,
       ;; so future non-darwin sessions are also protected.
       (setq-local my-gptel--guard-allow-self-modification t)
+
+      ;; Load knowledge bases into the cycle buffer's system prompt.
+      ;; This gives darwin the same documentation context that interactive
+      ;; agents get via C-c k.  Default is "iar/" but can be overridden via
+      ;; :knowledge keyword (string or list of strings).
+      (dolist (label knowledge-labels)
+        (my-gptel-load-knowledge-dir label))
 
       ;; Tool call tracker: log every tool call for debugging
       (add-hook 'gptel-post-tool-call-functions
