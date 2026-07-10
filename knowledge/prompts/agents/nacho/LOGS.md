@@ -17,3 +17,9 @@ Nacho realized that what he perceives as a weakness -- tying things together wit
 The pattern: constraint forces a different path. The different path is where innovation lives. What feels like a shortcut or a hack is actually the creative edge. The duct tape is the feature, not the bug.
 
 TRIGGER: When Nacho expresses feeling inadequate, comparing himself unfavorably to tools/others, or feeling like his methods are illegitimate -- remind him of this. The results are the proof. The method is the advantage.
+## 2026-07-10: Knowledge Loader Feature (C-c k)
+
+Built `init.d/knowledge_loader.el` -- interactive command to inject curated knowledge files into the agent system prompt. Separates agent PERSONALITY (prompt.org) from agent KNOWLEDGE (knowledge/<folder>/*.md|.org). Created symlink `/root/.emacs.d/knowledge -> /root/i.ar/knowledge`. Key design decisions: append not replace (personality stays, knowledge layers on top), idempotent (reloading same knowledge is no-op), replacing previous knowledge block preserves original personality prompt. Filtered nothing -- all subdirectories of knowledge/ are selectable including prompts/. Future plan: replace bind mounts so knowledge is directly at /root/.emacs.d/knowledge.
+## 2026-07-10: Prompt Size Reporting (C-c p)
+
+Added `C-c p` (`my-gptel-prompt-info`) to knowledge_loader.el. Displays agent name, knowledge label, personality size, knowledge size, and total prompt size in chars and approximate tokens (~4 chars/token heuristic). Modified agent_loader.el to show prompt size on agent load and reset knowledge state when switching agents. This addresses the context window overflow concern -- as knowledge bases and LOGS.md grow, we need visibility into total prompt size to prevent amnesia.

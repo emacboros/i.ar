@@ -20,6 +20,11 @@ Set buffer-local by `my-gptel-load-agent' and `my-gptel-tool-reload-agent'.")
   "Full path to the currently loaded agent's prompt.org file.
 Set buffer-local by `my-gptel-load-agent' and `my-gptel-tool-reload-agent'.")
 
+;; Declared here so agent_loader can reset them when switching agents.
+;; Defined in knowledge_loader.el.
+(defvar my-gptel--knowledge-base-prompt nil)
+(defvar my-gptel--knowledge-loaded-label nil)
+
 ;;; --- Profile reading ---
 
 (declare-function org-export-expand-include-keyword "ox" ())
@@ -63,7 +68,11 @@ Discovers agent directories under agents.d/<name>/ containing prompt.org."
     (setq-local my-gptel--current-agent-file full-path)
     ;; Track the agent name (for memory tools and per-agent file paths)
     (setq-local my-gptel--current-agent-name chosen)
-    (message "[OK] Agent %s loaded!" chosen)))
+    ;; Reset knowledge state when loading a new agent
+    (setq-local my-gptel--knowledge-base-prompt nil)
+    (setq-local my-gptel--knowledge-loaded-label nil)
+    (message "[OK] Agent %s loaded! Prompt: %d chars (~%d tokens)"
+             chosen (length profile) (/ (length profile) 4))))
 
 (with-eval-after-load 'gptel
   (keymap-set gptel-mode-map "C-c a" #'my-gptel-load-agent))
