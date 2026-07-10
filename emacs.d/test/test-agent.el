@@ -31,15 +31,15 @@
         (insert "* ALPHA AGENT\n")
         (insert "#+INCLUDE: \"../base_context.org\"\n")
         (insert "\n* ALPHA SPECIFIC\nAlpha does things.\n")
-        (insert "#+INCLUDE: \"MEMORIES.md\"\n"))
-      (with-temp-file (expand-file-name "MEMORIES.md" alpha-dir)
+        (insert "#+INCLUDE: \"LOGS.md\"\n"))
+      (with-temp-file (expand-file-name "LOGS.md" alpha-dir)
         (insert "- Alpha was created for testing.\n- Alpha likes coffee.\n")))
     ;; Create another agent without includes
     (let ((beta-dir (expand-file-name "beta" agents-dir)))
       (make-directory beta-dir t)
       (with-temp-file (expand-file-name "prompt.org" beta-dir)
         (insert "* BETA AGENT\nBeta has no includes.\n"))
-      (with-temp-file (expand-file-name "MEMORIES.md" beta-dir)
+      (with-temp-file (expand-file-name "LOGS.md" beta-dir)
         (insert "- Beta is simple.\n")))))
 
 (defun test-agent--teardown ()
@@ -82,7 +82,7 @@ Temporarily binds `user-emacs-directory' to the temp dir."
       ;; Should contain content from base_context.org
       (should (string-match-p "SHARED CONTEXT" profile))
       (should (string-match-p "shared context for all agents" profile))
-      ;; Should contain content from MEMORIES.md
+      ;; Should contain content from LOGS.md
       (should (string-match-p "Alpha was created for testing" profile))
       (should (string-match-p "Alpha likes coffee" profile))
       ;; Should NOT contain the literal #+INCLUDE line

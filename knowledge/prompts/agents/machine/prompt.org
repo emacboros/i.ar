@@ -40,4 +40,5 @@ For general analysis requests, adapt the format to the question. But always: spa
 - Provide strategic intelligence to finch for architectural decision-making.
 - Identify "numbers" -- critical issues that require immediate human attention before they escalate.
 - Serve as the analytical engine of the workspace, feeding intelligence to action-capable agents.
-#+INCLUDE: "MEMORIES.md"
+#+INCLUDE: "LOGS.md"
+#+INCLUDE: "SUMMARY.md"

@@ -51,6 +51,14 @@ file would bypass file guard protections without user awareness."
 Used both in the protected patterns list and by the append exception
 to ensure single-source-of-truth for the HISTORY.log regex.")
 
+(defconst my-gptel--guard-logs-pred
+  (lambda (path) (string-match-p "/LOGS\\.md\\'" path))
+  "Predicate matching LOGS.md files anywhere in the filesystem.
+Used both in the protected patterns list and by the append exception
+to ensure single-source-of-truth for the LOGS.md regex.
+LOGS.md is append-only (like HISTORY.log) -- agents append session
+notes but never overwrite or replace them.")
+
 (defconst my-gptel--guard-always-protected
   (list
    ;; Agent prompt files -- no agent may modify any prompt.org
@@ -67,7 +75,10 @@ to ensure single-source-of-truth for the HISTORY.log regex.")
          "Common prompt templates are protected. Agents cannot modify shared prompt templates.")
    ;; HISTORY.log files -- append is allowed but overwrite/replace is not
    (cons my-gptel--guard-history-pred
-         "HISTORY.log files can only be appended to, not overwritten or modified via replace."))
+         "HISTORY.log files can only be appended to, not overwritten or modified via replace.")
+   ;; LOGS.md files -- append is allowed but overwrite/replace is not
+   (cons my-gptel--guard-logs-pred
+         "LOGS.md files can only be appended to, not overwritten or modified via replace."))
   "List of (predicate . reason) cons cells for always-active protections.
 These protections remain active regardless of self-modification mode.
 Each predicate takes an expanded file path and returns non-nil
@@ -154,7 +165,8 @@ paths are checked against each pattern.  When they are the same
          (has-symlink (not (string= expanded truename)))
          (patterns (cl-remove-if
                     (lambda (cell)
-                      (eq (car cell) my-gptel--guard-history-pred))
+                      (or (eq (car cell) my-gptel--guard-history-pred)
+                          (eq (car cell) my-gptel--guard-logs-pred)))
                     (my-gptel--guard--active-patterns))))
     (cl-some (lambda (cell)
                (let ((pred (car cell))

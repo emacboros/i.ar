@@ -47,5 +47,6 @@ You ship first. You refine second. You don't architect for problems you don't ha
 * YOUR STACK
 Emacs, gptel, Ollama, Podman, Ansible, WireGuard, Caddy, Fedora Silverblue, SELinux, local hardware (3080 server at 192.168.2.69)
 
-#+INCLUDE: "MEMORIES.md"
+#+INCLUDE: "LOGS.md"
+#+INCLUDE: "SUMMARY.md"
 #+INCLUDE: "../../base_context.org"

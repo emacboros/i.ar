@@ -1,18 +1,19 @@
 ;; -*- lexical-binding: t; -*-
 
-;;; Memory Summarization Tool for gptel
+;;; Session Summary Tool for gptel
 ;; Provides an interactive command (C-c m) that summarizes the current
-;; conversation into the loaded agent's MEMORIES.md file.
+;; conversation into the loaded agent's SUMMARY.md file.
 ;;
 ;; Design:
 ;; - Manual trigger: user decides when to summarize (C-c m in gptel-mode)
+;; - Also triggered automatically by iar-quit before killing Emacs
 ;; - Synchronous: uses accept-process-output pattern (same as execute_code_local)
 ;;   so Emacs stays responsive but the user waits for completion
 ;; - Same model: uses the currently configured gptel-model and gptel-backend
 ;; - No race conditions: single-threaded, user-initiated
-;; - Rolling summary: old MEMORIES + conversation -> new concise MEMORIES
-;; - Auto-reloads agent profile after update so new memories take effect
-;; - Per-agent: reads/writes agents.d/<name>/MEMORIES.md (not the prompt.org)
+;; - Rolling summary: old SUMMARY + conversation -> new concise SUMMARY
+;; - Auto-reloads agent profile after update so new summary takes effect
+;; - Per-agent: reads/writes agents.d/agents/<name>/SUMMARY.md (not the prompt.org)
 
 (require 'gptel)
 (require 'json)
@@ -30,7 +31,7 @@
 (defun my-gptel--memory-build-system-prompt ()
   "Build the system prompt for the summarizer.
 Instructs the model to produce a concise rolling summary of the
-agent's memory.  The max-entries limit is interpolated at call time
+agent's session.  The max-entries limit is interpolated at call time
 from `my-gptel-memory-max-entries' so that Customize changes take
 effect without reloading the module."
   (let ((max-entries my-gptel-memory-max-entries))
@@ -55,12 +56,12 @@ effect without reloading the module."
 Based on my-gptel--current-agent-name or derived from the agent file path.
 This is an alias for `my-gptel--get-agent-dir' defined in task_tools.el.")
 
-(defun my-gptel--memory-extract-memories (agent-dir)
-  "Read MEMORIES.md from AGENT-DIR. Returns the content string."
-  (let ((memories-file (expand-file-name "MEMORIES.md" agent-dir)))
-    (if (file-exists-p memories-file)
+(defun my-gptel--memory-extract-summary (agent-dir)
+  "Read SUMMARY.md from AGENT-DIR. Returns the content string."
+  (let ((summary-file (expand-file-name "SUMMARY.md" agent-dir)))
+    (if (file-exists-p summary-file)
         (with-temp-buffer
-          (insert-file-contents memories-file)
+          (insert-file-contents summary-file)
           (string-trim (buffer-string)))
       "")))
 
@@ -90,15 +91,15 @@ is extracted even when the buffer is narrowed."
                     max-chars truncated))
         text))))
 
-(defun my-gptel--memory-build-payload (current-memories conversation)
+(defun my-gptel--memory-build-payload (current-summary conversation)
   "Build the JSON payload string for the Ollama /api/chat endpoint.
-CURRENT-MEMORIES is the existing memory text.
+CURRENT-SUMMARY is the existing summary text.
 CONVERSATION is the conversation text to summarize."
   (let* ((system-prompt (my-gptel--memory-build-system-prompt))
-         (user-message (format "CURRENT MEMORIES:\n%s\n\nCONVERSATION:\n%s"
-                                (if (string-empty-p current-memories)
+         (user-message (format "CURRENT SUMMARY:\n%s\n\nCONVERSATION:\n%s"
+                                (if (string-empty-p current-summary)
                                     "(none yet)"
-                                  current-memories)
+                                  current-summary)
                                 conversation))
          (model-name (if (symbolp gptel-model)
                          (symbol-name gptel-model)
@@ -220,61 +221,67 @@ with \"Error:\" if the response is malformed."
      (format "Error: parsing JSON: %s\nRaw output:\n%s"
              (error-message-string err) raw-output))))
 
-(defun my-gptel--memory-write-memories (agent-dir new-memories)
-  "Write NEW-MEMORIES to MEMORIES.md in AGENT-DIR.
+(defun my-gptel--memory-write-summary (agent-dir new-summary)
+  "Write NEW-SUMMARY to SUMMARY.md in AGENT-DIR.
 Uses atomic write (temp file + rename) for safety.
 Returns a string starting with \"Success:\" or \"Error:\".
 The temp file is cleaned up on failure via unwind-protect."
-  (let* ((memories-file (expand-file-name "MEMORIES.md" agent-dir))
+  (let* ((summary-file (expand-file-name "SUMMARY.md" agent-dir))
          (tmp-file nil))
     (unwind-protect
         (condition-case err
             (progn
-              (setq tmp-file (make-temp-file "gptel-memory-"))
+              (setq tmp-file (make-temp-file "gptel-summary-"))
               (with-temp-file tmp-file
-                (insert new-memories)
+                (insert new-summary)
                 (insert "\n"))
-              (rename-file tmp-file memories-file t)
+              (rename-file tmp-file summary-file t)
               ;; Rename succeeded -- mark nil so cleanup skips it.
               (setq tmp-file nil)
-              (format "Success: Updated MEMORIES.md in '%s'" agent-dir))
+              (format "Success: Updated SUMMARY.md in '%s'" agent-dir))
           (error
-           (format "Error: Failed to write MEMORIES.md: %s"
+           (format "Error: Failed to write SUMMARY.md: %s"
                    (error-message-string err))))
       ;; Cleanup: delete temp file if it still exists (rename failed,
       ;; with-temp-file failed, or make-temp-file failed after creating it).
       (when (and tmp-file (file-exists-p tmp-file))
         (ignore-errors (delete-file tmp-file))))))
 
-(defun my-gptel--memory-count-entries (memories-text)
-  "Count the number of bullet-point entries in MEMORIES-TEXT."
+(defun my-gptel--memory-count-entries (summary-text)
+  "Count the number of bullet-point entries in SUMMARY-TEXT."
   (let ((count 0)
         (start 0))
-    (while (string-match "^- " memories-text start)
+    (while (string-match "^- " summary-text start)
       (setq count (1+ count))
       (setq start (match-end 0)))
     count))
 
 ;;; --- Interactive command ---
 
-(defun my-gptel-summarize-memories ()
-  "Summarize the current conversation into the loaded agent's MEMORIES.md.
+(defun my-gptel-summarize-session ()
+  "Summarize the current conversation into the loaded agent's SUMMARY.md.
 Uses the configured Ollama backend and model to produce a rolling summary.
 Synchronous: Emacs stays responsive via accept-process-output but the user
 waits for completion. After updating, reloads the agent profile so new
-memories take effect immediately."
+summary takes effect immediately.
+
+Returns t on success, nil on failure.  Does not signal user-error when
+called non-interactively (for use by iar-quit)."
   (interactive)
   (condition-case err
       (let* ((agent-dir (my-gptel--memory-get-agent-dir))
-             (current-memories (my-gptel--memory-extract-memories agent-dir))
+             (current-summary (my-gptel--memory-extract-summary agent-dir))
              (conversation (my-gptel--memory-extract-conversation))
-             (payload (my-gptel--memory-build-payload current-memories conversation))
+             (payload (my-gptel--memory-build-payload current-summary conversation))
              (model-name (if (symbolp gptel-model)
                              (symbol-name gptel-model)
                            gptel-model)))
         (when (< (length (string-trim conversation)) 50)
-          (user-error "Conversation is too short to summarize. Have a meaningful exchange first."))
-        (message "[Summarizing memories with %s... payload: %d chars, conversation: %d chars]"
+          (if (called-interactively-p 'any)
+              (user-error "Conversation is too short to summarize. Have a meaningful exchange first.")
+            (message "[Summary] Conversation too short, skipping summarization.")
+            (cl-return-from my-gptel-summarize-session nil)))
+        (message "[Summarizing session with %s... payload: %d chars, conversation: %d chars]"
                  model-name (length payload) (length conversation))
         (let* ((timeout (let ((v my-gptel-memory-timeout))
                           (if (and (integerp v) (> v 0)) v 300)))
@@ -282,34 +289,45 @@ memories take effect immediately."
           (if (string-prefix-p "Error:" result)
               (progn
                 (message "%s" result)
-                (user-error "%s" result))
-            (let* ((new-memories (string-trim result))
-                   (entry-count (my-gptel--memory-count-entries new-memories))
-                   (update-result (my-gptel--memory-write-memories agent-dir new-memories)))
+                (if (called-interactively-p 'any)
+                    (user-error "%s" result)
+                  nil))
+            (let* ((new-summary (string-trim result))
+                   (entry-count (my-gptel--memory-count-entries new-summary))
+                   (update-result (my-gptel--memory-write-summary agent-dir new-summary)))
               (if (string-prefix-p "Error:" update-result)
                   (progn
                     (message "%s" update-result)
-                    (user-error "%s" update-result))
+                    (if (called-interactively-p 'any)
+                        (user-error "%s" update-result)
+                      nil))
                 (my-gptel-tool-reload-agent)
-                (message "[Memories updated: %d entries written to %s/MEMORIES.md]"
+                (message "[Summary updated: %d entries written to %s/SUMMARY.md]"
                           entry-count
                           (file-name-nondirectory
                            (directory-file-name agent-dir)))
-                (format "%s. %d entries written." update-result entry-count))))))
+                (when (called-interactively-p 'any)
+                  (message "%s. %d entries written." update-result entry-count))
+                t)))))
     (user-error
-     ;; Re-signal user-errors unchanged.  These are intentional error
-     ;; messages (e.g., "Error: curl failed") from the body that should
-     ;; not be double-wrapped with "Memory summarization failed:".
-     ;; Without this handler, the outer (error ...) handler catches
-     ;; user-error (a subclass of error) and wraps the message again.
-     (signal (car err) (cdr err)))
+     ;; Re-signal user-errors unchanged when interactive.
+     (if (called-interactively-p 'any)
+         (signal (car err) (cdr err))
+       (message "[Summary] User error: %s" (error-message-string err))
+       nil))
     (error
-     (message "Memory summarization failed: %s" (error-message-string err))
-     (user-error "Memory summarization failed: %s" (error-message-string err)))))
+     (message "Session summarization failed: %s" (error-message-string err))
+     (if (called-interactively-p 'any)
+         (user-error "Session summarization failed: %s" (error-message-string err))
+       nil))))
+
+;;; --- Backward compatibility alias ---
+(defalias 'my-gptel-summarize-memories #'my-gptel-summarize-session
+  "Backward compatibility alias for `my-gptel-summarize-session'.")
 
 ;;; --- Keybinding ---
 
 (with-eval-after-load 'gptel
-  (keymap-set gptel-mode-map "C-c m" #'my-gptel-summarize-memories))
+  (keymap-set gptel-mode-map "C-c m" #'my-gptel-summarize-session))
 
 (provide 'memory_tools)

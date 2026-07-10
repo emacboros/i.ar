@@ -65,6 +65,9 @@
 ;; Audit logging — records all file operations and command executions
 (load "audit_log.el")
 
+;; i.ar quit -- session-aware shutdown (summarize before kill)
+(load "iar_quit.el")
+
 ;; ──────────────────────────────────────────────────────────
 ;; Auto-discovery: load any init.d/*.el not explicitly loaded above.
 ;; This allows autonomous agents (e.g. darwin) to create new modules
@@ -76,7 +79,7 @@
                         "delegate_tool" "reload_tools" "memory_tools"
                         "check_elisp_tool" "task_tools"
                         "loop_guard" "file_guard" "audit_log"
-                        "prompt_loader"))
+                        "prompt_loader" "iar_quit"))
       (init-dir (expand-file-name "init.d" user-emacs-directory)))
   (dolist (file (directory-files init-dir nil "\\.el\\'"))
     (let ((basename (file-name-sans-extension file)))

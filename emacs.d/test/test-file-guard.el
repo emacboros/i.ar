@@ -124,6 +124,14 @@
     (should-not (my-gptel--guard-check-append
                  "/root/.emacs.d/agents.d/agents/reviewer/HISTORY.log"))))
 
+(ert-deftest test-fg-append-allows-logs-md ()
+  "append_file should be ALLOWED for LOGS.md files (append is intended use)."
+  (with-fg-fixture
+    (should-not (my-gptel--guard-check-append
+                 "/root/.emacs.d/agents.d/agents/darwin/LOGS.md"))
+    (should-not (my-gptel--guard-check-append
+                 "/root/.emacs.d/agents.d/agents/reviewer/LOGS.md"))))
+
 (ert-deftest test-fg-append-allows-history-log-with-self-mod ()
   "append_file should still allow HISTORY.log with self-modification on."
   (with-fg-self-mod
@@ -372,14 +380,31 @@
                       "/some/path/agents.d/agents/custom-agent/prompt.org")))))
 
 (ert-deftest test-fg-write-allows-non-prompt-org ()
-  "Guard should NOT block .org files that are not prompt.org or base_context.org."
+  "Guard should NOT block .org files that are not prompt.org, base_context.org,
+or common prompt templates.  LOGS.md is append-only (blocked for write,
+allowed for append -- tested separately).  SUMMARY.md is writable by the
+summarizer.  TODO.md and IDEAS.md are freely writable."
   (with-fg-fixture
+    ;; SUMMARY.md is writable (summarizer rewrites it)
     (should-not (my-gptel--guard-check-write
-                 "/root/.emacs.d/agents.d/agents/darwin/MEMORIES.md"))
+                 "/root/.emacs.d/agents.d/agents/darwin/SUMMARY.md"))
+    ;; TODO.md and IDEAS.md are freely writable
     (should-not (my-gptel--guard-check-write
                  "/root/.emacs.d/agents.d/agents/darwin/TODO.md"))
     (should-not (my-gptel--guard-check-write
                  "/root/.emacs.d/agents.d/agents/darwin/IDEAS.md"))))
+
+(ert-deftest test-fg-write-blocks-logs-md ()
+  "write_file should be blocked for LOGS.md files (append-only)."
+  (with-fg-fixture
+    (should (stringp (my-gptel--guard-check-write
+                      "/root/.emacs.d/agents.d/agents/darwin/LOGS.md")))))
+
+(ert-deftest test-fg-replace-blocks-logs-md ()
+  "replace_in_file should be blocked for LOGS.md files (append-only)."
+  (with-fg-fixture
+    (should (stringp (my-gptel--guard-check-replace
+                      "/root/.emacs.d/agents.d/agents/darwin/LOGS.md")))))
 
 (ert-deftest test-fg-write-blocks-history-log-anywhere ()
   "Guard should match HISTORY.log regardless of parent directory path."
@@ -388,11 +413,11 @@
                       "/some/other/path/HISTORY.log")))))
 
 (ert-deftest test-fg-active-patterns-count ()
-  "Active patterns should return 4 with self-mod, 7 without."
+  "Active patterns should return 5 with self-mod, 8 without."
   (with-fg-fixture
-    (should (= (length (my-gptel--guard--active-patterns)) 7)))
+    (should (= (length (my-gptel--guard--active-patterns)) 8)))
   (with-fg-self-mod
-    (should (= (length (my-gptel--guard--active-patterns)) 4))))
+    (should (= (length (my-gptel--guard--active-patterns)) 5))))
 
 (ert-deftest test-fg-guard-reasons-are-descriptive ()
   "Guard check returns should include human-readable reason strings."
