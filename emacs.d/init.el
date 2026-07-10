@@ -49,12 +49,6 @@
 ;; Task reader and unified history tools
 (load "task_tools.el")
 
-;; Session persistence (save/restore gptel chat sessions)
-(load "session_persistence.el")
-
-;; Tool call display — show tool calls in buffer before they execute
-(load "tool_display.el")
-
 ;; Loop guard — detect and break repetitive tool call loops
 (load "loop_guard.el")
 
@@ -72,8 +66,8 @@
                         "gptel_setup" "output_sanitizer" "fs_tools"
                         "code_tools" "replacement_tool" "agent_loader"
                         "delegate_tool" "reload_tools" "memory_tools"
-                        "check_elisp_tool" "task_tools" "session_persistence"
-                        "tool_display" "loop_guard" "file_guard" "audit_log"))
+                        "check_elisp_tool" "task_tools"
+                        "loop_guard" "file_guard" "audit_log"))
       (init-dir (expand-file-name "init.d" user-emacs-directory)))
   (dolist (file (directory-files init-dir nil "\\.el\\'"))
     (let ((basename (file-name-sans-extension file)))

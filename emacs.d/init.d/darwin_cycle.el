@@ -1,14 +1,5 @@
 ;; -*- lexical-binding: t; -*-
 
-;; Emacboros --- Darwin Continuous Agent Cycle
-;; Copyright (C) 2026 Ignacio Agustin Randazzo
-;;
-;; This program is free software: you can redistribute it and/or modify
-;; it under the terms of the Free Software Foundation, version 3.
-;;
-;; This program is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY.
-
 ;;; Darwin Cycle -- Headless batch entry point for autonomous self-improvement
 ;;
 ;; This module provides `darwin-run-cycle', a function that:

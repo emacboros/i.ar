@@ -1,14 +1,5 @@
 ;; -*- lexical-binding: t; -*-
 
-;; Emacboros --- Tool Call Loop Guard
-;; Copyright (C) 2026 Ignacio Agustin Randazzo
-;;
-;; This program is free software: you can redistribute it and/or modify
-;; it under the terms of the GNU General Public License, version 3.
-;;
-;; This program is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY.
-
 ;;; Loop Guard -- Detect and break repetitive tool call loops
 ;;
 ;; When an LLM agent gets stuck calling the same tool with the same

@@ -1,22 +1,5 @@
 ;; -*- lexical-binding: t; -*-
 
-;; Emacboros --- Agent orchestration in Emacs
-;; Copyright (C) 2026 Ignacio Agustín Randazzo
-;;
-;; This program is free software: you can redistribute it and/or modify
-;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
-;;
-;; This program is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; GNU General Public License for more details.
-;;
-;; You should have received a copy of the GNU General Public License
-;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-
 ;;; Audit Log for Agent File Operations and Command Execution
 ;; Appends timestamped entries to a central audit log for every
 ;; write_file, replace_in_file, and execute_code_local call.
@@ -97,7 +80,7 @@ never break the operation it is auditing.
 DETAIL is sanitized to prevent log injection via embedded newlines.
 TOOL is expected to be a hardcoded string literal (e.g. \"write_file\")
 and AGENT comes from `my-gptel--current-agent-name' which is validated
-by `my-gptel--safe-agent-name-p' in session_persistence.el -- neither
+is validated by `my-gptel--valid-agent-name-p' in task_tools.el -- neither
 is user-controlled, so neither is sanitized.  If this invariant changes,
 sanitize them too.
 

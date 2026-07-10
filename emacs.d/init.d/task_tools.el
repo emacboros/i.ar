@@ -1,22 +1,5 @@
 ;; -*- lexical-binding: t; -*-
 
-;; Emacboros --- Agent orchestration in Emacs
-;; Copyright (C) 2026 Ignacio Agustín Randazzo
-;;
-;; This program is free software: you can redistribute it and/or modify
-;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
-;;
-;; This program is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; GNU General Public License for more details.
-;;
-;; You should have received a copy of the GNU General Public License
-;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-
 ;;; Task Reader Tool for gptel
 ;; Provides a tool that reads TODO.md and IDEAS.md from the current
 ;; agent's directory. Agents pull task awareness on demand rather than
@@ -54,10 +37,9 @@ Validates the agent name against path traversal before constructing
 the path.  This is defense-in-depth: the name is typically set by
 `my-gptel-load-agent' which already validates, and the variable is
 declared `safe-local-variable' with a validating predicate
-(`my-gptel--safe-agent-name-p' in session_persistence.el), so
-tampered session files are filtered at the source.  This function
-provides defense-in-depth in case the predicate is bypassed or
-the variable is set by other means."
+(`my-gptel--valid-agent-name-p'), so tampered values are filtered
+at the source.  This function provides defense-in-depth in case the
+predicate is bypassed or the variable is set by other means."
   (let* ((agent-dir (expand-file-name "agents.d" user-emacs-directory))
          (agent-name
           (if (and (boundp 'my-gptel--current-agent-name)
