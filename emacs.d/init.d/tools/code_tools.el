@@ -31,8 +31,10 @@ Legacy sync convention (for backward compatibility):
 
 TIMEOUT in seconds (default 3600) kills the process on true hangs.
 
-All commands run with GIT_PAGER=cat and TERM=dumb in their environment
-to prevent interactive pagers (less/more) from hanging in batch mode."
+All commands run with GIT_PAGER=cat and TERM=dumb exported in their
+environment to prevent interactive pagers (less/more) from hanging in
+batch mode.  These are exported (not prefixed) so they persist across
+&& chains -- critical for commands like 'cd /root/i.ar && git log'."
   (if (functionp callback-or-command)
       ;; New async convention: (callback command &optional timeout)
       (let* ((cb callback-or-command)
