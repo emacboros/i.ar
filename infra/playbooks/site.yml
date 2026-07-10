@@ -7,10 +7,17 @@
   roles:
     - base
 
-- name: WireGuard mesh (all hosts)
-  hosts: all
+- name: WireGuard mesh — hub first (prevents spoke lockout)
+  hosts: "{{ wg_hub | default('rammstein') }}"
   roles:
     - wireguard
+
+- name: WireGuard mesh — spokes
+  hosts: all
+  serial: 1
+  roles:
+    - role: wireguard
+      when: inventory_hostname != wg_hub
 
 - name: Cloud servers — Caddy install + site config
   hosts: cloud

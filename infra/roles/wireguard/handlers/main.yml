@@ -1,6 +1,10 @@
 ---
 # roles/wireguard/handlers/main.yml
 
+- name: reload systemd
+  systemd:
+    daemon_reload: true
+
 - name: restart wireguard
   service:
     name: "wg-quick@{{ wg_interface }}"

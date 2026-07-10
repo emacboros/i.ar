@@ -5,7 +5,7 @@ wg_endpoint: "i.ar"  # public endpoint for WireGuard
 ollama_enabled: true
 ollama_models:
   - "llama3.3:70b"
-  - "qwen2.5-coder:14b"
+  - "north-mini-code-1.0:q8_0"
 ollama_listen: "10.66.0.3"  # bind to WireGuard IP only
 
 # Static web page — emacboros landing page served by Caddy file_server
