@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# =============================================================================
 # Darwin Loop -- Runs darwin cycles continuously until max-cycles or stopped.
 #
 # Each iteration:
@@ -9,12 +10,13 @@ set -euo pipefail
 #   3. Run darwin-cycle.sh (one full cycle)
 #   4. On failure: git checkout . to erase uncommitted changes, reset to clean state
 #   5. Cooldown between cycles
-#   6. Track consecutive failures -- stop after 5 in a row
+#   6. Track consecutive failures -- stop after max-failures in a row
 #
-# Usage: darwin-loop.sh [--max-cycles N] [--cooldown SECONDS] [--timeout SECONDS]
+# Usage: darwin-loop.sh --personalization PATH [OPTIONS]
 #
 # Intended to be left running unattended (e.g., over a weekend).
 # Telegram notifications sent on loop start, each cycle result, and loop end.
+# =============================================================================
 
 REPO_DIR="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
 source "${REPO_DIR}/metaconfig/header.sh"
@@ -26,10 +28,58 @@ COOLDOWN=60
 TIMEOUT=7200
 MAX_CONSECUTIVE_FAILURES=5
 CONTAINER_NAME="darwin-cycle"
+LOCAL_OLLAMA_HOST="${EMACBOROS_OLLAMA_HOST:-10.66.0.5:11434}"
+PERSONALIZATION_DIR=""
+SSH_KEY_DIR="${HOME}/.ssh"
 
-# --- Parse args ---
+# =============================================================================
+# Usage
+# =============================================================================
+usage() {
+    cat <<EOF
+Usage: darwin-loop.sh --personalization PATH [OPTIONS]
+
+Required:
+  --personalization PATH
+                       Path to personalization directory (knowledge/, tasks/, audit/).
+                       Passed through to darwin-cycle.sh.
+
+Options:
+  --max-cycles N         Maximum number of cycles (default: 50)
+  --cooldown SECONDS     Seconds to wait between cycles (default: 60)
+  --timeout SECONDS      Per-cycle timeout (default: 7200 = 120 min)
+  --max-failures N       Max consecutive failures before stopping (default: 5)
+  --ollama-host HOST     Ollama API host:port (default: ${LOCAL_OLLAMA_HOST})
+  --ssh-key-dir PATH     Directory containing darwin SSH keys (default: ~/.ssh)
+  --help, -h             Show this message
+
+Environment:
+  EMACBOROS_OLLAMA_HOST     Ollama API host (overridden by --ollama-host)
+  DARWIN_TELEGRAM_BOT_TOKEN  Telegram bot token
+  DARWIN_TELEGRAM_CHAT_ID    Telegram chat ID
+
+Examples:
+  darwin-loop.sh --personalization ~/repos/iar-personalization
+  darwin-loop.sh --personalization ~/repos/iar-personalization --max-cycles 10 --cooldown 120
+  darwin-loop.sh --personalization ~/repos/iar-personalization --timeout 3600 --max-failures 3
+EOF
+}
+
+# =============================================================================
+# Parse arguments
+# =============================================================================
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --personalization)
+            [[ $# -lt 2 ]] && error "--personalization requires a path argument" && exit 1
+            PERSONALIZATION_DIR="$(realpath "$2")"
+            [[ ! -d "${PERSONALIZATION_DIR}" ]] && error "--personalization: directory does not exist: ${PERSONALIZATION_DIR}" && exit 1
+            for subdir in knowledge tasks audit; do
+                [[ ! -d "${PERSONALIZATION_DIR}/${subdir}" ]] && \
+                    error "--personalization: missing required subdirectory: ${PERSONALIZATION_DIR}/${subdir}" && exit 1
+            done
+            shift 2
+            ;;
         --max-cycles)
             [[ $# -lt 2 ]] && error "--max-cycles requires a value" && exit 1
             MAX_CYCLES="$2"
@@ -45,35 +95,45 @@ while [[ $# -gt 0 ]]; do
             TIMEOUT="$2"
             shift 2
             ;;
+        --max-failures)
+            [[ $# -lt 2 ]] && error "--max-failures requires a value" && exit 1
+            MAX_CONSECUTIVE_FAILURES="$2"
+            shift 2
+            ;;
+        --ollama-host)
+            [[ $# -lt 2 ]] && error "--ollama-host requires a value" && exit 1
+            LOCAL_OLLAMA_HOST="$2"
+            shift 2
+            ;;
+        --ssh-key-dir)
+            [[ $# -lt 2 ]] && error "--ssh-key-dir requires a value" && exit 1
+            SSH_KEY_DIR="$(realpath "$2")"
+            [[ ! -d "${SSH_KEY_DIR}" ]] && error "--ssh-key-dir: directory does not exist: ${SSH_KEY_DIR}" && exit 1
+            shift 2
+            ;;
         --help|-h)
-            cat <<EOF
-Usage: darwin-loop.sh [OPTIONS]
-
-Runs darwin cycles in a loop. Each cycle: darwin wakes up, makes one change,
-reviews it, tests it, commits if green. On failure, working tree is reset.
-
-Options:
-  --max-cycles N         Maximum number of cycles (default: 50)
-  --cooldown SECONDS     Seconds to wait between cycles (default: 60)
-  --timeout SECONDS      Per-cycle timeout, passed to darwin-cycle.sh (default: 7200)
-  --help, -h             Show this message
-
-Environment:
-  EMACBOROS_OLLAMA_HOST  Ollama API host (default: 10.66.0.5:11434)
-  DARWIN_TELEGRAM_BOT_TOKEN   Telegram bot token
-  DARWIN_TELEGRAM_CHAT_ID     Telegram chat ID
-EOF
+            usage
             exit 0
             ;;
         *)
             error "Unknown option: $1"
+            usage
             exit 1
             ;;
     esac
 done
 
-# --- Setup ---
-LOCAL_OLLAMA_HOST="${EMACBOROS_OLLAMA_HOST:-10.66.0.5:11434}"
+# Validate required arguments
+if [[ -z "${PERSONALIZATION_DIR}" ]]; then
+    error "--personalization is required. Specify the path to your personalization directory."
+    echo ""
+    usage
+    exit 1
+fi
+
+# =============================================================================
+# Setup
+# =============================================================================
 LOG_FILE="${REPO_DIR}/logs/darwin-loop-$(date +%Y-%m-%d).log"
 mkdir -p "$(dirname "${LOG_FILE}")"
 
@@ -122,7 +182,9 @@ reset_worktree() {
     git clean -fd emacs.d/ 2>&1 || true  # remove untracked .elc files etc.
 }
 
-# --- Main loop ---
+# =============================================================================
+# Main loop
+# =============================================================================
 CYCLE=0
 SUCCESSES=0
 FAILURES=0
@@ -131,10 +193,13 @@ LOOP_START=$(date +%s)
 
 info "=========================================="
 info "Darwin Loop starting"
+info "  Personalization: ${PERSONALIZATION_DIR}"
 info "  Max cycles: ${MAX_CYCLES}"
 info "  Cooldown: ${COOLDOWN}s"
 info "  Per-cycle timeout: ${TIMEOUT}s"
+info "  Max consecutive failures: ${MAX_CONSECUTIVE_FAILURES}"
 info "  Ollama: ${LOCAL_OLLAMA_HOST}"
+info "  SSH keys: ${SSH_KEY_DIR}"
 info "  Log: ${LOG_FILE}"
 info "=========================================="
 
@@ -183,7 +248,11 @@ Failures: ${FAILURES}"
     # Run one darwin cycle
     info "Starting cycle ${CYCLE} (timeout: ${TIMEOUT}s)"
     set +e
-    "${REPO_DIR}/utils/darwin-cycle.sh" --timeout ${TIMEOUT} 2>&1 | tee -a "${LOG_FILE}"
+    "${REPO_DIR}/utils/darwin-cycle.sh" \
+        --personalization "${PERSONALIZATION_DIR}" \
+        --timeout "${TIMEOUT}" \
+        --ollama-host "${LOCAL_OLLAMA_HOST}" \
+        --ssh-key-dir "${SSH_KEY_DIR}" 2>&1 | tee -a "${LOG_FILE}"
     CYCLE_EXIT=$?
     set -e
 
@@ -226,7 +295,9 @@ Failures: ${FAILURES}"
     fi
 done
 
-# --- Loop complete ---
+# =============================================================================
+# Loop complete
+# =============================================================================
 LOOP_END=$(date +%s)
 LOOP_ELAPSED=$((LOOP_END - LOOP_START))
 HOURS=$((LOOP_ELAPSED / 3600))

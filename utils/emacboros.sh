@@ -14,30 +14,14 @@ CONTAINER_NAME="iar-emacboros"
 REMOTE_OLLAMA_HOST="10.66.0.3:11434"
 LOCAL_OLLAMA_HOST="localhost:11434"
 
-# Default: personalization directory (can be overridden with --personalization)
-# The personalization directory must contain three subdirectories:
-#   knowledge/  -- injectable knowledge bases (loaded via C-c k)
-#   tasks/      -- per-agent personal files (TODO.md, IDEAS.md, LOGS.md, SUMMARY.md, MEMORIES.md)
-#   audit/      -- per-agent HISTORY.log files and the global audit.log
-PERSONALIZATION_DIR="${REPO_DIR}/personalization"
-
 # =============================================================================
 # Usage
 # =============================================================================
 usage() {
     cat <<EOF
-Usage: emacboros.sh [OPTIONS]
+Usage: emacboros.sh --personalization PATH [OPTIONS]
 
-Options:
-  --local              Use a local Ollama instance (localhost:11434) instead of
-                       the remote server. Enables host networking so the container
-                       can reach Ollama on the host loopback interface.
-  --mount PATH         Mount a host directory read-write inside the container at
-                       the same absolute path. Can be specified multiple times.
-                       The path must exist on the host.
-  --mount-ro PATH      Mount a host directory read-only inside the container at
-                       the same absolute path. Can be specified multiple times.
-                       The path must exist on the host.
+Required:
   --personalization PATH
                        Mount a personalization directory into the container.
                        The directory must contain three subdirectories:
@@ -48,15 +32,26 @@ Options:
                          /root/.emacs.d/knowledge
                          /root/.emacs.d/tasks
                          /root/.emacs.d/audit
-                       Defaults to the bundled personalization/ directory in the repo.
-                       Use this to point at a separate personalization repository.
+                       Use this to point at your personalization repository.
+
+Options:
+  --local              Use a local Ollama instance (localhost:11434) instead of
+                       the remote server. Enables host networking so the container
+                       can reach Ollama on the host loopback interface.
+  --ollama-host HOST    Ollama API host:port (overrides --local and default)
+  --mount PATH         Mount a host directory read-write inside the container at
+                       the same absolute path. Can be specified multiple times.
+                       The path must exist on the host.
+  --mount-ro PATH      Mount a host directory read-only inside the container at
+                       the same absolute path. Can be specified multiple times.
+                       The path must exist on the host.
   --help, -h           Show this message and exit.
 
 Examples:
-  emacboros.sh --mount /home/nacho/projects/myapp
-  emacboros.sh --mount-ro /etc/ansible --mount /home/nacho/infra
-  emacboros.sh --local --mount /home/nacho/dev/scratch
-  emacboros.sh --personalization /home/nacho/repos/iar-personalization
+  emacboros.sh --personalization ~/repos/iar-personalization
+  emacboros.sh --personalization ~/repos/iar-personalization --local
+  emacboros.sh --personalization ~/repos/iar-personalization --mount /home/nacho/projects/myapp
+  emacboros.sh --personalization ~/repos/iar-personalization --mount-ro /etc/ansible --mount /home/nacho/infra
 EOF
 }
 
@@ -64,6 +59,8 @@ EOF
 # Parse arguments
 # =============================================================================
 USE_LOCAL=false
+PERSONALIZATION_DIR=""
+CUSTOM_OLLAMA_HOST=""
 MOUNT_ARGS=()
 MOUNT_RO_ARGS=()
 
@@ -72,6 +69,11 @@ while [[ $# -gt 0 ]]; do
         --local)
             USE_LOCAL=true
             shift
+            ;;
+        --ollama-host)
+            [[ $# -lt 2 ]] && error "--ollama-host requires a value" && exit 1
+            CUSTOM_OLLAMA_HOST="$2"
+            shift 2
             ;;
         --mount)
             [[ $# -lt 2 ]] && error "--mount requires a path argument" && exit 1
@@ -89,14 +91,13 @@ while [[ $# -gt 0 ]]; do
             ;;
         --personalization)
             [[ $# -lt 2 ]] && error "--personalization requires a path argument" && exit 1
-            PERSONALIZATION_PATH="$(realpath "$2")"
-            [[ ! -d "${PERSONALIZATION_PATH}" ]] && error "--personalization: directory does not exist: ${PERSONALIZATION_PATH}" && exit 1
+            PERSONALIZATION_DIR="$(realpath "$2")"
+            [[ ! -d "${PERSONALIZATION_DIR}" ]] && error "--personalization: directory does not exist: ${PERSONALIZATION_DIR}" && exit 1
             # Verify required subdirectories exist
             for subdir in knowledge tasks audit; do
-                [[ ! -d "${PERSONALIZATION_PATH}/${subdir}" ]] && \
-                    error "--personalization: missing required subdirectory: ${PERSONALIZATION_PATH}/${subdir}" && exit 1
+                [[ ! -d "${PERSONALIZATION_DIR}/${subdir}" ]] && \
+                    error "--personalization: missing required subdirectory: ${PERSONALIZATION_DIR}/${subdir}" && exit 1
             done
-            PERSONALIZATION_DIR="${PERSONALIZATION_PATH}"
             shift 2
             ;;
         --help|-h)
@@ -111,10 +112,22 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate required arguments
+if [[ -z "${PERSONALIZATION_DIR}" ]]; then
+    error "--personalization is required. Specify the path to your personalization directory."
+    echo ""
+    usage
+    exit 1
+fi
+
 # =============================================================================
 # Build runtime options based on mode
 # =============================================================================
-if [[ "${USE_LOCAL}" == "true" ]]; then
+if [[ -n "${CUSTOM_OLLAMA_HOST}" ]]; then
+    OLLAMA_HOST="${CUSTOM_OLLAMA_HOST}"
+    NET_OPTS="--network=host"
+    info "Using custom Ollama at ${OLLAMA_HOST} with host networking"
+elif [[ "${USE_LOCAL}" == "true" ]]; then
     OLLAMA_HOST="${LOCAL_OLLAMA_HOST}"
     NET_OPTS="--network=host"
     info "Local mode: using Ollama at ${OLLAMA_HOST} with host networking"

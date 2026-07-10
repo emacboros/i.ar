@@ -75,13 +75,13 @@ notification.  Must be a non-empty string to trigger a send.")
 (defconst darwin-cycle-prompt
   (my-gptel--load-prompt "darwin_cycle")
   "The prompt sent to darwin at the start of each cycle.
-Loaded from knowledge/prompts/common/darwin_cycle.org")
+Loaded from agents.d/common/darwin_cycle.org")
 
 (defconst darwin-cycle-continue-prompt
   (my-gptel--load-prompt "darwin_cycle_continue")
   "Prompt sent to darwin when it produces a text-only response (no tool calls)
 to nudge it to continue the cycle.
-Loaded from knowledge/prompts/common/darwin_cycle_continue.org")
+Loaded from agents.d/common/darwin_cycle_continue.org")
 
 ;;; --- Telegram notification ---
 

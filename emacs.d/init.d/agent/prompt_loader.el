@@ -1,12 +1,12 @@
 ;; -*- lexical-binding: t; -*-
 
-;;; Prompt Loader -- Load prompt templates from knowledge/prompts/common/
+;;; Prompt Loader -- Load prompt templates from agents.d/common/
 ;;
 ;; Provides a single function to load prompt template strings from
 ;; .org files in the common prompts directory.  This separates prompt
 ;; content from code logic.
 ;;
-;; Prompt files live at knowledge/prompts/common/<name>.org which is
+;; Prompt files live at agents.d/common/<name>.org which is
 ;; mounted inside the container at agents.d/common/<name>.org.
 ;;
 ;; Templates may contain format specifiers (%s, %d, etc.) that are
