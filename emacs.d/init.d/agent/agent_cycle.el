@@ -10,10 +10,9 @@
 ;; 5. Exits Emacs when done (or on timeout)
 ;;
 ;; Any orchestrator agent can be run autonomously.  The agent's cycle
-;; prompt is loaded from agents.d/common/agent_cycle.org and the
-;; continue prompt from agents.d/common/agent_cycle_continue.org.
-;; These are shared by all agents -- the agent's personality (prompt.org)
-;; provides the identity, the cycle prompt provides the workflow.
+;; prompt is loaded from agents.d/common/<agent-name>_cycle.org (falling
+;; back to agents.d/common/agent_cycle.org).  The agent's personality
+;; (prompt.org) provides the identity, the cycle prompt provides the workflow.
 ;;
 ;; Usage (batch mode):
 ;;   emacs --batch -l /root/.emacs.d/init.el \
@@ -76,7 +75,7 @@ Can also be set via AGENT_TELEGRAM_CHAT_ID env var.
 This variable intentionally lacks a :safe property so that Emacs
 prompts the user when it is set via file-local variables.  The chat
 ID controls where notifications are sent: silently accepting it from
-a tampered session file could redirect notifications to an attacker."
+a tampered session file could redirect it to an attacker."
   :type 'string
   :group 'agent-cycle)
 
@@ -150,6 +149,29 @@ truthy in Emacs Lisp but would send an empty Telegram message."
 
 (add-hook 'kill-emacs-hook #'agent--notify-on-exit)
 
+;;; --- Cycle logging ---
+
+(defun agent--cycle-log-append (agent-name start end)
+  "Append the latest LLM response to audit/<agent-name>/cycle.log.
+START and END are buffer positions delimiting the new response text.
+Creates the log file if it does not exist.  Prepends a timestamp."
+  (when (and (integerp start) (integerp end) (< start end))
+    (let* ((log-path (expand-file-name
+                      (format "audit/%s/cycle.log" agent-name)
+                      user-emacs-directory))
+           (timestamp (format-time-string "[%Y-%m-%d %H:%M:%S]"))
+           (response (with-current-buffer (current-buffer)
+                       (save-restriction
+                         (widen)
+                         (buffer-substring-no-properties
+                          (min (max start (point-min)) (point-max))
+                          (min (max end (point-min)) (point-max)))))))
+      (make-directory (file-name-directory log-path) t)
+      (with-temp-buffer
+        (insert timestamp "\n" response "\n\n")
+        (let ((coding-system-for-write 'utf-8))
+          (append-to-file (point-min) (point-max) log-path))))))
+
 ;;; --- Cycle execution ---
 
 (defun agent--load-profile (agent-name)
@@ -161,11 +183,15 @@ expands #+INCLUDE directives."
       (error "Agent profile '%s' not found in agents.d/agents/%s/prompt.org"
              agent-name agent-name)))
 
-(defun agent--load-cycle-prompt (_agent-name)
-  "Load the shared cycle prompt from agents.d/common/agent_cycle.org.
-This prompt is shared by all autonomous agents.  The agent's personality
-(prompt.org) provides the identity, the cycle prompt provides the workflow."
-  (my-gptel--load-prompt "agent_cycle"))
+(defun agent--load-cycle-prompt (agent-name)
+  "Load the cycle prompt for AGENT-NAME.
+Tries agents.d/common/<agent-name>_cycle.org first, then falls back to
+agents.d/common/agent_cycle.org.  This allows per-agent cycle prompts
+(e.g. gardener_cycle.org) while maintaining backward compatibility."
+  (or (condition-case nil
+          (my-gptel--load-prompt (format "%s_cycle" agent-name))
+        (error nil))
+      (my-gptel--load-prompt "agent_cycle")))
 
 (defun agent--load-continue-prompt (_agent-name)
   "Load the shared continue prompt from agents.d/common/agent_cycle_continue.org.
@@ -227,7 +253,7 @@ Keywords args:
   :prompt STRING    -- override the cycle prompt
   :knowledge LABEL  -- knowledge directory label(s) to load (default: \"iar/\")
                       Can be a single label string or a list of labels.
-  :self-modification BOOL -- enable self-modification in cycle buffer (default: t)
+  :self-modification BOOL -- enable self-modification in cycle buffer (default: nil)
 
 Creates a gptel buffer with the agent's profile, sends the cycle prompt,
 and waits for completion.  Sends a Telegram notification and exits Emacs
@@ -253,7 +279,7 @@ until it either completes all steps or reaches the turn limit."
                               ((listp k) k)
                               (t '("iar/")))))
          (self-mod (let ((sm (plist-get args :self-modification)))
-                     (if (null sm) t sm)))
+                     (if (null sm) nil sm)))
          (cycle-buf (get-buffer-create (format "*%s-cycle*" agent-name)))
          (completed nil)
          (exit-code 0)
@@ -275,6 +301,7 @@ until it either completes all steps or reaches the turn limit."
       ;; Set self-modification mode so the agent can edit init.d/**/*.el.
       ;; Use setq-local (not setq) so only THIS buffer has self-modification
       ;; enabled.  Delegate buffers inherit the global nil value.
+      ;; Default is nil -- only darwin passes :self-modification t.
       (setq-local my-gptel--guard-allow-self-modification self-mod)
 
       ;; Load knowledge bases into the cycle buffer's system prompt.
@@ -306,6 +333,8 @@ until it either completes all steps or reaches the turn limit."
              (lambda (start end)
                (unless completed
                  (cl-incf turn-count)
+                 ;; Log the full response to cycle.log for debugging
+                 (agent--cycle-log-append agent-name start end)
                  (message "[%s] Turn #%d completed (tool calls so far: %d)"
                           agent-name turn-count tool-call-count)
                  (when (and (integerp start) (integerp end) (< start end))
