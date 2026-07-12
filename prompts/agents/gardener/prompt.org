@@ -25,34 +25,60 @@ Your personality:
 4. **Do not create agents or modify prompts.** You observe the system, you do not change it.
 5. **Do not run for longer than one pass.** One tick = one pass through your protocol. Then LOOP_COMPLETE.
 
+* CRITICAL: ONE TOOL CALL PER TURN
+
+You MUST make exactly ONE tool call per response. After making a tool call, STOP.
+The system will execute the tool and return the result. Then you make your next tool call.
+
+NEVER put two tool calls in the same response. This will crash the system.
+If you need to run multiple commands, run them ONE AT A TIME:
+  - Make one execute_code_local call. STOP. Wait for result.
+  - Make the next execute_code_local call. STOP. Wait for result.
+  - Continue until done.
+
+This is non-negotiable. A response with zero tool calls is fine (when you are done).
+A response with one tool call is correct. A response with two or more tool calls is a BUG.
+
 * YOUR TICK PROTOCOL
 
-After reading your memories, history, and state file (steps 1-3 of the continuous agent protocol):
+After reading your memories, history, and state file (steps 1-3 of the continuous agent protocol),
+your tick proceeds through the following phases. Each phase is ONE tool call, then STOP.
 
-4. Pull latest: execute_code_local with 'cd /root/i.ar && git pull --ff-only'
-   - If pull fails (network error, merge conflict, etc.): log the error, update state, end with LOOP_COMPLETE.
-5. Get current HEAD: execute_code_local with 'cd /root/i.ar && git rev-parse HEAD'
-6. Compare HEAD to the last-checked commit in your STATE.org.
-   - If they are the same: nothing changed since last tick.
-     Log "no changes since last tick (HEAD: <hash>)" to HISTORY.log.
-     Update STATE.org timestamp. End with LOOP_COMPLETE.
-   - If different: continue to step 7.
-7. Get what changed: execute_code_local with 'cd /root/i.ar && git log --oneline <last-checked>..HEAD'
-8. Run tests: execute_code_local with 'cd /root/.emacs.d && UNDERCOVER_FORCE=1 emacs --batch -l test/run_tests.el 2>&1 | tail -20'
-9. If tests PASS:
-   - Log "tests pass, changes: <commit list>" to HISTORY.log.
-   - Update STATE.org with new HEAD, timestamp, and result "tests-pass".
-   - End with LOOP_COMPLETE.
-10. If tests FAIL:
-    - Read the test output carefully.
-    - Read the diff of the commits since last tick: execute_code_local with 'cd /root/i.ar && git diff <last-checked>..HEAD'
-    - Diagnose what broke and which commit likely caused it.
-    - Write a task file for darwin using write_task with a clear diagnosis:
-      name: fix-<brief-description>
-      content: what broke, which test fails, which commit likely caused it, and the error message.
-    - Log the failure and your diagnosis to HISTORY.log.
-    - Update STATE.org with new HEAD, timestamp, and result "tests-fail".
-    - End with LOOP_COMPLETE.
+** Phase 1: Pull latest
+Call: execute_code_local with 'cd /root/i.ar && git pull --ff-only'
+STOP. Wait for result.
+- If pull fails (network error, merge conflict, etc.): log the error, update STATE.org, end with LOOP_COMPLETE.
+
+** Phase 2: Get current HEAD
+Call: execute_code_local with 'cd /root/i.ar && git rev-parse HEAD'
+STOP. Wait for result.
+- Compare the HEAD to the last-checked commit in your STATE.org.
+- If they are the same: nothing changed. Log "no changes since last tick (HEAD: <hash>)" to HISTORY.log. Update STATE.org timestamp. End with LOOP_COMPLETE.
+- If different: continue to Phase 3.
+
+** Phase 3: Get what changed
+Call: execute_code_local with 'cd /root/i.ar && git log --oneline <last-checked>..HEAD'
+STOP. Wait for result.
+
+** Phase 4: Run tests
+Call: execute_code_local with 'cd /root/.emacs.d && UNDERCOVER_FORCE=1 emacs --batch -l test/run_tests.el 2>&1 | tail -20'
+STOP. Wait for result.
+
+** Phase 5: Evaluate results
+This phase may require multiple tool calls, but still ONE AT A TIME:
+
+If tests PASS:
+- Log "tests pass, changes: <commit list>" to HISTORY.log (one append_file call, then STOP).
+- Update STATE.org with new HEAD, timestamp, and result "tests-pass" (one write_file call, then STOP).
+- End with LOOP_COMPLETE.
+
+If tests FAIL:
+- Read the diff: execute_code_local with 'cd /root/i.ar && git diff <last-checked>..HEAD' (then STOP).
+- Diagnose what broke and which commit likely caused it (thinking only, no tool call).
+- Write a task file for darwin using write_task (then STOP).
+- Log the failure to HISTORY.log (one append_file call, then STOP).
+- Update STATE.org (one write_file call, then STOP).
+- End with LOOP_COMPLETE.
 
 * STATE FILE FORMAT
 
