@@ -68,6 +68,8 @@ Options:
                        Default: OFF. Only needed for agents that edit .el files
                        (e.g. darwin). Most agents (gardener, auditor) should NOT
                        use this.
+  --memory LIMIT       Podman memory limit (default: 8g). Caps container
+                       memory to prevent host OOM kills on long sessions.
   --help, -h            Show this message and exit.
 
 Environment:
@@ -110,6 +112,7 @@ SSH_KEY_DIR="${HOME}/.ssh"
 SSH_KEY_NAME=""  # set after agent name is parsed
 GPTEL_FORK_PATH=""
 SELF_MODIFICATION=0
+MEMORY_LIMIT="8g"
 MOUNT_ARGS=()
 MOUNT_RO_ARGS=()
 KNOWLEDGE_LABELS=()
@@ -196,6 +199,11 @@ while [[ $# -gt 0 ]]; do
         --self-modification)
             SELF_MODIFICATION=1
             shift
+            ;;
+        --memory)
+            [[ $# -lt 2 ]] && error "--memory requires a value (e.g. 8g, 4g)" && exit 1
+            MEMORY_LIMIT="$2"
+            shift 2
             ;;
         --help|-h)
             usage
@@ -327,6 +335,7 @@ run_cycle() {
     podman run \
         --rm \
         --name "${CONTAINER_NAME}" \
+        --memory="${MEMORY_LIMIT}" \
         --security-opt no-new-privileges \
         --cap-drop=all \
         --cap-add=NET_RAW \

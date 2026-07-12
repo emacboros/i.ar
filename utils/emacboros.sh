@@ -55,6 +55,9 @@ Options:
                        Useful when a fix is merged upstream but hasn't shipped
                        in an ELPA release yet. The directory must contain
                        gptel.el. If not specified, the ELPA package is used.
+  --memory LIMIT       Podman memory limit (default: 8g). Caps container
+                       memory to prevent host OOM kills on long sessions.
+                       Examples: 4g, 8g, 16g, 2g.
   --help, -h           Show this message and exit.
 
 Examples:
@@ -74,6 +77,7 @@ PERSONALIZATION_DIR=""
 CUSTOM_OLLAMA_HOST=""
 SELF_MODIFICATION=false
 GPTEL_FORK_PATH=""
+MEMORY_LIMIT="8g"
 MOUNT_ARGS=()
 MOUNT_RO_ARGS=()
 
@@ -122,6 +126,11 @@ while [[ $# -gt 0 ]]; do
             GPTEL_FORK_PATH="$(realpath "$2")"
             [[ ! -d "${GPTEL_FORK_PATH}" ]] && error "--gptel-fork: directory does not exist: ${GPTEL_FORK_PATH}" && exit 1
             [[ ! -f "${GPTEL_FORK_PATH}/gptel.el" ]] && error "--gptel-fork: gptel.el not found in: ${GPTEL_FORK_PATH}" && exit 1
+            shift 2
+            ;;
+        --memory)
+            [[ $# -lt 2 ]] && error "--memory requires a value (e.g. 8g, 4g)" && exit 1
+            MEMORY_LIMIT="$2"
             shift 2
             ;;
         --help|-h)
@@ -223,6 +232,7 @@ run() {
     # shellcheck disable=SC2086
     podman run \
         --rm -it --name "${CONTAINER_NAME}" \
+        --memory="${MEMORY_LIMIT}" \
         --security-opt no-new-privileges \
         --cap-drop=all \
         --cap-add=NET_RAW \
