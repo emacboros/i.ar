@@ -187,25 +187,48 @@ When the sub-agent produces a text-only response (no tool calls in
 the current turn), it is re-prompted with `my-gptel--delegate-continue-prompt'
 to encourage it to either call its tools or produce its final response
 if the task is complete.  This prevents models that describe tool calls
-in text from terminating prematurely with a non-result."
+in text from terminating prematurely with a non-result.
+
+When tools are called and the response completes, the function extracts
+only the text after the \"=== DELEGATION RESULT ===\" marker (injected
+by the delegated_task.org prompt template) to return a clean summary to
+the parent agent.  This prevents tool call syntax and raw tool results
+from consuming the parent agent's context window.  Falls back to the
+full response if the marker is not found."
   (lambda (start end)
     (unless (symbol-value completed-sym)
       (let ((tools-called (symbol-value tools-called-sym))
             (turn-count (symbol-value turn-count-sym)))
         (cond
          ;; Case 1: Tools were called this turn — genuine response, return it.
+         ;; Extract only the text after the "=== DELEGATION RESULT ===" marker.
+         ;; The delegated_task.org prompt template instructs the sub-agent to
+         ;; end with this marker followed by a concise summary. This keeps the
+         ;; parent's context clean -- no tool call syntax or raw results.
+         ;; Falls back to full response if marker is not found.
          (tools-called
           (set completed-sym t)
           (when (symbol-value timer-sym)
             (cancel-timer (symbol-value timer-sym)))
-          (let ((response
-                 (save-restriction
-                   (widen)
-                   (if (and (integerp start) (integerp end) (< start end))
-                       (buffer-substring-no-properties
-                        (min (max start (point-min)) (point-max))
-                        (min (max end (point-min)) (point-max)))
-                     ""))))
+          (let* ((full-response
+                  (save-restriction
+                    (widen)
+                    (if (and (integerp start) (integerp end) (< start end))
+                        (buffer-substring-no-properties
+                         (min (max start (point-min)) (point-max))
+                         (min (max end (point-min)) (point-max)))
+                      "")))
+                 ;; Search for the DELEGATION RESULT marker in the full response.
+                 ;; If found, extract everything after it -- the concise summary.
+                 (marker-pos
+                  (string-match "=== DELEGATION RESULT ===" full-response))
+                 (response
+                  (if marker-pos
+                      (let ((after-marker
+                             (substring full-response
+                                        (match-end 0))))
+                        (string-trim after-marker))
+                    full-response)))
             (run-with-timer
              5 nil
              (lambda ()

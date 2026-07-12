@@ -6,3 +6,8 @@ CONTEXT:
 
 TASK:
 %s
+
+IMPORTANT: After completing your task (including any tool calls), you MUST end your response with a concise text summary of your findings. This summary is what the parent agent will see -- it does not see your tool calls or their results. Format your final summary as follows:
+
+=== DELEGATION RESULT ===
+[Your concise summary here. Report what you found: function names, line numbers, key observations, or the answer to the question asked. Do NOT include raw tool output.]
