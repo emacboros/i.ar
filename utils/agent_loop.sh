@@ -109,6 +109,7 @@ PERSONALIZATION_DIR=""
 SSH_KEY_DIR="${HOME}/.ssh"
 SSH_KEY_NAME=""  # set after agent name is parsed
 GPTEL_FORK_PATH=""
+SELF_MODIFICATION=0
 MOUNT_ARGS=()
 MOUNT_RO_ARGS=()
 KNOWLEDGE_LABELS=()
@@ -191,6 +192,10 @@ while [[ $# -gt 0 ]]; do
             [[ ! -d "${GPTEL_FORK_PATH}" ]] && error "--gptel-fork: directory does not exist: ${GPTEL_FORK_PATH}" && exit 1
             [[ ! -f "${GPTEL_FORK_PATH}/gptel.el" ]] && error "--gptel-fork: gptel.el not found in: ${GPTEL_FORK_PATH}" && exit 1
             shift 2
+            ;;
+        --self-modification)
+            SELF_MODIFICATION=1
+            shift
             ;;
         --help|-h)
             usage
