@@ -57,9 +57,17 @@ Options:
   --mount-ro PATH       Mount a host directory read-only inside the container
                        at the same absolute path. Can be specified multiple times.
   --ssh-key-dir PATH    Directory containing agent SSH keys (default: ~/.ssh).
-                       Expects: <agent>_ed25519, <agent>_ed25519.pub, known_hosts
+  --ssh-key NAME        SSH key name to use (default: <agent>_ed25519).
+                       Looks for <name> and <name>.pub in --ssh-key-dir.
+                       If the key does not exist, SSH mounts are skipped
+                       (agent has no git push capability, but pull still works
+                       via HTTPS).
   --gptel-fork PATH    Mount a local gptel fork directory read-only into the
                        container and use it instead of the ELPA package.
+  --self-modification  Enable self-modification mode (tier 2 file guard relaxation).
+                       Default: OFF. Only needed for agents that edit .el files
+                       (e.g. darwin). Most agents (gardener, auditor) should NOT
+                       use this.
   --help, -h            Show this message and exit.
 
 Environment:
@@ -68,14 +76,20 @@ Environment:
   AGENT_TELEGRAM_CHAT_ID    Telegram chat ID for notifications
 
 Examples:
-  # Single darwin cycle (default)
-  agent_loop.sh --personalization ~/repos/iar-personalization
+  # Single darwin cycle (needs --self-modification for code edits)
+  agent_loop.sh --personalization ~/repos/iar-personalization --self-modification
 
   # Long-running darwin loop
-  agent_loop.sh --personalization ~/repos/iar-personalization --max-cycles 50
+  agent_loop.sh --personalization ~/repos/iar-personalization --self-modification --max-cycles 50
+
+  # Run gardener agent (single tick, no self-modification, no SSH key needed)
+  agent_loop.sh --personalization ~/repos/iar-personalization --agent gardener
 
   # Run auditor agent autonomously
   agent_loop.sh --personalization ~/repos/iar-personalization --agent auditor --max-cycles 10
+
+  # Use a shared SSH key instead of per-agent key
+  agent_loop.sh --personalization ~/repos/iar-personalization --agent darwin --ssh-key darwin_ed25519 --self-modification
 
   # With knowledge and custom timeout
   agent_loop.sh --personalization ~/repos/iar-personalization --knowledge infra/ --timeout 3600
@@ -93,6 +107,7 @@ MAX_CONSECUTIVE_FAILURES=5
 OLLAMA_HOST="${LOCAL_OLLAMA_HOST}"
 PERSONALIZATION_DIR=""
 SSH_KEY_DIR="${HOME}/.ssh"
+SSH_KEY_NAME=""  # set after agent name is parsed
 GPTEL_FORK_PATH=""
 MOUNT_ARGS=()
 MOUNT_RO_ARGS=()
@@ -165,6 +180,11 @@ while [[ $# -gt 0 ]]; do
             [[ ! -d "${SSH_KEY_DIR}" ]] && error "--ssh-key-dir: directory does not exist: ${SSH_KEY_DIR}" && exit 1
             shift 2
             ;;
+        --ssh-key)
+            [[ $# -lt 2 ]] && error "--ssh-key requires a value" && exit 1
+            SSH_KEY_NAME="$2"
+            shift 2
+            ;;
         --gptel-fork)
             [[ $# -lt 2 ]] && error "--gptel-fork requires a path argument" && exit 1
             GPTEL_FORK_PATH="$(realpath "$2")"
@@ -225,7 +245,7 @@ fi
 # Derived values
 # =============================================================================
 CONTAINER_NAME="${AGENT_NAME}-cycle"
-SSH_KEY_NAME="${AGENT_NAME}_ed25519"
+SSH_KEY_NAME="${SSH_KEY_NAME:-${AGENT_NAME}_ed25519}"
 GIT_AUTHOR_NAME="$(tr '[:lower:]' '[:upper:]' <<< "${AGENT_NAME:0:1}")${AGENT_NAME:1} Agent"
 GIT_AUTHOR_EMAIL="${AGENT_NAME}@emacboros.local"
 LOG_FILE="${PERSONALIZATION_DIR}/audit/${AGENT_NAME}-loop-$(date +%Y-%m-%d).log"
@@ -279,6 +299,21 @@ reset_worktree() {
 }
 
 # =============================================================================
+# Check SSH key availability
+# =============================================================================
+SSH_MOUNT_OPTS=()
+if [[ -f "${SSH_KEY_DIR}/${SSH_KEY_NAME}" ]]; then
+    SSH_MOUNT_OPTS+=(
+        "-v" "${SSH_KEY_DIR}/${SSH_KEY_NAME}:/root/.ssh/id_ed25519:ro,z"
+        "-v" "${SSH_KEY_DIR}/${SSH_KEY_NAME}.pub:/root/.ssh/id_ed25519.pub:ro,z"
+        "-v" "${SSH_KEY_DIR}/known_hosts:/root/.ssh/known_hosts:ro,z"
+    )
+    info "SSH key: ${SSH_KEY_DIR}/${SSH_KEY_NAME}"
+else
+    warn "SSH key not found: ${SSH_KEY_DIR}/${SSH_KEY_NAME} -- git push disabled (pull still works)"
+fi
+
+# =============================================================================
 # Run one cycle inside the container
 # =============================================================================
 run_cycle() {
@@ -307,19 +342,18 @@ run_cycle() {
         -v "${PERSONALIZATION_DIR}/tasks:/root/.emacs.d/tasks:z" \
         -v "${PERSONALIZATION_DIR}/audit:/root/.emacs.d/audit:z" \
         -v "${REPO_DIR}/:/root/i.ar/:z" \
-        -v "${SSH_KEY_DIR}/${SSH_KEY_NAME}:/root/.ssh/id_ed25519:ro,z" \
-        -v "${SSH_KEY_DIR}/${SSH_KEY_NAME}.pub:/root/.ssh/id_ed25519.pub:ro,z" \
-        -v "${SSH_KEY_DIR}/known_hosts:/root/.ssh/known_hosts:ro,z" \
+        "${SSH_MOUNT_OPTS[@]}" \
         -e "GIT_AUTHOR_NAME=${GIT_AUTHOR_NAME}" \
         -e "GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL}" \
         -e "GIT_COMMITTER_NAME=${GIT_AUTHOR_NAME}" \
         -e "GIT_COMMITTER_EMAIL=${GIT_AUTHOR_EMAIL}" \
         -e "GIT_PAGER=cat" \
         -e "TERM=dumb" \
+        $([[ "${SELF_MODIFICATION:-0}" -eq 1 ]] && echo "-e EMACBOROS_SELF_MODIFICATION=1") \
         "${DYNAMIC_MOUNT_OPTS[@]}" \
         --entrypoint /bin/bash \
         "${IMAGE_NAME}" \
-        -c "preflight.sh && emacs --batch -l /root/.emacs.d/init.el --eval '(agent-run-cycle :agent \"${AGENT_NAME}\" :timeout ${TIMEOUT} ${KNOWLEDGE_EVAL})'" 2>&1 | tee -a "${LOG_FILE}"
+        -c "preflight.sh && emacs --batch -l /root/.emacs.d/init.el --eval '(agent-run-cycle :agent \"${AGENT_NAME}\" :timeout ${TIMEOUT} :self-modification ${SELF_MODIFICATION:-0} ${KNOWLEDGE_EVAL})'" 2>&1 | tee -a "${LOG_FILE}"
 
     return ${PIPESTATUS[0]}
 }
@@ -342,7 +376,11 @@ info "  Cooldown: ${COOLDOWN}s"
 info "  Per-cycle timeout: ${TIMEOUT}s"
 info "  Max consecutive failures: ${MAX_CONSECUTIVE_FAILURES}"
 info "  Ollama: ${OLLAMA_HOST}"
-info "  SSH keys: ${SSH_KEY_DIR} (key: ${SSH_KEY_NAME})"
+if [[ -f "${SSH_KEY_DIR}/${SSH_KEY_NAME}" ]]; then
+    info "  SSH key: ${SSH_KEY_DIR}/${SSH_KEY_NAME}"
+else
+    info "  SSH key: (none -- git push disabled)"
+fi
 info "  Log: ${LOG_FILE}"
 if [[ ${#KNOWLEDGE_LABELS[@]} -gt 0 ]]; then
     info "  Knowledge: ${KNOWLEDGE_LABELS[*]}"
