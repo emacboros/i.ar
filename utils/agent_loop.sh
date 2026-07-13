@@ -62,7 +62,7 @@ Options:
                        If the key does not exist, SSH mounts are skipped
                        (agent has no git push capability, but pull still works
                        via HTTPS).
-  --gptel-fork PATH    Mount a local gptel fork directory read-only into the
+  --gptel-fork PATH    Mount a local gptel fork directory (writable) into the
                        container and use it instead of the ELPA package.
   --self-modification  Enable self-modification mode (tier 2 file guard relaxation).
                        Default: OFF. Only needed for agents that edit .el files
@@ -344,7 +344,7 @@ run_cycle() {
         -e "EMACBOROS_OLLAMA_HOST=${OLLAMA_HOST}" \
         -e "AGENT_TELEGRAM_BOT_TOKEN=${AGENT_TELEGRAM_BOT_TOKEN:-}" \
         -e "AGENT_TELEGRAM_CHAT_ID=${AGENT_TELEGRAM_CHAT_ID:-}" \
-        $([[ -n "${GPTEL_FORK_PATH}" ]] && echo "-v ${GPTEL_FORK_PATH}:/root/.emacs.d/gptel-fork:ro,z -e EMACBOROS_GPTEL_FORK_PATH=/root/.emacs.d/gptel-fork") \
+        $([[ -n "${GPTEL_FORK_PATH}" ]] && echo "-v ${GPTEL_FORK_PATH}:/root/.emacs.d/gptel-fork:z -e EMACBOROS_GPTEL_FORK_PATH=/root/.emacs.d/gptel-fork") \
         -e "LANG=C.utf8" \
         --tmpfs /tmp:rw,size=256m \
         --tmpfs /run:rw,size=64m \

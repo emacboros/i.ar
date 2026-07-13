@@ -50,7 +50,7 @@ Options:
   --mount-ro PATH      Mount a host directory read-only inside the container at
                        the same absolute path. Can be specified multiple times.
                        The path must exist on the host.
-  --gptel-fork PATH    Mount a local gptel fork directory read-only into the
+  --gptel-fork PATH    Mount a local gptel fork directory (writable) into the
                        container and use it instead of the ELPA package.
                        Useful when a fix is merged upstream but hasn't shipped
                        in an ELPA release yet. The directory must contain
@@ -223,8 +223,8 @@ run() {
     # --- Gptel fork mount ---
     GPTEL_FORK_OPTS=""
     if [[ -n "${GPTEL_FORK_PATH}" ]]; then
-        GPTEL_FORK_OPTS="-v ${GPTEL_FORK_PATH}:/root/.emacs.d/gptel-fork:ro,z -e EMACBOROS_GPTEL_FORK_PATH=/root/.emacs.d/gptel-fork"
-        info "Gptel fork: ${GPTEL_FORK_PATH} -> /root/.emacs.d/gptel-fork (read-only)"
+        GPTEL_FORK_OPTS="-v ${GPTEL_FORK_PATH}:/root/.emacs.d/gptel-fork:z -e EMACBOROS_GPTEL_FORK_PATH=/root/.emacs.d/gptel-fork"
+        info "Gptel fork: ${GPTEL_FORK_PATH} -> /root/.emacs.d/gptel-fork (writable)"
     else
         info "Gptel fork: not specified (using ELPA package)"
     fi
