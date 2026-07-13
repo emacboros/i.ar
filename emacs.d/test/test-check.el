@@ -6,7 +6,7 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'subr-x)
-(require 'check_elisp_tool)
+(require 'iar-tool--check-elisp)
 
 ;;; --- Test fixtures ---
 

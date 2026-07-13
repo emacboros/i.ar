@@ -46,7 +46,7 @@ effect without reloading the module."
 
 ;;; --- Internal functions ---
 
-;; Alias to the canonical implementation in task_tools.el.
+;; Alias to the canonical implementation in shared/agent_utils.el.
 ;; Both modules need to resolve the current agent's directory from
 ;; buffer-local state (my-gptel--current-agent-name or
 ;; my-gptel--current-agent-file). The logic is identical, so we
@@ -54,7 +54,7 @@ effect without reloading the module."
 (defalias 'my-gptel--memory-get-agent-dir 'my-gptel--resolve-agent-audit-dir
   "Return the audit directory path for the currently loaded agent.
 Memory files (LOGS.md, SUMMARY.md, MEMORIES.md) live in audit/<agent>/.
-This is an alias for `my-gptel--resolve-agent-audit-dir' defined in task_tools.el.")
+This is an alias for `my-gptel--resolve-agent-audit-dir' defined in shared/agent_utils.el.")
 
 (defun my-gptel--memory-extract-summary (agent-dir)
   "Read SUMMARY.md from AGENT-DIR. Returns the content string."

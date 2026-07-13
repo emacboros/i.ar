@@ -14,7 +14,7 @@
 (require 'gptel)
 (require 'cl-lib)
 (require 'subr-x)
-(require 'task_tools)
+(require 'agent_utils)  ; validation (moved from task_tools)
 (require 'agent_loader)  ; my-gptel--load-agent-profile (moved from here)
 (require 'tool_guard)    ; my-gptel--block-unknown-tools (moved from here)
 

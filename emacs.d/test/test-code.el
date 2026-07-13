@@ -12,7 +12,7 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'subr-x)
-(require 'code_tools)
+(require 'iar-tool--execute-code-local)
 
 ;;; --- Synchronous test wrapper ---
 

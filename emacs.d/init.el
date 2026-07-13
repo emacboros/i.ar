@@ -11,6 +11,9 @@
 (defconst init-core-dir (expand-file-name "core" init-dir))
 (defconst init-agent-dir (expand-file-name "agent" init-dir))
 (defconst init-tools-dir (expand-file-name "tools" init-dir))
+(defconst init-tools-fs-dir (expand-file-name "tools/filesystem" init-dir))
+(defconst init-tools-code-dir (expand-file-name "tools/code" init-dir))
+(defconst init-tools-tasks-dir (expand-file-name "tools/tasks" init-dir))
 (defconst init-security-dir (expand-file-name "security" init-dir))
 (defconst init-session-dir (expand-file-name "session" init-dir))
 (defconst init-dynamic-dir (expand-file-name "dynamic" init-dir))
@@ -18,9 +21,10 @@
 (defconst init-shared-dir (expand-file-name "shared" init-dir))
 
 ;; Add all module subdirectories to load-path so that cross-module
-;; require calls (e.g., (require 'task_tools) in delegate_tool.el) can
+;; require calls (e.g., (require 'agent_utils) in delegate_tool.el) can
 ;; resolve files in sibling subdirectories.
 (dolist (subdir (list init-shared-dir init-core-dir init-agent-dir init-tools-dir
+                       init-tools-fs-dir init-tools-code-dir init-tools-tasks-dir
                        init-security-dir init-session-dir init-dynamic-dir
                        init-debug-dir))
   (add-to-list 'load-path subdir))
@@ -63,7 +67,7 @@
 ;; ──────────────────────────────────────────────────────────
 ;; Security modules
 ;; ──────────────────────────────────────────────────────────
-;; Output sanitizer (must load before code_tools.el)
+;; Output sanitizer (must load before execute_code_local.el)
 (load (expand-file-name "output_sanitizer.el" init-security-dir))
 
 ;; File guard — protected path enforcement
@@ -83,17 +87,22 @@
 ;; call my-gptel--load-prompt at load time (in defconst forms).
 (load (expand-file-name "prompt_loader.el" init-agent-dir))
 
-;; Native filesystem tools for gptel
-(load (expand-file-name "fs_tools.el" init-tools-dir))
+;; Filesystem tools (one tool per file)
+(load (expand-file-name "list_directory.el" init-tools-fs-dir))
+(load (expand-file-name "read_file.el" init-tools-fs-dir))
+(load (expand-file-name "write_file.el" init-tools-fs-dir))
+(load (expand-file-name "append_file.el" init-tools-fs-dir))
+(load (expand-file-name "replace_in_file.el" init-tools-fs-dir))
 
-;; Local code execution tools for gptel
-(load (expand-file-name "code_tools.el" init-tools-dir))
+;; Code execution tools
+(load (expand-file-name "execute_code_local.el" init-tools-code-dir))
+(load (expand-file-name "check_elisp.el" init-tools-code-dir))
 
-;; Replacement utility tool
-(load (expand-file-name "replacement_tool.el" init-tools-dir))
-
-;; Elisp syntax checker tool
-(load (expand-file-name "check_elisp_tool.el" init-tools-dir))
+;; Task tools (one tool per file)
+(load (expand-file-name "read_tasks.el" init-tools-tasks-dir))
+(load (expand-file-name "write_task.el" init-tools-tasks-dir))
+(load (expand-file-name "remove_task.el" init-tools-tasks-dir))
+(load (expand-file-name "read_history.el" init-tools-tasks-dir))
 
 ;; ──────────────────────────────────────────────────────────
 ;; Agent modules
@@ -112,9 +121,6 @@
 
 ;; Memory summarization tool (C-c m in gptel-mode)
 (load (expand-file-name "memory_tools.el" init-agent-dir))
-
-;; Task reader and unified history tools
-(load (expand-file-name "task_tools.el" init-agent-dir))
 
 ;; Agent autonomous cycle runner (darwin and other orchestrator agents)
 (load (expand-file-name "agent_cycle.el" init-agent-dir))

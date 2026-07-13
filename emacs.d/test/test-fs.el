@@ -14,7 +14,10 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'subr-x)
-(require 'fs_tools)
+(require 'iar-tool--list-directory)
+(require 'iar-tool--read-file)
+(require 'iar-tool--write-file)
+(require 'iar-tool--append-file)
 
 ;; Silence byte-compiler warnings for dynamically-bound test variables.
 (defvar my-gptel--fs-read-max-size)

@@ -53,7 +53,8 @@
 
 (defconst test-init-dir (expand-file-name "init.d" user-emacs-directory))
 (defconst test-init-subdirs
-  '("shared" "core" "security" "tools" "agent" "session" "dynamic"))
+  '("shared" "core" "security" "tools" "tools/filesystem" "tools/code" "tools/tasks"
+    "agent" "session" "dynamic"))
 
 ;; --- Add all subdirectories to load-path (for cross-module requires) ---
 

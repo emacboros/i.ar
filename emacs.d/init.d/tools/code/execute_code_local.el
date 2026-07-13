@@ -1,6 +1,8 @@
 ;; -*- lexical-binding: t; -*-
 
-;; Native Local Code Execution tool definition for gptel
+;;; execute_code_local tool for gptel
+;; Async shell command execution in the container.
+;;
 ;; This is an ASYNC tool: the function receives a callback as its first
 ;; argument (per gptel's :async convention) and calls it with the result
 ;; when the process completes. This keeps Emacs fully responsive during
@@ -36,7 +38,6 @@ environment to prevent interactive pagers (less/more) from hanging in
 batch mode.  These are exported (not prefixed) so they persist across
 && chains -- critical for commands like 'cd /root/i.ar && git log'."
   (if (functionp callback-or-command)
-      ;; New async convention: (callback command &optional timeout)
       (let* ((cb callback-or-command)
              (cmd command)
              (timeout (or timeout 3600))
@@ -44,13 +45,6 @@ batch mode.  These are exported (not prefixed) so they persist across
              (timed-out nil)
              (timer nil)
              (proc nil)
-             ;; Capture sanitization flag at call time, not at sentinel
-             ;; fire time.  Process sentinels run in whatever buffer is
-             ;; current when the process exits, NOT the chat buffer that
-             ;; initiated the command.  my-gptel--sanitize-exec-output is
-             ;; buffer-local, so reading it in the sentinel would use the
-             ;; wrong buffer's value (likely nil), silently skipping
-             ;; sanitization even when the agent enabled it.
              (sanitize-output (bound-and-true-p my-gptel--sanitize-exec-output)))
         (setq proc
               (condition-case err
@@ -83,8 +77,6 @@ batch mode.  These are exported (not prefixed) so they persist across
                                         (my-gptel--sanitize-external-output result)
                                       result)))))))
                 (error
-                 ;; Clean up the buffer if make-process fails, then re-signal
-                 ;; so the caller's condition-case can handle the error.
                  (when (buffer-live-p buf) (kill-buffer buf))
                  (signal (car err) (cdr err)))))
         (setq timer
@@ -93,15 +85,10 @@ batch mode.  These are exported (not prefixed) so they persist across
                                 (when (process-live-p proc)
                                   (setq timed-out t)
                                   (delete-process proc))))))
-    ;; Legacy sync convention: (command &optional timeout)
     (let* ((cmd callback-or-command)
            (timeout (or command 3600))
            (result nil)
            (done nil)
-           ;; Compute deadline ONCE before the loop. Computing it inside
-           ;; the while condition (as the old code did) makes the condition
-           ;; always true, since (current-time) is always less than
-           ;; (current-time) + timeout. The deadline must be fixed.
            (deadline (time-add (current-time) (seconds-to-time timeout))))
       (my-gptel--async-shell-command
        (lambda (r) (setq result r done t))
@@ -123,4 +110,5 @@ batch mode.  These are exported (not prefixed) so they persist across
                 (error (funcall callback
                                 (format "Error: Failed to execute command: %s\nDetail: %s"
                                         command (error-message-string err))))))))
-(provide 'code_tools)
+
+(provide 'iar-tool--execute-code-local)

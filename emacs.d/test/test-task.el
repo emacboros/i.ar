@@ -7,8 +7,11 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'subr-x)
-(require 'task_tools)
 (require 'agent_utils)  ; validation + path resolution functions (moved from task_tools)
+(require 'iar-tool--read-tasks)
+(require 'iar-tool--write-task)
+(require 'iar-tool--remove-task)
+(require 'iar-tool--read-history)
 
 ;;; --- Test fixtures ---
 

@@ -9,7 +9,7 @@
 (require 'cl-lib)
 (require 'subr-x)
 
-(require 'replacement_tool)
+(require 'iar-tool--replace-in-file)
 
 (defvar test-replace--tmpdir nil
   "Temporary directory for replace tests.")

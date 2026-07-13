@@ -1,16 +1,12 @@
 ;; -*- lexical-binding: t; -*-
 
-;;; Elisp Syntax Checker Tool for gptel
-;; Provides a tool that checks .el files for syntax errors, unbalanced
-;; parentheses, and byte-compilation warnings -- all without modifying
-;; the source file or producing .elc output.
+;;; check_elisp tool for gptel
+;; Checks .el files for syntax errors, unbalanced parentheses, and
+;; byte-compilation warnings without modifying the source file.
 ;;
 ;; Approach:
-;; 1. Read the file into a temp buffer and run `check-parens' to catch
-;;    unbalanced parentheses.
-;; 2. Run `byte-compile-file' (which defaults to not loading) with a
-;;    temp .elc destination to catch syntax errors and warnings.
-;;    Capture *Compile-Log* buffer.
+;; 1. Read the file into a temp buffer and run `check-parens'.
+;; 2. Run `byte-compile-file' with a temp .elc destination.
 ;; 3. Clean up temp .elc. Source file is never touched.
 
 (require 'gptel)
@@ -30,9 +26,8 @@ Returns nil if parentheses are balanced."
 
 (defun my-gptel--byte-compile-check (filepath)
   "Byte-compile FILEPATH and return warnings/errors string, or nil if clean.
-Uses `byte-compile-file' (which defaults to not loading) with a temp .elc
-destination to avoid modifying the source or leaving .elc artifacts.
-Captures the *Compile-Log* buffer content."
+Uses `byte-compile-file' with a temp .elc destination to avoid modifying
+the source or leaving .elc artifacts.  Captures the *Compile-Log* buffer."
   (let ((dest-file (make-temp-file "elc-check-" nil ".elc"))
         (log-buf-name "*Compile-Log*")
         (result nil))
@@ -41,26 +36,20 @@ Captures the *Compile-Log* buffer content."
             (let ((byte-compile-verbose nil)
                   (byte-compile-warnings t)
                   (byte-compile-dest-file-function (lambda (_f) dest-file)))
-              ;; Clear the compile log
               (when (get-buffer log-buf-name)
                 (with-current-buffer log-buf-name
                   (let ((inhibit-read-only t))
                     (erase-buffer))))
-              ;; Compile the file to check for warnings and errors.
-              ;; (byte-compile-file no longer accepts a LOAD argument in Emacs 30+)
               (byte-compile-file filepath)
-              ;; Capture log content
               (when (get-buffer log-buf-name)
                 (with-current-buffer log-buf-name
                   (let ((content (buffer-string)))
                     (when (string-match-p "\\S-" content)
                       (setq result (string-trim content))))
-                  ;; Clean up for next invocation
                   (let ((inhibit-read-only t))
                     (erase-buffer)))))
           (error
            (setq result (format "Byte-compile error: %s" (error-message-string err)))))
-      ;; Clean up temp .elc (unwind-protect guarantees cleanup on non-local exits)
       (when (file-exists-p dest-file)
         (delete-file dest-file)))
     result))
@@ -76,7 +65,6 @@ The source file is never modified."
           (error "File not found: %s" expanded-path))
         (unless (string-suffix-p ".el" expanded-path)
           (error "File must have .el extension: %s" expanded-path))
-        ;; 1. Check parentheses
         (let ((paren-error
                (with-temp-buffer
                  (insert-file-contents expanded-path)
@@ -84,11 +72,9 @@ The source file is never modified."
                  (my-gptel--check-parens-in-buffer))))
           (when paren-error
             (push paren-error results)))
-        ;; 2. Byte-compile check
         (let ((compile-warnings (my-gptel--byte-compile-check expanded-path)))
           (when compile-warnings
             (push compile-warnings results)))
-        ;; 3. Report
         (if results
             (format "ISSUES FOUND in %s:\n\n%s"
                     (file-name-nondirectory expanded-path)
@@ -105,4 +91,4 @@ The source file is never modified."
   :args (list '(:name "filepath" :type "string" :description "Absolute path to the .el file to check."))
   :function #'my-gptel-tool-check-elisp))
 
-(provide 'check_elisp_tool)
+(provide 'iar-tool--check-elisp)

@@ -1,9 +1,13 @@
 ;; -*- lexical-binding: t; -*-
 
+;;; replace_in_file tool for gptel
+;; Surgically replaces a specific block of text in an existing file.
+;; Security: checks file_guard before writing. Logs to audit log.
+
 (require 'gptel)
 (require 'file_guard)
 (require 'audit_log)
-(require 'utils)  ; my-gptel--with-suppressed-save-hooks macro
+(require 'utils)  ; my-gptel--with-suppressed-save-hooks
 
 (defun my-gptel--fs-replace (path search-text replace-text)
   "Find SEARCH-TEXT in PATH and replace it with REPLACE-TEXT.
@@ -23,9 +27,6 @@ with a misleading message."
       (condition-case err
           (let ((buf (find-buffer-visiting expanded-path)))
             (if buf
-                ;; File is open in a buffer -- replace in buffer and save.
-                ;; Guard against read-only and dirty buffers to avoid
-                ;; misleading errors and silent data persistence.
                 (with-current-buffer buf
                   (cond
                    (buffer-read-only
@@ -45,7 +46,6 @@ with a misleading message."
                             (my-gptel--audit-log-replace expanded-path)
                             (format "Success: Replaced text in '%s'" expanded-path))
                         (format "Error: Target string not found in '%s'" expanded-path))))))
-              ;; File not open -- use temp file + rename for atomicity
               (with-temp-buffer
                 (insert-file-contents expanded-path)
                 (goto-char (point-min))
@@ -70,4 +70,4 @@ with a misleading message."
               '(:name "replace_text" :type "string"))
   :function #'my-gptel--fs-replace))
 
-(provide 'replacement_tool)
+(provide 'iar-tool--replace-in-file)

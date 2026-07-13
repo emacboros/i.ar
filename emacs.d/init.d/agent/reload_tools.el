@@ -9,7 +9,7 @@
 ;;               the gptel system message in the current chat buffer.
 
 (require 'gptel)
-(require 'task_tools)
+(require 'agent_utils)  ; validation (moved from task_tools)
 (require 'utils)
 (require 'agent_loader)  ; my-gptel--load-agent-profile (now defined here)
 
