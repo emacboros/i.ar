@@ -1,11 +1,10 @@
-FROM quay.io/fedora/fedora@sha256:0ad2ef05326ffb8b2db89c36117fa5c430b61aed3c0432dedeae5bd9759e71af
+FROM quay.io/fedora/fedora-minimal:42
 
 ENV LANG=C.utf8
 
-RUN dnf update -y
-
-RUN dnf install -y \
-	sudo \
+RUN microdnf update -y && \
+    microdnf install -y \
+        sudo \
         emacs \
         bash \
         coreutils \
@@ -31,7 +30,8 @@ RUN dnf install -y \
         unzip \
         make \
         gcc \
-    && dnf clean all
+        dnf \
+    && microdnf clean all
 
 RUN chsh -s /bin/bash root
 RUN mkdir -p /root/i.ar
