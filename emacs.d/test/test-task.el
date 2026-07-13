@@ -8,6 +8,7 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'task_tools)
+(require 'agent_utils)  ; validation + path resolution functions (moved from task_tools)
 
 ;;; --- Test fixtures ---
 

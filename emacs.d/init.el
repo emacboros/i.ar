@@ -31,6 +31,10 @@
 ;; Shared utilities (must load before all other init.d modules)
 (load (expand-file-name "utils.el" init-shared-dir))
 
+;; Shared agent utilities (validation + path resolution, must load before
+;; task_tools, agent_loader, delegate_tool, reload_tools, memory_tools)
+(load (expand-file-name "agent_utils.el" init-shared-dir))
+
 ;; Self-modification mode -- controlled by EMACBOROS_SELF_MODIFICATION env var.
 ;; Set by emacboros.sh --self-modification flag. Default: nil (all guards enabled).
 ;; Must be set before file_guard.el loads -- defcustom respects an already-bound

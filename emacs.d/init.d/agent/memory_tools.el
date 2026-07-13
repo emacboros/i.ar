@@ -19,7 +19,7 @@
 (require 'json)
 (require 'cl-lib)
 (require 'subr-x)
-(require 'task_tools)  ; my-gptel--get-agent-dir (canonical agent dir resolver)
+(require 'agent_utils)  ; my-gptel--resolve-agent-audit-dir (moved from task_tools)
 (declare-function my-gptel-tool-reload-agent "reload_tools" (&optional agent-name))
 (declare-function my-gptel--load-prompt "prompt_loader" (name))
 

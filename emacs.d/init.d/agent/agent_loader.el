@@ -5,7 +5,7 @@
 ;; and loads them with #+INCLUDE expansion.
 
 (require 'cl-lib)
-(require 'task_tools)  ; my-gptel--validate-agent-name
+(require 'agent_utils)  ; my-gptel--validate-agent-name (moved from task_tools)
 
 (declare-function gptel-mode "gptel" (&optional arg))
 (defvar gptel-mode-map)

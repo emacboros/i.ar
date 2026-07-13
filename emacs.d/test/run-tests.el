@@ -93,6 +93,12 @@
                         (expand-file-name "shared" test-init-dir))
       nil t)
 
+;; --- Load shared agent utilities (must be before task_tools, agent_loader, etc.) ---
+
+(load (expand-file-name "agent_utils.el"
+                        (expand-file-name "shared" test-init-dir))
+      nil t)
+
 ;; --- Load prompt loader (must be before modules that use prompts) ---
 ;; prompt_loader.el lives in init.d/agent/ and must load before
 ;; delegate_tool, memory_tools, and loop_guard which call
