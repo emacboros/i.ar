@@ -52,6 +52,14 @@ Options:
   --knowledge LABEL    Knowledge directory label to load (default: iar/).
                        Can be specified multiple times to load multiple bases.
   --ollama-host HOST    Ollama API host:port (default: ${LOCAL_OLLAMA_HOST}).
+  --model NAME          Ollama model name (default: glm-5.2:cloud).
+                       Must be in the model list in metaconfig/gptel.el.
+                       Example: --model nemotron-3-super:120b
+  --ctx N               Max context window size in tokens (default: 1048576).
+                       Critical for local models -- KV cache scales linearly
+                       with context. Use 131072 (128K) or 262144 (256K) for
+                       local models. Cloud models can use the default 1M.
+                       Example: --ctx 131072
   --mount PATH          Mount a host directory read-write inside the container
                        at the same absolute path. Can be specified multiple times.
   --mount-ro PATH       Mount a host directory read-only inside the container
@@ -95,6 +103,16 @@ Examples:
 
   # With knowledge and custom timeout
   agent_loop.sh --personalization ~/repos/iar-personalization --knowledge infra/ --timeout 3600
+
+  # Run playground loop on GPU model on sophon (10.66.0.5)
+  agent_loop.sh --personalization ~/repos/iar-personalization \
+    --agent playground --model nemotron-3-super:120b --ctx 131072 \
+    --ollama-host 10.66.0.5:11434 --max-cycles 999 --cooldown 300
+
+  # Run on daftpunk CPU model (10.66.0.3)
+  agent_loop.sh --personalization ~/repos/iar-personalization \
+    --agent playground --model granite4.1:30b --ctx 131072 \
+    --ollama-host 10.66.0.3:11434 --max-cycles 999 --cooldown 300
 EOF
 }
 
@@ -107,6 +125,8 @@ COOLDOWN=60
 TIMEOUT=7200
 MAX_CONSECUTIVE_FAILURES=5
 OLLAMA_HOST="${LOCAL_OLLAMA_HOST}"
+OLLAMA_MODEL=""
+OLLAMA_CTX=""
 PERSONALIZATION_DIR=""
 SSH_KEY_DIR="${HOME}/.ssh"
 SSH_KEY_NAME=""  # set after agent name is parsed
@@ -157,6 +177,16 @@ while [[ $# -gt 0 ]]; do
         --ollama-host)
             [[ $# -lt 2 ]] && error "--ollama-host requires a value" && exit 1
             OLLAMA_HOST="$2"
+            shift 2
+            ;;
+        --model)
+            [[ $# -lt 2 ]] && error "--model requires a value" && exit 1
+            OLLAMA_MODEL="$2"
+            shift 2
+            ;;
+        --ctx)
+            [[ $# -lt 2 ]] && error "--ctx requires a value" && exit 1
+            OLLAMA_CTX="$2"
             shift 2
             ;;
         --knowledge)
@@ -342,6 +372,8 @@ run_cycle() {
         --cap-add=NET_BIND_SERVICE \
         --network=host \
         -e "EMACBOROS_OLLAMA_HOST=${OLLAMA_HOST}" \
+        $([[ -n "${OLLAMA_MODEL}" ]] && echo "-e EMACBOROS_OLLAMA_MODEL=${OLLAMA_MODEL}") \
+        $([[ -n "${OLLAMA_CTX}" ]] && echo "-e EMACBOROS_OLLAMA_CTX=${OLLAMA_CTX}") \
         -e "AGENT_TELEGRAM_BOT_TOKEN=${AGENT_TELEGRAM_BOT_TOKEN:-}" \
         -e "AGENT_TELEGRAM_CHAT_ID=${AGENT_TELEGRAM_CHAT_ID:-}" \
         $([[ -n "${GPTEL_FORK_PATH}" ]] && echo "-v ${GPTEL_FORK_PATH}:/root/.emacs.d/gptel-fork:z -e EMACBOROS_GPTEL_FORK_PATH=/root/.emacs.d/gptel-fork") \
@@ -390,6 +422,8 @@ info "  Cooldown: ${COOLDOWN}s"
 info "  Per-cycle timeout: ${TIMEOUT}s"
 info "  Max consecutive failures: ${MAX_CONSECUTIVE_FAILURES}"
 info "  Ollama: ${OLLAMA_HOST}"
+info "  Model: ${OLLAMA_MODEL:-glm-5.2:cloud (default)}"
+info "  Context: ${OLLAMA_CTX:-1048576 (default)}"
 if [[ -f "${SSH_KEY_DIR}/${SSH_KEY_NAME}" ]]; then
     info "  SSH key: ${SSH_KEY_DIR}/${SSH_KEY_NAME}"
 else
