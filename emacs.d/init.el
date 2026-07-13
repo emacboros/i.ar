@@ -64,6 +64,11 @@
 ;; GPTEL backend configuration
 (load (expand-file-name "iar-gptel-setup.el" init-core-dir))
 
+;; Mount awareness -- parse IAR_EXTRA_MOUNTS env var so agents know
+;; what extra directories are mounted. Must load before agent-loader
+;; (which injects mount info into the system prompt).
+(load (expand-file-name "iar-mount-awareness.el" init-core-dir))
+
 ;; ──────────────────────────────────────────────────────────
 ;; Security modules
 ;; ──────────────────────────────────────────────────────────

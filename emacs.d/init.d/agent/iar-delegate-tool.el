@@ -266,7 +266,11 @@ so the user can watch progress in real time."
     (with-current-buffer buf
       (text-mode)
       (gptel-mode 1)
-      (setq-local gptel-system-prompt profile)
+      (setq-local gptel-system-prompt
+                  (if (and (boundp 'iar--extra-mounts-prompt-string)
+                           (fboundp 'iar--extra-mounts-prompt-string))
+                      (concat profile (iar--extra-mounts-prompt-string))
+                    profile))
       (setq-local my-gptel--delegate-depth (1+ parent-depth))
       (setq-local gptel-confirm-tool-calls nil)
       (when (>= my-gptel--delegate-depth iar-delegate-max-depth)

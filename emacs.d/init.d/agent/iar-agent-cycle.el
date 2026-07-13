@@ -294,7 +294,11 @@ until it either completes all steps or reaches the turn limit."
     (with-current-buffer cycle-buf
       (text-mode)
       (gptel-mode 1)
-      (setq-local gptel-system-prompt profile)
+      (setq-local gptel-system-prompt
+                  (if (and (boundp 'iar--extra-mounts-prompt-string)
+                           (fboundp 'iar--extra-mounts-prompt-string))
+                      (concat profile (iar--extra-mounts-prompt-string))
+                    profile))
       (setq-local gptel-confirm-tool-calls nil)
       (setq-local gptel-stream t)
       (setq-local iar--current-agent-name agent-name)

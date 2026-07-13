@@ -77,8 +77,12 @@ instead of the currently loaded one."
              (profile (iar--load-agent-profile target-name)))
         (unless profile
           (error "Agent profile '%s' not found in agents.d/" target-name))
-        ;; Update system prompt in current buffer
-        (setq-local gptel-system-prompt profile)
+        ;; Update system prompt in current buffer (with mount info if available)
+        (setq-local gptel-system-prompt
+                    (if (and (boundp 'iar--extra-mounts-prompt-string)
+                             (fboundp 'iar--extra-mounts-prompt-string))
+                        (concat profile (iar--extra-mounts-prompt-string))
+                      profile))
         ;; Track the loaded agent file and name
         (setq-local iar--current-agent-file target-file)
         (setq-local iar--current-agent-name target-name)

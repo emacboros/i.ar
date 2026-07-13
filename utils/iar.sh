@@ -17,6 +17,16 @@ set -euo pipefail
 # =============================================================================
 
 REPO_DIR="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
+
+# =============================================================================
+# Dispatch: --status is handled by a separate script, not the main flow.
+# =============================================================================
+for arg in "$@"; do
+    if [[ "${arg}" == "--status" ]]; then
+        exec "${REPO_DIR}/utils/iar-status.sh" "$@"
+    fi
+done
+
 source "${REPO_DIR}/metaconfig/header.sh"
 source "${REPO_DIR}/utils/telegram.sh"
 
@@ -388,6 +398,23 @@ for path in "${MOUNT_RO_ARGS[@]:-}"; do
     info "Mounting read-only:  ${path}"
 done
 
+# Build IAR_EXTRA_MOUNTS env var for mount awareness.
+# Format: "path:rw,path:ro" -- comma-separated, passed to container so
+# agents know what extra directories are available without being told.
+EXTRA_MOUNTS_ENV=""
+if [[ ${#MOUNT_ARGS[@]} -gt 0 || ${#MOUNT_RO_ARGS[@]} -gt 0 ]]; then
+    MOUNT_PAIRS=()
+    for path in "${MOUNT_ARGS[@]:-}"; do
+        [[ -z "${path}" ]] && continue
+        MOUNT_PAIRS+=("${path}:rw")
+    done
+    for path in "${MOUNT_RO_ARGS[@]:-}"; do
+        [[ -z "${path}" ]] && continue
+        MOUNT_PAIRS+=("${path}:ro")
+    done
+    EXTRA_MOUNTS_ENV=$(IFS=','; echo "${MOUNT_PAIRS[*]}")
+fi
+
 # =============================================================================
 # SSH key availability
 # =============================================================================
@@ -462,6 +489,7 @@ build_podman_args() {
         -e "AGENT_TELEGRAM_CHAT_ID=${AGENT_TELEGRAM_CHAT_ID:-}" \
         $([[ -n "${GPTEL_FORK_PATH}" ]] && echo "-v ${GPTEL_FORK_PATH}:/root/.emacs.d/gptel-fork:z -e EMACBOROS_GPTEL_FORK_PATH=/root/.emacs.d/gptel-fork") \
         $([[ "${SELF_MODIFICATION:-0}" -eq 1 ]] && echo "-e EMACBOROS_SELF_MODIFICATION=1") \
+        $([[ -n "${EXTRA_MOUNTS_ENV}" ]] && echo "-e IAR_EXTRA_MOUNTS=${EXTRA_MOUNTS_ENV}") \
         -e "LANG=C.utf8" \
         --tmpfs /tmp:rw,size=256m \
         --tmpfs /run:rw,size=64m \
@@ -518,6 +546,7 @@ run_interactive() {
         $([[ -n "${OLLAMA_CTX}" ]] && echo "-e EMACBOROS_OLLAMA_CTX=${OLLAMA_CTX}") \
         $([[ -n "${GPTEL_FORK_PATH}" ]] && echo "-v ${GPTEL_FORK_PATH}:/root/.emacs.d/gptel-fork:z -e EMACBOROS_GPTEL_FORK_PATH=/root/.emacs.d/gptel-fork") \
         $([[ "${SELF_MODIFICATION:-0}" -eq 1 ]] && echo "-e EMACBOROS_SELF_MODIFICATION=1") \
+        $([[ -n "${EXTRA_MOUNTS_ENV}" ]] && echo "-e IAR_EXTRA_MOUNTS=${EXTRA_MOUNTS_ENV}") \
         -e "LANG=C.utf8" \
         --tmpfs /tmp:rw,size=256m \
         --tmpfs /run:rw,size=64m \
@@ -564,6 +593,7 @@ run_cycle() {
         -e "AGENT_TELEGRAM_CHAT_ID=${AGENT_TELEGRAM_CHAT_ID:-}" \
         $([[ -n "${GPTEL_FORK_PATH}" ]] && echo "-v ${GPTEL_FORK_PATH}:/root/.emacs.d/gptel-fork:z -e EMACBOROS_GPTEL_FORK_PATH=/root/.emacs.d/gptel-fork") \
         $([[ "${SELF_MODIFICATION:-0}" -eq 1 ]] && echo "-e EMACBOROS_SELF_MODIFICATION=1") \
+        $([[ -n "${EXTRA_MOUNTS_ENV}" ]] && echo "-e IAR_EXTRA_MOUNTS=${EXTRA_MOUNTS_ENV}") \
         -e "LANG=C.utf8" \
         --tmpfs /tmp:rw,size=256m \
         --tmpfs /run:rw,size=64m \

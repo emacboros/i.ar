@@ -152,7 +152,11 @@ Discovers agent directories under agents.d/<name>/ containing prompt.org."
          (profile (iar--load-agent-profile chosen)))
     (unless (bound-and-true-p gptel-mode)
       (gptel-mode 1))
-    (setq-local gptel-system-prompt profile)
+    (setq-local gptel-system-prompt
+                (if (and (boundp 'iar--extra-mounts-prompt-string)
+                         (fboundp 'iar--extra-mounts-prompt-string))
+                    (concat profile (iar--extra-mounts-prompt-string))
+                  profile))
     ;; Track which agent file was loaded (for reload_agent tool)
     (setq-local iar--current-agent-file full-path)
     ;; Track the agent name (for memory tools and per-agent file paths)
