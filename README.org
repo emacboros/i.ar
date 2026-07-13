@@ -122,6 +122,34 @@ Container names auto-include the shell PID, so multiple =iar.sh= invocations can
 
 Use =podman ps= to see all running agent containers. Each is named =<agent>-loop-<PID>= (loop mode) or =iar-interactive-<PID>= (interactive mode).
 
+*** Monitoring Agents
+
+#+begin_src bash
+# Full status snapshot: running containers, recent activity, pending tasks
+./utils/iar.sh --status
+
+# Show more history lines per agent
+./utils/iar.sh --status --lines 10
+
+# Focus on one agent
+./utils/iar.sh --status --agent darwin
+#+end_src
+
+The status output shows:
+- Running containers (name, status, image)
+- Recent loop runs (today's loop logs, last line each)
+- Per-agent activity (last N entries from each agent's HISTORY.log)
+- Pending tasks (task name + first line of description)
+- Global audit log (last N file operations across all agents)
+
+Full logs are in the personalization directory:
+- =audit/<agent>/HISTORY.log= -- chronological record of every action
+- =audit/<agent>/cycle.log= -- full LLM responses per cycle
+- =audit/<agent>/LOGS.md= -- semantic session notes
+- =audit/<agent>/FSM.log= -- FSM state transitions (for debugging)
+- =audit/<agent>/REQUESTS.log= -- raw JSON payloads to/from LLM
+- =tasks/<agent>/= -- pending task files (file exists = work to do)
+
 ** Inside Emacs
 
 | Key | Action |
