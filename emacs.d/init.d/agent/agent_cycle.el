@@ -39,7 +39,7 @@
 (defvar agent-cycle-max-turns nil
   "Maximum number of LLM response turns before forcing cycle end.")
 
-(declare-function my-gptel--block-unknown-tools "delegate_tool" (info))
+(declare-function my-gptel--block-unknown-tools "tool_guard" (info))
 (declare-function my-gptel--load-prompt "prompt_loader" (name))
 (declare-function my-gptel-load-knowledge-dir "knowledge_loader" (label))
 

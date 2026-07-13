@@ -92,7 +92,7 @@ tool-call plist, preventing the FSM from hanging in TOOL state.
 This test calls the actual `my-gptel--block-unknown-tools' function
 (defined in delegate_tool.el) with a let-bound `gptel-tools' so the
 function reads the test tool list, not the global one."
-  (require 'delegate_tool)
+  (require 'tool_guard)
   (let* ((tool-spec (gptel-make-tool
                      :name "list_directory"
                      :description "List a directory"
@@ -114,7 +114,7 @@ function reads the test tool list, not the global one."
   "Test that `my-gptel--block-unknown-tools' blocks ALL tools when
 `gptel-tools' is empty.  This verifies the function works correctly
 when no tools are registered."
-  (require 'delegate_tool)
+  (require 'tool_guard)
   (let ((gptel-tools nil))
     (let ((result (my-gptel--block-unknown-tools (list :name "any_tool"))))
       (should result)
@@ -126,7 +126,7 @@ when no tools are registered."
 Tool name matching uses `equal' (via `gptel-tool-name'), so
 \"List_Directory\" should NOT match \"list_directory\".
 This documents the design decision to use case-sensitive matching."
-  (require 'delegate_tool)
+  (require 'tool_guard)
   (let* ((tool-spec (gptel-make-tool
                      :name "list_directory"
                      :description "List a directory"
