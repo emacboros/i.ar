@@ -23,6 +23,7 @@
 
 (require 'subr-x)
 (require 'json)
+(require 'utils)
 
 ;;; --- Configuration ---
 
@@ -36,16 +37,11 @@ Can be set buffer-locally to disable logging for specific buffers."
 
 ;;; --- Internal helpers ---
 
-(defun my-gptel--request-log-agent-name ()
-  "Return the current agent name for request logging."
-  (if (and (boundp 'my-gptel--current-agent-name)
-           my-gptel--current-agent-name)
-      my-gptel--current-agent-name
-    "unknown"))
+;; my-gptel--get-agent-name is now in shared/utils.el.
 
 (defun my-gptel--request-log-path ()
   "Return the per-agent request log path."
-  (let ((agent (my-gptel--request-log-agent-name)))
+  (let ((agent (my-gptel--get-agent-name)))
     (expand-file-name
      (format "audit/%s/REQUESTS.log" agent)
      user-emacs-directory)))

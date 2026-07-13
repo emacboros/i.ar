@@ -15,17 +15,21 @@
 (defconst init-session-dir (expand-file-name "session" init-dir))
 (defconst init-dynamic-dir (expand-file-name "dynamic" init-dir))
 (defconst init-debug-dir (expand-file-name "debug" init-dir))
+(defconst init-shared-dir (expand-file-name "shared" init-dir))
 
 ;; Add all module subdirectories to load-path so that cross-module
 ;; require calls (e.g., (require 'task_tools) in delegate_tool.el) can
 ;; resolve files in sibling subdirectories.
-(dolist (subdir (list init-core-dir init-agent-dir init-tools-dir
+(dolist (subdir (list init-shared-dir init-core-dir init-agent-dir init-tools-dir
                        init-security-dir init-session-dir init-dynamic-dir
                        init-debug-dir))
   (add-to-list 'load-path subdir))
 
 ;; Central parameter configuration (must load before any init.d modules)
 (load-file (expand-file-name "metaconfig/parameters.el" user-emacs-directory))
+
+;; Shared utilities (must load before all other init.d modules)
+(load (expand-file-name "utils.el" init-shared-dir))
 
 ;; Self-modification mode -- controlled by EMACBOROS_SELF_MODIFICATION env var.
 ;; Set by emacboros.sh --self-modification flag. Default: nil (all guards enabled).

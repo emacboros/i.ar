@@ -10,6 +10,7 @@
 
 (require 'gptel)
 (require 'task_tools)
+(require 'utils)
 
 (declare-function my-gptel--load-agent-profile "delegate_tool" (agent-name))
 
@@ -60,10 +61,10 @@ instead of the currently loaded one."
                     agent-name)
                  ;; Note: my-gptel--load-agent-profile also validates,
                  ;; so this is defense-in-depth, not the primary check.
-                (if (and (boundp 'my-gptel--current-agent-name)
-                         my-gptel--current-agent-name)
-                    my-gptel--current-agent-name
-                  (error "No agent currently loaded in this buffer. Pass agent_name to reload a specific agent."))))
+                (let ((current (my-gptel--get-agent-name)))
+                  (if (not (equal "unknown" current))
+                      current
+                    (error "No agent currently loaded in this buffer. Pass agent_name to reload a specific agent.")))))
              (target-file (expand-file-name (format "%s/prompt.org" target-name) agent-dir))
              ;; Extra safety: ensure filepath stays within agent-dir
              (_ (unless (string-prefix-p agent-dir (file-truename target-file))

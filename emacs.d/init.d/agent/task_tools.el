@@ -14,6 +14,7 @@
 (require 'gptel)
 (require 'cl-lib)
 (require 'subr-x)
+(require 'utils)
 
 ;;; --- Validation helpers ---
 
@@ -60,16 +61,8 @@ Older code and tests may reference this name.")
 Tasks live in the tasks mount at /root/.emacs.d/tasks/<agent-name>/.
 Validates the agent name and checks for path traversal."
   (let* ((tasks-base (expand-file-name "tasks" user-emacs-directory))
-         (agent-name
-          (if (and (boundp 'my-gptel--current-agent-name)
-                   my-gptel--current-agent-name)
-              my-gptel--current-agent-name
-            (when (and (boundp 'my-gptel--current-agent-file)
-                       my-gptel--current-agent-file)
-              (file-name-nondirectory
-               (directory-file-name
-                (file-name-directory my-gptel--current-agent-file)))))))
-    (if agent-name
+         (agent-name (my-gptel--get-agent-name)))
+    (if (not (equal agent-name "unknown"))
         (progn
           (my-gptel--validate-agent-name agent-name)
           (let* ((tasks-base-real (file-truename tasks-base))
@@ -86,16 +79,8 @@ Memory files (LOGS.md, SUMMARY.md, MEMORIES.md) live in the audit mount
 at /root/.emacs.d/audit/<agent-name>/.  Validates the agent name and
 checks for path traversal.  Used by memory_tools.el via alias."
   (let* ((audit-base (expand-file-name "audit" user-emacs-directory))
-         (agent-name
-          (if (and (boundp 'my-gptel--current-agent-name)
-                   my-gptel--current-agent-name)
-              my-gptel--current-agent-name
-            (when (and (boundp 'my-gptel--current-agent-file)
-                       my-gptel--current-agent-file)
-              (file-name-nondirectory
-               (directory-file-name
-                (file-name-directory my-gptel--current-agent-file)))))))
-    (if agent-name
+         (agent-name (my-gptel--get-agent-name)))
+    (if (not (equal agent-name "unknown"))
         (progn
           (my-gptel--validate-agent-name agent-name)
           (let* ((audit-base-real (file-truename audit-base))

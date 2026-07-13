@@ -13,6 +13,7 @@
 (require 'cl-lib)
 (require 'file_guard)
 (require 'audit_log)
+(require 'utils)
 
 ;;; --- Configuration ---
 ;; Parameter my-gptel--fs-read-max-size is defined in
@@ -91,26 +92,7 @@ correlates with characters."
   :args (list '(:name "filepath" :type "string" :description "Absolute path to the file."))
   :function #'my-gptel--fs-read-file))
 
-;;; --- Save hook suppression ---
-;; When saving buffers programmatically, user-configured save hooks
-;; (format-on-save, lint-on-save, trailing-whitespace cleanup, etc.)
-;; can mutate content in ways the caller did not request.  This macro
-;; binds all save-related hooks to nil so the caller's content is
-;; preserved.  Note: require-final-newline may still add a trailing
-;; newline — that is Emacs behavior outside hook control.
-
-(defmacro my-gptel--with-suppressed-save-hooks (&rest body)
-  "Execute BODY with all save-related hooks bound to nil.
-This prevents user-configured hooks (format-on-save, lint-on-save,
-trailing-whitespace cleanup, VC annotations, etc.) from mutating
-content during programmatic saves."
-  (declare (indent 0))
-  `(let ((before-save-hook nil)
-         (after-save-hook nil)
-         (write-file-functions nil)
-         (write-contents-functions nil)
-         (write-region-annotate-functions nil))
-     ,@body))
+;; my-gptel--with-suppressed-save-hooks macro is now in shared/utils.el.
 
 ;;; --- write_file ---
 

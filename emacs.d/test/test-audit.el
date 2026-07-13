@@ -63,19 +63,19 @@ Temporarily rebinds `my-gptel--audit-log-path' to a temp file."
 ;;; --- Agent name resolution tests ---
 
 (ert-deftest test-audit-get-agent-name-when-set ()
-  "my-gptel--audit-get-agent-name should return the current agent name."
+  "my-gptel--get-agent-name should return the current agent name."
   (let ((my-gptel--current-agent-name "darwin"))
-    (should (string= (my-gptel--audit-get-agent-name) "darwin"))))
+    (should (string= (my-gptel--get-agent-name) "darwin"))))
 
 (ert-deftest test-audit-get-agent-name-when-unset ()
-  "my-gptel--audit-get-agent-name should return 'unknown' when no agent is set."
+  "my-gptel--get-agent-name should return 'unknown' when no agent is set."
   (let (my-gptel--current-agent-name)
-    (should (string= (my-gptel--audit-get-agent-name) "unknown"))))
+    (should (string= (my-gptel--get-agent-name) "unknown"))))
 
 (ert-deftest test-audit-get-agent-name-when-nil ()
-  "my-gptel--audit-get-agent-name should return 'unknown' when agent name is nil."
+  "my-gptel--get-agent-name should return 'unknown' when agent name is nil."
   (let ((my-gptel--current-agent-name nil))
-    (should (string= (my-gptel--audit-get-agent-name) "unknown"))))
+    (should (string= (my-gptel--get-agent-name) "unknown"))))
 
 ;;; --- Core audit log tests ---
 

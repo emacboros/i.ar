@@ -11,6 +11,8 @@
 (defvar my-gptel-fsm-trace-enabled nil)
 (defvar my-gptel--current-agent-name nil)
 
+;; Load shared utils first (dependency of debug modules)
+(load-file (expand-file-name "init.d/shared/utils.el" user-emacs-directory))
 ;; Load the modules under test
 (load-file (expand-file-name "init.d/debug/request_logger.el" user-emacs-directory))
 (load-file (expand-file-name "init.d/debug/fsm_tracer.el" user-emacs-directory))
@@ -20,9 +22,9 @@
 (ert-deftest test-request-logger-agent-name ()
   "Agent name should fall back to unknown when not set."
   (let ((my-gptel--current-agent-name nil))
-    (should (equal (my-gptel--request-log-agent-name) "unknown")))
+    (should (equal (my-gptel--get-agent-name) "unknown")))
   (let ((my-gptel--current-agent-name "darwin"))
-    (should (equal (my-gptel--request-log-agent-name) "darwin"))))
+    (should (equal (my-gptel--get-agent-name) "darwin"))))
 
 (ert-deftest test-request-logger-log-path ()
   "Log path should include agent name and be under audit/."
@@ -92,9 +94,9 @@
 (ert-deftest test-fsm-tracer-agent-name ()
   "Agent name should fall back to unknown when not set."
   (let ((my-gptel--current-agent-name nil))
-    (should (equal (my-gptel--fsm-trace-agent-name) "unknown")))
+    (should (equal (my-gptel--get-agent-name) "unknown")))
   (let ((my-gptel--current-agent-name "gardener"))
-    (should (equal (my-gptel--fsm-trace-agent-name) "gardener"))))
+    (should (equal (my-gptel--get-agent-name) "gardener"))))
 
 (ert-deftest test-fsm-tracer-log-path ()
   "Log path should include agent name and be under audit/."

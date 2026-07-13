@@ -23,6 +23,7 @@
 ;; No gptel source modifications. All advice-add.
 
 (require 'subr-x)
+(require 'utils)
 
 ;;; --- Configuration ---
 
@@ -36,16 +37,11 @@ Can be set buffer-locally to disable tracing for specific buffers."
 
 ;;; --- Internal helpers ---
 
-(defun my-gptel--fsm-trace-agent-name ()
-  "Return the current agent name for FSM tracing."
-  (if (and (boundp 'my-gptel--current-agent-name)
-           my-gptel--current-agent-name)
-      my-gptel--current-agent-name
-    "unknown"))
+;; my-gptel--get-agent-name is now in shared/utils.el.
 
 (defun my-gptel--fsm-trace-log-path ()
   "Return the per-agent FSM trace log path."
-  (let ((agent (my-gptel--fsm-trace-agent-name)))
+  (let ((agent (my-gptel--get-agent-name)))
     (expand-file-name
      (format "audit/%s/FSM.log" agent)
      user-emacs-directory)))

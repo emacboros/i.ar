@@ -53,7 +53,7 @@
 
 (defconst test-init-dir (expand-file-name "init.d" user-emacs-directory))
 (defconst test-init-subdirs
-  '("core" "security" "tools" "agent" "session" "dynamic"))
+  '("shared" "core" "security" "tools" "agent" "session" "dynamic"))
 
 ;; --- Add all subdirectories to load-path (for cross-module requires) ---
 
@@ -86,6 +86,12 @@
 ;; --- Load central parameters (must be before init.d modules) ---
 
 (load-file (expand-file-name "metaconfig/parameters.el" user-emacs-directory))
+
+;; --- Load shared utilities (must be before all other init.d modules) ---
+
+(load (expand-file-name "utils.el"
+                        (expand-file-name "shared" test-init-dir))
+      nil t)
 
 ;; --- Load prompt loader (must be before modules that use prompts) ---
 ;; prompt_loader.el lives in init.d/agent/ and must load before

@@ -11,20 +11,13 @@
 ;; (it lives in workspace/ which is the designated writable area).
 
 (require 'subr-x)
+(require 'utils)
 
-(defconst my-gptel--audit-log-path
-  (expand-file-name "audit/audit.log" user-emacs-directory)
-  "Path to the central audit log for all agent file operations.")
+;; my-gptel--audit-log-path is now defined in shared/utils.el.
+;; my-gptel--get-agent-name is now defined in shared/utils.el.
 
 ;; Parameter my-gptel--audit-log-max-size is defined in
 ;; metaconfig/parameters.el (loaded early in init.el).
-
-(defun my-gptel--audit-get-agent-name ()
-  "Return the current agent name for audit logging."
-  (if (and (boundp 'my-gptel--current-agent-name)
-           my-gptel--current-agent-name)
-      my-gptel--current-agent-name
-    "unknown"))
 
 (defun my-gptel--audit-sanitize-detail (detail)
   "Sanitize DETAIL for single-line audit log entry.
@@ -68,8 +61,9 @@ Does not signal errors -- audit logging is best-effort and must
 never break the operation it is auditing.
 DETAIL is sanitized to prevent log injection via embedded newlines.
 TOOL is expected to be a hardcoded string literal (e.g. \"write_file\")
-and AGENT comes from `my-gptel--current-agent-name' which is validated
-is validated by `my-gptel--valid-agent-name-p' in task_tools.el -- neither
+and AGENT comes from `my-gptel--get-agent-name' (shared/utils.el) which
+returns `my-gptel--current-agent-name' (validated by `my-gptel--valid-agent-name-p'
+in task_tools.el) -- neither
 is user-controlled, so neither is sanitized.  If this invariant changes,
 sanitize them too.
 
@@ -77,7 +71,7 @@ Before writing, checks if the log exceeds `my-gptel--audit-log-max-size'
 and rotates it if so.  This prevents unbounded growth of the audit log."
   (condition-case err
       (let ((timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
-            (agent (my-gptel--audit-get-agent-name))
+            (agent (my-gptel--get-agent-name))
             (safe-detail (my-gptel--audit-sanitize-detail detail)))
         ;; Rotate the log if it has grown too large.
         (my-gptel--audit-maybe-rotate)

@@ -3,7 +3,7 @@
 (require 'gptel)
 (require 'file_guard)
 (require 'audit_log)
-(require 'fs_tools)  ; my-gptel--with-suppressed-save-hooks macro
+(require 'utils)  ; my-gptel--with-suppressed-save-hooks macro
 
 (defun my-gptel--fs-replace (path search-text replace-text)
   "Find SEARCH-TEXT in PATH and replace it with REPLACE-TEXT.

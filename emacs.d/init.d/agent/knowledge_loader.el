@@ -21,6 +21,7 @@
 
 (require 'cl-lib)
 (require 'subr-x)
+(require 'utils)
 
 (declare-function gptel-mode "gptel" (&optional arg))
 (defvar gptel-mode-map)
@@ -159,14 +160,7 @@ loaded is a no-op."
 
 ;;; --- Prompt size reporting ---
 
-(defun my-gptel--approx-token-count (chars)
-  "Return an approximate token count for CHARS (a character count).
-Uses the heuristic of ~4 characters per token, which is a rough
-estimate for English text and code.  Not exact, but sufficient
-for detecting context window overflow before it happens."
-  (if (or (null chars) (<= chars 0))
-      0
-    (/ chars 4)))
+;; my-gptel--approx-token-count is now in shared/utils.el.
 
 (defun my-gptel--format-size (chars)
   "Format CHARS (a character count, integer) as a human-readable size string."

@@ -11,22 +11,24 @@
 (defvar my-gptel-buffer-hard-cap nil)
 (defvar my-gptel--current-agent-name nil)
 
+;; Load shared utils first (dependency of buffer_monitor)
+(load-file (expand-file-name "init.d/shared/utils.el" user-emacs-directory))
 ;; Load the module under test
 (load-file (expand-file-name "init.d/debug/buffer_monitor.el" user-emacs-directory))
 
 (ert-deftest test-buffer-monitor-approx-tokens ()
   "Token estimation should be roughly chars/4."
-  (should (= (my-gptel--buffer-approx-tokens 0) 0))
-  (should (= (my-gptel--buffer-approx-tokens 4) 1))
-  (should (= (my-gptel--buffer-approx-tokens 100) 25))
-  (should (= (my-gptel--buffer-approx-tokens 1000) 250)))
+  (should (= (my-gptel--approx-token-count 0) 0))
+  (should (= (my-gptel--approx-token-count 4) 1))
+  (should (= (my-gptel--approx-token-count 100) 25))
+  (should (= (my-gptel--approx-token-count 1000) 250)))
 
 (ert-deftest test-buffer-monitor-agent-name ()
   "Agent name should fall back to unknown when not set."
   (let ((my-gptel--current-agent-name nil))
-    (should (equal (my-gptel--buffer-monitor-agent-name) "unknown")))
+    (should (equal (my-gptel--get-agent-name) "unknown")))
   (let ((my-gptel--current-agent-name "darwin"))
-    (should (equal (my-gptel--buffer-monitor-agent-name) "darwin"))))
+    (should (equal (my-gptel--get-agent-name) "darwin"))))
 
 (ert-deftest test-buffer-monitor-log-path ()
   "Log path should include agent name and be under audit/."
@@ -39,7 +41,7 @@
   (let* ((test-dir (make-temp-file "bufmon-test-" t))
          (test-buf (get-buffer-create " *bufmon-test*"))
          (my-gptel--current-agent-name "test-agent")
-         (my-gptel--buffer-monitor-audit-path
+         (my-gptel--audit-log-path
           (expand-file-name "audit.log" test-dir))
          (mock-log-path (expand-file-name "BUFFER.log" test-dir)))
     (unwind-protect
@@ -52,9 +54,9 @@
               (should (plist-get result :chars))
               (should (plist-get result :bytes))
               (should (plist-get result :tokens))
-              (should (file-exists-p my-gptel--buffer-monitor-audit-path))
+              (should (file-exists-p my-gptel--audit-log-path))
               (let ((content (with-temp-buffer
-                               (insert-file-contents my-gptel--buffer-monitor-audit-path)
+                               (insert-file-contents my-gptel--audit-log-path)
                                (buffer-string))))
                 (should (string-match-p "buffer-monitor" content))
                 (should (string-match-p "test-agent" content)))

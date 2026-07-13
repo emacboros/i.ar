@@ -21,36 +21,22 @@
 ;; enormous payloads to Ollama on every retry.
 
 (require 'subr-x)
+(require 'utils)
 
 ;; Parameters are defined in metaconfig/parameters.el (loaded early).
 ;; Forward declarations for byte-compiler.
 (defvar my-gptel-buffer-warn-size nil)
 (defvar my-gptel-buffer-hard-cap nil)
 
-(defconst my-gptel--buffer-monitor-audit-path
-  (expand-file-name "audit/audit.log" user-emacs-directory)
-  "Path to the central audit log.")
-
-(declare-function my-gptel--audit-get-agent-name "audit_log" ())
-
-(defun my-gptel--buffer-monitor-agent-name ()
-  "Return the current agent name for buffer monitoring."
-  (if (and (boundp 'my-gptel--current-agent-name)
-           my-gptel--current-agent-name)
-      my-gptel--current-agent-name
-    "unknown"))
+;; my-gptel--audit-log-path, my-gptel--get-agent-name, and
+;; my-gptel--approx-token-count are now in shared/utils.el.
 
 (defun my-gptel--buffer-monitor-log-path ()
   "Return the per-agent buffer monitor log path."
-  (let ((agent (my-gptel--buffer-monitor-agent-name)))
+  (let ((agent (my-gptel--get-agent-name)))
     (expand-file-name
      (format "audit/%s/BUFFER.log" agent)
      user-emacs-directory)))
-
-(defun my-gptel--buffer-approx-tokens (chars)
-  "Estimate token count from character count.
-Uses the common heuristic of ~4 chars per token."
-  (/ chars 4))
 
 (defun my-gptel--buffer-monitor-log (buf)
   "Log buffer size for BUF to audit log and per-agent BUFFER.log.
@@ -60,8 +46,8 @@ BUF is the gptel conversation buffer about to be sent."
                   (save-restriction
                     (widen)
                     (point-max))))
-         (approx-tokens (my-gptel--buffer-approx-tokens chars))
-         (agent (my-gptel--buffer-monitor-agent-name))
+         (approx-tokens (my-gptel--approx-token-count chars))
+         (agent (my-gptel--get-agent-name))
          (model (if (boundp 'gptel-model)
                     (or (with-current-buffer buf gptel-model) gptel-model)
                   "unknown"))
@@ -70,11 +56,11 @@ BUF is the gptel conversation buffer about to be sent."
                         timestamp agent buf-size chars approx-tokens model)))
     ;; Log to central audit log
     (condition-case err
-        (let ((log-dir (file-name-directory my-gptel--buffer-monitor-audit-path)))
+        (let ((log-dir (file-name-directory my-gptel--audit-log-path)))
           (unless (file-exists-p log-dir)
             (make-directory log-dir t))
           (write-region (concat entry "\n") nil
-                        my-gptel--buffer-monitor-audit-path t 'silent))
+                        my-gptel--audit-log-path t 'silent))
       (error
        (message "Warning: buffer monitor audit log write failed: %s"
                 (error-message-string err))))
