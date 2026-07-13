@@ -11,7 +11,7 @@
 ;;
 ;; Protected categories (active unless self-modification mode is enabled):
 ;; 4. Emacs Lisp source (init.el, init.d/**/*.el) -- prevents tool tampering
-;; 5. Container config (Containerfile, emacboros.sh) -- prevents escape
+;; 5. Container config (Containerfile, emacboros.sh, containers/) -- prevents escape
 ;; 6. Git hooks (.git/hooks/*) -- prevents scheduled execution
 ;;
 ;; When `my-gptel--guard-allow-self-modification' is non-nil, categories
@@ -19,6 +19,13 @@
 ;; agent is trusted to modify tool code.  Categories 1-3 remain active
 ;; regardless — an agent should never silently rewrite its own prompt
 ;; or the shared context.
+;;
+;; Protected path patterns are defined as defcustoms in parameters.el:
+;;   `my-gptel-guard-always-protected'
+;;   `my-gptel-guard-conditional-protected'
+;; Each entry is (regex reason append-allowed).  This module implements
+;; the guard logic (two-tier check, symlink defense, append exception)
+;; and reads the targets from configuration.
 ;;
 ;; This is defense-in-depth. The container mounts should also be read-only
 ;; for categories 4-6, but this guard provides protection even when mounts
@@ -28,6 +35,17 @@
 (require 'subr-x)
 
 ;;; --- Configuration ---
+
+;; Forward-declare defcustoms owned by parameters.el.
+;; They are loaded before this module in init.el and run-tests.el.
+(defvar my-gptel-guard-always-protected nil
+  "List of always-active protected path patterns.
+Each entry is (regex reason append-allowed).
+Owned by parameters.el; forward-declared here for compiler silence.")
+(defvar my-gptel-guard-conditional-protected nil
+  "List of conditionally-active protected path patterns.
+Each entry is (regex reason append-allowed).
+Owned by parameters.el; forward-declared here for compiler silence.")
 
 (defcustom my-gptel--guard-allow-self-modification nil
   "When non-nil, relax file guard protections for self-modification.
@@ -45,78 +63,37 @@ file would bypass file guard protections without user awareness."
   :type 'boolean
   :group 'gptel)
 
-(defconst my-gptel--guard-history-pred
-  (lambda (path) (string-match-p "/HISTORY\\.log\\'" path))
-  "Predicate matching HISTORY.log files anywhere in the filesystem.
-Used both in the protected patterns list and by the append exception
-to ensure single-source-of-truth for the HISTORY.log regex.")
+;;; --- Internal: pattern compilation ---
 
-(defconst my-gptel--guard-logs-pred
-  (lambda (path) (string-match-p "/LOGS\\.md\\'" path))
-  "Predicate matching LOGS.md files anywhere in the filesystem.
-Used both in the protected patterns list and by the append exception
-to ensure single-source-of-truth for the LOGS.md regex.
-LOGS.md is append-only (like HISTORY.log) -- agents append session
-notes but never overwrite or replace them.")
+(defun my-gptel--guard--compile-pattern (entry)
+  "Compile a single pattern entry into a guard cell.
+ENTRY is (regex reason append-allowed).
+Returns a plist: (:pred PRED-FN :reason STRING :append-allowed BOOL)."
+  (let ((regex (nth 0 entry))
+        (reason (nth 1 entry))
+        (append-allowed (nth 2 entry)))
+    (list :pred (lambda (path) (string-match-p regex path))
+          :reason reason
+          :append-allowed append-allowed)))
 
-(defconst my-gptel--guard-always-protected
-  (list
-   ;; Agent prompt files -- no agent may modify any prompt.org
-   (cons (lambda (path)
-           (string-match-p "/agents\\.d/agents/[^/]+/prompt\\.org\\'" path))
-         "Agent prompt files are protected. Agents cannot modify their own or other agents' prompts.")
-   ;; Shared context file
-   (cons (lambda (path)
-           (string-match-p "/agents\\.d/base_context\\.org\\'" path))
-         "Shared context file (base_context.org) is protected. Agents cannot modify the shared context.")
-   ;; Common prompt templates -- no agent may modify shared prompt templates
-   (cons (lambda (path)
-           (string-match-p "/agents\\.d/common/[^/]+\\.org\\'" path))
-         "Common prompt templates are protected. Agents cannot modify shared prompt templates.")
-   ;; HISTORY.log files -- append is allowed but overwrite/replace is not
-   (cons my-gptel--guard-history-pred
-         "HISTORY.log files can only be appended to, not overwritten or modified via replace.")
-   ;; LOGS.md files -- append is allowed but overwrite/replace is not
-   (cons my-gptel--guard-logs-pred
-         "LOGS.md files can only be appended to, not overwritten or modified via replace."))
-  "List of (predicate . reason) cons cells for always-active protections.
-These protections remain active regardless of self-modification mode.
-Each predicate takes an expanded file path and returns non-nil
-if the path is protected.")
-
-(defconst my-gptel--guard-conditional-protected
-  (list
-   ;; Emacs Lisp source files
-   (cons (lambda (path)
-           (or (string-match-p "/init\\.el\\'" path)
-               (string-match-p "/init\\.d/.*\\.el\\'" path)))
-         "Emacs Lisp source files (init.el, init.d/**/*.el) are protected. Agents cannot modify tool definitions or Emacs configuration.")
-   ;; Container configuration
-   (cons (lambda (path)
-           (or (string-match-p "/Containerfile\\'" path)
-               (string-match-p "/emacboros\\.sh\\'" path)
-               (string-match-p "/containers/" path)))
-         "Container configuration files are protected. Agents cannot modify Containerfile or emacboros.sh.")
-   ;; Git hooks
-   (cons (lambda (path)
-           (string-match-p "/\\.git/hooks/" path))
-         "Git hooks are protected. Agents cannot create or modify git hooks."))
-  "List of (predicate . reason) cons cells for conditionally-active protections.
-These protections are skipped when `my-gptel--guard-allow-self-modification'
-is non-nil.  Each predicate takes an expanded file path and returns non-nil
-if the path is protected.")
-
-;;; --- Internal ---
+(defun my-gptel--guard--compile-patterns (entries)
+  "Compile a list of pattern entries into guard cells.
+ENTRIES is a list of (regex reason append-allowed) lists.
+Returns a list of plists as produced by `my-gptel--guard--compile-pattern'."
+  (mapcar #'my-gptel--guard--compile-pattern entries))
 
 (defun my-gptel--guard--active-patterns ()
-  "Return the list of protected patterns active in the current mode.
+  "Return the list of compiled guard cells active in the current mode.
 When `my-gptel--guard-allow-self-modification' is non-nil, returns
-only `my-gptel--guard-always-protected' (prompts, context, history).
+only always-protected patterns (prompts, context, history).
 Otherwise returns the full list (always + conditional)."
-  (if my-gptel--guard-allow-self-modification
-      my-gptel--guard-always-protected
-    (append my-gptel--guard-always-protected
-            my-gptel--guard-conditional-protected)))
+  (let ((always (my-gptel--guard--compile-patterns
+                 my-gptel-guard-always-protected))
+        (conditional (my-gptel--guard--compile-patterns
+                      my-gptel-guard-conditional-protected)))
+    (if my-gptel--guard-allow-self-modification
+        always
+      (append always conditional))))
 
 ;;; --- Public API ---
 
@@ -132,8 +109,8 @@ paths are checked against each pattern.  When they are the same
          (truename (condition-case nil (file-truename expanded) (error expanded)))
          (has-symlink (not (string= expanded truename))))
     (cl-some (lambda (cell)
-               (let ((pred (car cell))
-                     (reason (cdr cell)))
+               (let ((pred (plist-get cell :pred))
+                     (reason (plist-get cell :reason)))
                  (when (or (funcall pred expanded)
                            (and has-symlink (funcall pred truename)))
                    reason)))
@@ -143,19 +120,15 @@ paths are checked against each pattern.  When they are the same
   "Check if FILEPATH is protected against replace_in_file operations.
 Delegates to `my-gptel--guard-check-write' -- replace has the same
 protections as write.  HISTORY.log is blocked for replace (only
-append is allowed) because it is in `my-gptel--guard-always-protected',
+append is allowed) because it is in the always-protected list,
 which `my-gptel--guard-check-write' checks."
   (my-gptel--guard-check-write filepath))
 
 (defun my-gptel--guard-check-append (filepath)
   "Check if FILEPATH is protected against append_file operations.
-Append is allowed for HISTORY.log (that's the intended use), but
-all other protected paths are blocked.
-
-The HISTORY.log pattern is removed from the active patterns list
-before checking, so only the HISTORY.log protection is relaxed --
-other protections (init.el, git hooks, etc.) still apply even if
-the file happens to be named HISTORY.log.
+Append is allowed for paths marked append-allowed in their pattern
+entry (e.g., HISTORY.log, LOGS.md).  All other protected paths are
+blocked.
 
 When the expanded path differs from its truename (symlink), both
 paths are checked against each pattern.  When they are the same
@@ -164,13 +137,11 @@ paths are checked against each pattern.  When they are the same
          (truename (condition-case nil (file-truename expanded) (error expanded)))
          (has-symlink (not (string= expanded truename)))
          (patterns (cl-remove-if
-                    (lambda (cell)
-                      (or (eq (car cell) my-gptel--guard-history-pred)
-                          (eq (car cell) my-gptel--guard-logs-pred)))
+                    (lambda (cell) (plist-get cell :append-allowed))
                     (my-gptel--guard--active-patterns))))
     (cl-some (lambda (cell)
-               (let ((pred (car cell))
-                     (reason (cdr cell)))
+               (let ((pred (plist-get cell :pred))
+                     (reason (plist-get cell :reason)))
                  (when (or (funcall pred expanded)
                            (and has-symlink (funcall pred truename)))
                    reason)))

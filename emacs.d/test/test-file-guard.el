@@ -188,43 +188,43 @@
   "write_file should be blocked for init.d/*.el when self-modification is off."
   (with-fg-fixture
     (should (stringp (my-gptel--guard-check-write
-                      "/root/.emacs.d/init.d/fs_tools.el")))
+                      "/root/.emacs.d/init.d/security/file_guard.el")))
     (should (stringp (my-gptel--guard-check-write
-                      "/root/.emacs.d/init.d/file_guard.el")))
+                      "/root/.emacs.d/init.d/agent/agent_loader.el")))
     (should (stringp (my-gptel--guard-check-write
-                      "/root/.emacs.d/init.d/darwin_cycle.el")))))
+                      "/root/.emacs.d/init.d/tools/filesystem/read_file.el")))))
 
 (ert-deftest test-fg-replace-blocks-init-d-el ()
   "replace_in_file should be blocked for init.d/*.el when self-modification is off."
   (with-fg-fixture
     (should (stringp (my-gptel--guard-check-replace
-                      "/root/.emacs.d/init.d/fs_tools.el")))))
+                      "/root/.emacs.d/init.d/security/file_guard.el")))))
 
 (ert-deftest test-fg-write-allows-init-d-el-with-self-mod ()
   "write_file should be allowed for init.d/*.el when self-modification is on."
   (with-fg-self-mod
     (should-not (my-gptel--guard-check-write
-                 "/root/.emacs.d/init.d/fs_tools.el"))
+                 "/root/.emacs.d/init.d/security/file_guard.el"))
     (should-not (my-gptel--guard-check-write
-                 "/root/.emacs.d/init.d/file_guard.el"))))
+                 "/root/.emacs.d/init.d/agent/agent_loader.el"))))
 
 (ert-deftest test-fg-replace-allows-init-d-el-with-self-mod ()
   "replace_in_file should be allowed for init.d/*.el when self-modification is on."
   (with-fg-self-mod
     (should-not (my-gptel--guard-check-replace
-                 "/root/.emacs.d/init.d/fs_tools.el"))))
+                 "/root/.emacs.d/init.d/security/file_guard.el"))))
 
 (ert-deftest test-fg-append-blocks-init-d-el ()
   "append_file should be blocked for init.d/*.el when self-modification is off."
   (with-fg-fixture
     (should (stringp (my-gptel--guard-check-append
-                      "/root/.emacs.d/init.d/fs_tools.el")))))
+                      "/root/.emacs.d/init.d/security/file_guard.el")))))
 
 (ert-deftest test-fg-append-allows-init-d-el-with-self-mod ()
   "append_file should be allowed for init.d/*.el when self-modification is on."
   (with-fg-self-mod
     (should-not (my-gptel--guard-check-append
-                 "/root/.emacs.d/init.d/fs_tools.el"))))
+                 "/root/.emacs.d/init.d/security/file_guard.el"))))
 
 ;;; --- Conditionally-protected paths: Containerfile ---
 
@@ -413,9 +413,12 @@ summarizer.  TODO.md and IDEAS.md are freely writable."
                       "/some/other/path/HISTORY.log")))))
 
 (ert-deftest test-fg-active-patterns-count ()
-  "Active patterns should return 5 with self-mod, 8 without."
+  "Active patterns should return 5 with self-mod, 11 without.
+5 always-protected + 6 conditional = 11 total.
+The 6 conditional entries are: init.el, init.d/*.el, Containerfile,
+emacboros.sh, containers/, .git/hooks/ (each as separate entry)."
   (with-fg-fixture
-    (should (= (length (my-gptel--guard--active-patterns)) 8)))
+    (should (= (length (my-gptel--guard--active-patterns)) 11)))
   (with-fg-self-mod
     (should (= (length (my-gptel--guard--active-patterns)) 5))))
 
@@ -465,7 +468,7 @@ summarizer.  TODO.md and IDEAS.md are freely writable."
   (with-fg-fixture
     (let ((link (expand-file-name "test-fg-symlink-replace.el" temporary-file-directory)))
       (when (file-exists-p link) (delete-file link))
-      (make-symbolic-link "/root/.emacs.d/init.d/fs_tools.el" link)
+      (make-symbolic-link "/root/.emacs.d/init.d/security/file_guard.el" link)
       (unwind-protect
           (should (stringp (my-gptel--guard-check-replace link)))
         (delete-file link)))))
@@ -503,7 +506,7 @@ this won't match, but the test documents the intended behavior.)"
   "Guard should block relative path to init.d/*.el from .emacs.d."
   (with-fg-fixture
     (let ((default-directory "/root/.emacs.d/"))
-      (should (stringp (my-gptel--guard-check-write "init.d/fs_tools.el"))))))
+      (should (stringp (my-gptel--guard-check-write "init.d/security/file_guard.el"))))))
 
 (ert-deftest test-fg-write-allows-relative-non-protected ()
   "Guard should allow relative path to non-protected file."
