@@ -1,0 +1,24 @@
+[Unit]
+Description=i.ar Librarian -- Documentation Sync Agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=nacho
+ExecStart=/var/home/nacho/repos/i.ar/utils/iar.sh --loop \
+  --personalization /var/home/nacho/repos/iar-personalization \
+  --agent librarian \
+  --max-cycles 1 \
+  --knowledge iar/ \
+  --ollama-host 10.66.0.5:11434 \
+  --model glm-5.2:cloud \
+  --ctx 1048576 \
+  --gptel-fork /var/home/nacho/repos/gptel
+WorkingDirectory=/var/home/nacho/repos/i.ar
+StandardOutput=append:/var/home/nacho/repos/iar-personalization/audit/librarian/cycle.log
+StandardError=append:/var/home/nacho/repos/iar-personalization/audit/librarian/cycle.log
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target

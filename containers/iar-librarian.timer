@@ -1,0 +1,11 @@
+[Unit]
+Description=i.ar Librarian -- Documentation Sync Timer
+Wants=network-online.target
+
+[Timer]
+# Run every 30 minutes
+OnBootSec=5min
+OnUnitActiveSec=30min
+
+[Install]
+WantedBy=timers.target
