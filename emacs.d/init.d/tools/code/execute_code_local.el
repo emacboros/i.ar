@@ -20,83 +20,63 @@
 (require 'iar-output-sanitizer)
 (require 'iar-audit-log)
 
-(defun iar--mygptel--async-shell-command (callback-or-command &optional command timeout)
-  "Run a shell command asynchronously, returning result via CALLBACK.
+(defun iar--mygptel--async-shell-command (callback command &optional timeout)
+  "Run COMMAND asynchronously, returning result via CALLBACK.
 
-New async convention (for gptel :async tools):
-  (iar--mygptel--async-shell-command CALLBACK COMMAND &optional TIMEOUT)
-  Returns immediately, calls CALLBACK with the result string when done.
-
-Legacy sync convention (for backward compatibility):
-  (iar--mygptel--async-shell-command COMMAND &optional TIMEOUT)
-  Blocks via accept-process-output and returns the result string.
-
+Returns immediately, calls CALLBACK with the result string when done.
 TIMEOUT in seconds (default 3600) kills the process on true hangs.
 
 All commands run with GIT_PAGER=cat and TERM=dumb exported in their
 environment to prevent interactive pagers (less/more) from hanging in
 batch mode.  These are exported (not prefixed) so they persist across
 && chains -- critical for commands like 'cd /root/i.ar && git log'."
-  (if (functionp callback-or-command)
-      (let* ((cb callback-or-command)
-             (cmd command)
-             (timeout (or timeout 3600))
-             (buf (generate-new-buffer " *gptel-async-shell*"))
-             (timed-out nil)
-             (timer nil)
-             (proc nil)
-             (sanitize-output (bound-and-true-p my-gptel--sanitize-exec-output)))
-        (setq proc
-              (condition-case err
-                  (make-process
-                   :name "gptel-async-cmd"
-                   :buffer buf
-                   :command (list shell-file-name "-c"
-                                  (format "export GIT_PAGER=cat TERM=dumb; %s" cmd))
-                   :sentinel
-                   (lambda (proc _event)
-                     (when (memq (process-status proc) '(exit signal))
-                       (when timer (cancel-timer timer))
-                       (let* ((exit-code (process-exit-status proc))
-                              (output (if (buffer-live-p buf)
-                                          (with-current-buffer buf (buffer-string))
-                                        "[buffer was no longer live — output lost]")))
-                         (when (buffer-live-p buf) (kill-buffer buf))
-                         (let ((result
-                                (cond
-                                 (timed-out
-                                  (format "[TIMEOUT after %ds — process killed]\n%s" timeout output))
-                                 ((and exit-code (/= exit-code 0))
-                                  (format "Command exited with code %d.\nOutput:\n%s" exit-code output))
-                                 (t output))))
-                           (my-gptel--audit-log-exec cmd
-                             (if timed-out -1
-                               (if (and exit-code (/= exit-code 0)) exit-code 0)))
-                           (funcall cb
-                                    (if sanitize-output
-                                        (my-gptel--sanitize-external-output result)
-                                      result)))))))
-                (error
-                 (when (buffer-live-p buf) (kill-buffer buf))
-                 (signal (car err) (cdr err)))))
-        (setq timer
-              (run-with-timer timeout nil
-                              (lambda ()
-                                (when (process-live-p proc)
-                                  (setq timed-out t)
-                                  (delete-process proc))))))
-    (let* ((cmd callback-or-command)
-           (timeout (or command 3600))
-           (result nil)
-           (done nil)
-           (deadline (time-add (current-time) (seconds-to-time timeout))))
-      (iar--mygptel--async-shell-command
-       (lambda (r) (setq result r done t))
-       cmd timeout)
-      (while (and (not done)
-                  (time-less-p (current-time) deadline))
-        (accept-process-output nil 0.1))
-      (or result (format "[TIMEOUT after %ds — process killed]\n" timeout)))))
+  (let* ((cb callback)
+         (cmd command)
+         (timeout (or timeout 3600))
+         (buf (generate-new-buffer " *gptel-async-shell*"))
+         (timed-out nil)
+         (timer nil)
+         (proc nil)
+         (sanitize-output (bound-and-true-p my-gptel--sanitize-exec-output)))
+    (setq proc
+          (condition-case err
+              (make-process
+               :name "gptel-async-cmd"
+               :buffer buf
+               :command (list shell-file-name "-c"
+                              (format "export GIT_PAGER=cat TERM=dumb; %s" cmd))
+               :sentinel
+               (lambda (proc _event)
+                 (when (memq (process-status proc) '(exit signal))
+                   (when timer (cancel-timer timer))
+                   (let* ((exit-code (process-exit-status proc))
+                          (output (if (buffer-live-p buf)
+                                      (with-current-buffer buf (buffer-string))
+                                    "[buffer was no longer live — output lost]")))
+                     (when (buffer-live-p buf) (kill-buffer buf))
+                     (let ((result
+                            (cond
+                             (timed-out
+                              (format "[TIMEOUT after %ds — process killed]\n%s" timeout output))
+                             ((and exit-code (/= exit-code 0))
+                              (format "Command exited with code %d.\nOutput:\n%s" exit-code output))
+                             (t output))))
+                       (my-gptel--audit-log-exec cmd
+                         (if timed-out -1
+                           (if (and exit-code (/= exit-code 0)) exit-code 0)))
+                       (funcall cb
+                                (if sanitize-output
+                                    (my-gptel--sanitize-external-output result)
+                                  result)))))))
+            (error
+             (when (buffer-live-p buf) (kill-buffer buf))
+             (signal (car err) (cdr err)))))
+    (setq timer
+          (run-with-timer timeout nil
+                          (lambda ()
+                            (when (process-live-p proc)
+                              (setq timed-out t)
+                              (delete-process proc)))))))
 
 (add-to-list 'gptel-tools
  (gptel-make-tool

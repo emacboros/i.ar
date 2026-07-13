@@ -4,7 +4,7 @@
 ;; Tests the async shell command execution tool.
 ;; Uses :integration tag for tests that actually spawn processes.
 ;;
-;; NOTE: iar--mygptel--async-shell-command is now a truly async function that
+;; NOTE: iar--mygptel--async-shell-command is an async function that
 ;; takes a CALLBACK as its first argument and returns immediately. Tests
 ;; use a synchronous wrapper (my-gptel--async-shell-sync) to wait for
 ;; the result.
@@ -102,41 +102,6 @@ TIMEOUT defaults to 10 seconds."
     (let ((result (my-gptel--async-shell-sync "echo $TEST_VAR" 10)))
       (should (stringp result))
       (should (string-match-p "expected_value_42" result)))))
-
-;;; --- Legacy sync convention tests ---
-
-(ert-deftest test-code-legacy-sync-echo ()
-  "Legacy sync convention should return command output."
-  :tags '(integration)
-  (let ((result (iar--mygptel--async-shell-command "echo hello" 10)))
-    (should (stringp result))
-    (should (string-match-p "hello" result))))
-
-(ert-deftest test-code-legacy-sync-exit-code ()
-  "Legacy sync convention should report non-zero exit code."
-  :tags '(integration)
-  (let ((result (iar--mygptel--async-shell-command "exit 42" 10)))
-    (should (stringp result))
-    (should (string-match-p "exited with code 42" result))))
-
-(ert-deftest test-code-legacy-sync-timeout ()
-  "Legacy sync convention should timeout on long-running commands.
-This is a regression test for the deadline computation bug where the
-while loop recomputed (current-time) inside the condition, making the
-deadline always now+timeout and the loop infinite."
-  :tags '(integration)
-  (let ((result (iar--mygptel--async-shell-command "sleep 10" 2)))
-    (should (stringp result))
-    (should (string-match-p "TIMEOUT" result))))
-
-(ert-deftest test-code-legacy-sync-default-timeout ()
-  "Legacy sync convention without timeout should default to 3600s.
-Verifies that nil timeout is handled via (or command 3600)."
-  :tags '(integration)
-  ;; Use a fast command so the test doesn't wait long
-  (let ((result (iar--mygptel--async-shell-command "echo fast")))
-    (should (stringp result))
-    (should (string-match-p "fast" result))))
 
 ;;; --- Buffer cleanup on process creation failure tests ---
 
