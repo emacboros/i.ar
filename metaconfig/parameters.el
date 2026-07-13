@@ -83,6 +83,11 @@ Contains per-agent subdirectories with .md task files
   :type 'key
   :group 'iar)
 
+(defcustom iar-key-view-prompt "C-c v"
+  "Keybinding to view the full system prompt in a read-only buffer."
+  :type 'key
+  :group 'iar)
+
 (defcustom iar-key-summarize "C-c m"
   "Keybinding to summarize the session to SUMMARY.md."
   :type 'key
