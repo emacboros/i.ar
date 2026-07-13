@@ -57,7 +57,7 @@ Options:
   --mount-ro PATH       Mount a host directory read-only inside the container
                        at the same absolute path. Can be specified multiple times.
   --ssh-key-dir PATH    Directory containing agent SSH keys (default: ~/.ssh).
-  --ssh-key NAME        SSH key name to use (default: <agent>_ed25519).
+  --ssh-key NAME        SSH key name to use (default: emacboros_ed25519).
                        Looks for <name> and <name>.pub in --ssh-key-dir.
                        If the key does not exist, SSH mounts are skipped
                        (agent has no git push capability, but pull still works
@@ -91,7 +91,7 @@ Examples:
   agent_loop.sh --personalization ~/repos/iar-personalization --agent auditor --max-cycles 10
 
   # Use a shared SSH key instead of per-agent key
-  agent_loop.sh --personalization ~/repos/iar-personalization --agent darwin --ssh-key darwin_ed25519 --self-modification
+  agent_loop.sh --personalization ~/repos/iar-personalization --agent darwin --ssh-key emacboros_ed25519 --self-modification
 
   # With knowledge and custom timeout
   agent_loop.sh --personalization ~/repos/iar-personalization --knowledge infra/ --timeout 3600
@@ -258,7 +258,7 @@ fi
 # Derived values
 # =============================================================================
 CONTAINER_NAME="${AGENT_NAME}-cycle"
-SSH_KEY_NAME="${SSH_KEY_NAME:-${AGENT_NAME}_ed25519}"
+SSH_KEY_NAME="${SSH_KEY_NAME:-emacboros_ed25519}"
 GIT_AUTHOR_NAME="$(tr '[:lower:]' '[:upper:]' <<< "${AGENT_NAME:0:1}")${AGENT_NAME:1} Agent"
 GIT_AUTHOR_EMAIL="${AGENT_NAME}@emacboros.local"
 LOG_FILE="${PERSONALIZATION_DIR}/audit/${AGENT_NAME}-loop-$(date +%Y-%m-%d).log"
