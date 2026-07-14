@@ -13,11 +13,19 @@
 ;;   gptel-curl--sentinel snapshots the raw process buffer before gptel
 ;;   parses it.
 ;;
+;; Token usage tracking: parses prompt_eval_count and eval_count from
+;; the final streaming chunk of each Ollama response. Accumulates totals
+;; in global variables. On kill-emacs-hook, writes a summary line to
+;; audit/<agent>/USAGE.log.
+;;
 ;; Log format:
 ;;   === REQUEST [timestamp] ===
 ;;   <JSON payload>
 ;;   === RESPONSE [timestamp] ===
 ;;   <raw response body>
+;;
+;; USAGE.log format:
+;;   [YYYY-MM-DD HH:MM:SS] <agent>: requests=N input_tokens=N output_tokens=N total_tokens=N duration=Ns model=<model>
 ;;
 ;; No gptel source modifications. All advice-add. All output to audit mount.
 
@@ -38,6 +46,90 @@ Can be set buffer-locally to disable logging for specific buffers."
   :type 'boolean
   :safe #'booleanp
   :group 'iar)
+
+;;; --- Token usage accumulators (global, not buffer-local) ---
+;; These are global because the response capture advice runs in gptel's
+;; process buffers, not the gptel conversation buffer. Same pattern as
+;; iar--current-agent-name.
+
+(defvar iar--usage-requests 0
+  "Number of LLM requests made in this session/cycle.")
+(defvar iar--usage-input-tokens 0
+  "Total input tokens (prompt_eval_count) consumed in this session/cycle.")
+(defvar iar--usage-output-tokens 0
+  "Total output tokens (eval_count) consumed in this session/cycle.")
+(defvar iar--usage-model nil
+  "Model name from the last response, for usage logging.")
+(defvar iar--usage-start-time (current-time)
+  "Session/cycle start time for duration calculation.")
+
+(defun iar--usage-reset ()
+  "Reset all usage accumulators to zero.
+Called at the start of each cycle in loop mode."
+  (setq iar--usage-requests 0
+        iar--usage-input-tokens 0
+        iar--usage-output-tokens 0
+        iar--usage-model nil
+        iar--usage-start-time (current-time)))
+
+(defun iar--usage-totals ()
+  "Return a plist with current usage totals.
+:requests :input-tokens :output-tokens :total-tokens :duration-secs :model"
+  (let ((duration (float-time (time-subtract (current-time) iar--usage-start-time))))
+    (list :requests iar--usage-requests
+          :input-tokens iar--usage-input-tokens
+          :output-tokens iar--usage-output-tokens
+          :total-tokens (+ iar--usage-input-tokens iar--usage-output-tokens)
+          :duration-secs (round duration)
+          :model (or iar--usage-model "unknown"))))
+
+(defun iar--usage-parse-tokens (body)
+  "Parse token counts from response BODY.
+Ollama's final streaming chunk contains:
+  \"done\":true,\"prompt_eval_count\":N,\"eval_count\":N
+Extract these and accumulate into the global counters.
+Also extracts the model name from the response."
+  ;; Extract model name (appears in every chunk)
+  (when (string-match "\"model\":\"\\([^\"]+\\)\"" body)
+    (setq iar--usage-model (match-string 1 body)))
+  ;; Extract token counts from the final chunk
+  ;; prompt_eval_count is the input token count
+  (when (string-match "\"prompt_eval_count\":\\([0-9]+\\)" body)
+    (let ((input-tokens (string-to-number (match-string 1 body))))
+      (setq iar--usage-input-tokens (+ iar--usage-input-tokens input-tokens))))
+  ;; eval_count is the output token count
+  (when (string-match "\"eval_count\":\\([0-9]+\\)" body)
+    (let ((output-tokens (string-to-number (match-string 1 body))))
+      (setq iar--usage-output-tokens (+ iar--usage-output-tokens output-tokens)))))
+
+(defun iar--usage-write-log ()
+  "Write a usage summary line to audit/<agent>/USAGE.log.
+Called on kill-emacs-hook. Writes one line per session/cycle."
+  (condition-case err
+      (let* ((agent (iar--get-agent-name))
+             (totals (iar--usage-totals))
+             (log-path (expand-file-name
+                         (format "%s/USAGE.log" agent)
+                         (expand-file-name iar-audit-path user-emacs-directory)))
+             (timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
+             (line (format "[%s] %s: requests=%d input_tokens=%d output_tokens=%d total_tokens=%d duration=%ds model=%s\n"
+                           timestamp agent
+                           (plist-get totals :requests)
+                           (plist-get totals :input-tokens)
+                           (plist-get totals :output-tokens)
+                           (plist-get totals :total-tokens)
+                           (plist-get totals :duration-secs)
+                           (plist-get totals :model))))
+        (make-directory (file-name-directory log-path) t)
+        (with-temp-buffer
+          (insert line)
+          (let ((coding-system-for-write 'utf-8))
+            (append-to-file (point-min) (point-max) log-path))))
+    (error
+     (message "Warning: usage log write failed: %s"
+              (error-message-string err)))))
+
+(add-hook 'kill-emacs-hook #'iar--usage-write-log)
 
 ;;; --- Internal helpers ---
 
@@ -78,15 +170,6 @@ contains curl config lines followed by the JSON payload as the
 data-binary section."
   (when iar-request-log-enabled
     (condition-case err
-        ;; The config string is: config lines\n + JSON payload
-        ;; The JSON payload is everything after the last config line.
-        ;; gptel-curl--get-config returns (concat config "\n" data-json)
-        ;; where config ends with a newline. So the JSON starts after
-        ;; the final "\n" that follows the last config line.
-        ;; Simpler: the JSON payload starts at the first "{" character
-        ;; after the config header. But config lines use "key = value"
-        ;; format, not JSON. So find the first standalone "{" that starts
-        ;; a line.
         (let* ((json-start (string-match "{\"" config-str))
                (json-payload (if json-start
                                  (substring config-str json-start)
@@ -100,7 +183,8 @@ data-binary section."
 
 (defun iar--mygptel--request-log-incoming (process)
   "Snapshot the raw response from PROCESS buffer before gptel parses it.
-PROCESS is the curl process. Its buffer contains HTTP headers + body."
+PROCESS is the curl process. Its buffer contains HTTP headers + body.
+Also parses token counts from the response before truncation."
   (when iar-request-log-enabled
     (condition-case err
         (let ((proc-buf (process-buffer process)))
@@ -113,6 +197,10 @@ PROCESS is the curl process. Its buffer contains HTTP headers + body."
                      (body (if header-end
                                (substring raw-content (+ header-end 2))
                              raw-content)))
+                ;; Parse token counts BEFORE truncation (final chunk is at end)
+                (iar--usage-parse-tokens body)
+                ;; Count this as a request
+                (setq iar--usage-requests (1+ iar--usage-requests))
                 ;; Truncate extremely large responses to prevent log explosion
                 (when (> (length body) 100000)
                   (setq body (concat (substring body 0 100000)

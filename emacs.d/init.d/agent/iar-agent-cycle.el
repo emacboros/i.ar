@@ -47,6 +47,13 @@
 (declare-function iar--load-prompt "iar-prompt-loader" (name))
 (declare-function iar-load-knowledge-dir "iar-knowledge-loader" (label))
 
+;; Forward declarations for token usage tracking (defined in iar-request-logger.el)
+(defvar iar--usage-requests 0)
+(defvar iar--usage-input-tokens 0)
+(defvar iar--usage-output-tokens 0)
+(declare-function iar--usage-reset "iar-request-logger" ())
+(declare-function iar--usage-totals "iar-request-logger" ())
+
 ;;; --- Configuration ---
 
 (defgroup iar-cycle nil
@@ -90,6 +97,20 @@ notification.  Must be a non-empty string to trigger a send.")
 (defconst iar-cycle-default-continue-prompt
   "Continue your cycle. You are not done yet. Pick up where you left off and complete all remaining steps. When all steps are complete, end with the exact text CYCLE_COMPLETE on its own line."
   "Fallback continue prompt when no agent-specific one is found.")
+
+;;; --- Token usage summary for cycle result messages ---
+
+(defun iar--cycle-token-summary ()
+  "Return a token usage summary string for inclusion in cycle result messages.
+Returns empty string if usage tracking is not available."
+  (if (fboundp 'iar--usage-totals)
+      (let ((totals (iar--usage-totals)))
+        (format "\nTokens: %d in / %d out / %d total\nRequests: %d"
+                (plist-get totals :input-tokens)
+                (plist-get totals :output-tokens)
+                (plist-get totals :total-tokens)
+                (plist-get totals :requests)))
+    ""))
 
 ;;; --- Telegram notification ---
 
@@ -291,6 +312,9 @@ until it either completes all steps or reaches the turn limit."
          (turn-count 0)
          (continuation-pending nil))
     (message "[%s] Starting cycle with %ds timeout" agent-name timeout)
+    ;; Reset token usage accumulators for this cycle
+    (when (fboundp 'iar--usage-reset)
+      (iar--usage-reset))
     (with-current-buffer cycle-buf
       (text-mode)
       (gptel-mode 1)
@@ -371,8 +395,9 @@ until it either completes all steps or reaches the turn limit."
                      (message "[%s] Reached max turns (%d), ending cycle"
                               agent-name max-turns)
                      (setq iar-cycle-result-message
-                           (format "*%s Cycle: Max Turns Reached*\nTurns: %d (limit %d)\nTool calls: %d\nThe cycle hit the turn limit without completing."
-                                   (capitalize agent-name) turn-count max-turns tool-call-count))
+                           (format "*%s Cycle: Max Turns Reached*\nTurns: %d (limit %d)\nTool calls: %d%s\nThe cycle hit the turn limit without completing."
+                                   (capitalize agent-name) turn-count max-turns tool-call-count
+                                   (iar--cycle-token-summary)))
                      (run-with-timer 2 nil (lambda () (kill-emacs exit-code))))
                     ;; Check for completion markers
                     ((let ((completion-type (iar--cycle-complete-p cycle-buf start end)))
@@ -386,14 +411,16 @@ until it either completes all steps or reaches the turn limit."
                              (message "[%s] Loop complete (task done) in %.1fs"
                                       agent-name elapsed)
                              (setq iar-cycle-result-message
-                                   (format "*%s Loop Complete (Task Done)*\nElapsed: %.1fs\nTool calls: %d\nTurns: %d\nExit code: %d (loop stop)"
+                                   (format "*%s Loop Complete (Task Done)*\nElapsed: %.1fs\nTool calls: %d\nTurns: %d\nExit code: %d (loop stop)%s"
                                            (capitalize agent-name) elapsed
-                                           tool-call-count turn-count exit-code)))
+                                           tool-call-count turn-count exit-code
+                                           (iar--cycle-token-summary))))
                          (message "[%s] Cycle completed in %.1fs" agent-name elapsed)
                          (setq iar-cycle-result-message
-                               (format "*%s Cycle Complete*\nElapsed: %.1fs\nTool calls: %d\nTurns: %d\nExit code: %d"
+                               (format "*%s Cycle Complete*\nElapsed: %.1fs\nTool calls: %d\nTurns: %d\nExit code: %d%s"
                                        (capitalize agent-name) elapsed
-                                       tool-call-count turn-count exit-code)))
+                                       tool-call-count turn-count exit-code
+                                       (iar--cycle-token-summary))))
                        (run-with-timer 2 nil (lambda () (kill-emacs exit-code)))))
                     ;; Not complete -- re-prompt to continue
                     (t
@@ -428,8 +455,9 @@ until it either completes all steps or reaches the turn limit."
                    (let ((partial (buffer-substring-no-properties (point-min) (point-max))))
                      (message "[%s] Partial response: %.500s" agent-name partial)))))
              (setq iar-cycle-result-message
-                   (format "*%s Cycle: Timed Out*\nTimeout: %ds\nTool calls: %d\nTurns: %d\nThe cycle exceeded its time limit."
-                           (capitalize agent-name) timeout tool-call-count turn-count))
+                   (format "*%s Cycle: Timed Out*\nTimeout: %ds\nTool calls: %d\nTurns: %d%s\nThe cycle exceeded its time limit."
+                           (capitalize agent-name) timeout tool-call-count turn-count
+                           (iar--cycle-token-summary)))
              (when (buffer-live-p cycle-buf)
                (gptel-abort cycle-buf))
              (run-with-timer 3 nil (lambda () (kill-emacs 1)))))
@@ -483,8 +511,9 @@ until it either completes all steps or reaches the turn limit."
                     (message "[%s] FSM reached terminal state: %s"
                              agent-name (gptel-fsm-state fsm))
                     (setq iar-cycle-result-message
-                          (format "*%s Cycle: FSM Terminal*\nState: %s\nTool calls: %d\nTurns: %d\nThe FSM reached a terminal state without explicit completion."
-                                  (capitalize agent-name) (gptel-fsm-state fsm) tool-call-count turn-count))
+                          (format "*%s Cycle: FSM Terminal*\nState: %s\nTool calls: %d\nTurns: %d%s\nThe FSM reached a terminal state without explicit completion."
+                                  (capitalize agent-name) (gptel-fsm-state fsm) tool-call-count turn-count
+                                  (iar--cycle-token-summary)))
                     (run-with-timer 1 nil (lambda () (kill-emacs exit-code))))
                    ((and fsm (gptel-fsm-p fsm)
                          (memq (gptel-fsm-state fsm) '(DONE ERRS ABRT))
@@ -494,8 +523,9 @@ until it either completes all steps or reaches the turn limit."
                     (setq completed t)
                     (message "[%s] No FSM and idle for 60s, exiting" agent-name)
                     (setq iar-cycle-result-message
-                          (format "*%s Cycle: No FSM*\nTool calls: %d\nTurns: %d\nNo FSM found and idle for 60s."
-                                  (capitalize agent-name) tool-call-count turn-count))
+                          (format "*%s Cycle: No FSM*\nTool calls: %d\nTurns: %d%s\nNo FSM found and idle for 60s."
+                                  (capitalize agent-name) tool-call-count turn-count
+                                  (iar--cycle-token-summary)))
                     (run-with-timer 1 nil (lambda () (kill-emacs exit-code))))
                    ((and fsm (gptel-fsm-p fsm)
                          (not (memq (gptel-fsm-state fsm) '(DONE ERRS ABRT))))
@@ -506,8 +536,9 @@ until it either completes all steps or reaches the turn limit."
                   (setq completed t)
                   (message "[%s] No active requests for 1800s, exiting" agent-name)
                   (setq iar-cycle-result-message
-                        (format "*%s Cycle: Idle Exit*\nTool calls: %d\nTurns: %d\nNo active requests for 1800s, bailing out."
-                                (capitalize agent-name) tool-call-count turn-count))
+                        (format "*%s Cycle: Idle Exit*\nTool calls: %d\nTurns: %d%s\nNo active requests for 1800s, bailing out."
+                                (capitalize agent-name) tool-call-count turn-count
+                                (iar--cycle-token-summary)))
                   (run-with-timer 1 nil (lambda () (kill-emacs exit-code)))))))))))))
 
 ;; Backward compatibility alias
