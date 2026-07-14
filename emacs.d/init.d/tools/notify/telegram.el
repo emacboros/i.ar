@@ -42,8 +42,7 @@ The message is prefixed with [AgentName] for identification."
       (let* ((url (format "https://api.telegram.org/bot%s/sendMessage" token))
              (payload (json-serialize
                        `(:chat_id ,chat-id
-                         :text ,full-message
-                         :parse_mode "Markdown")))
+                         :text ,full-message)))
              (buf (generate-new-buffer " *telegram-send*"))
              (proc nil))
         (setq proc

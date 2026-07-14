@@ -349,7 +349,7 @@ tg_send() {
             -H "Content-Type: application/json" \
             -d "$(jq -n --arg chat_id "$AGENT_TELEGRAM_CHAT_ID" \
                        --arg text "$message" \
-                       '{chat_id: $chat_id, text: $text, parse_mode: "Markdown"}')" \
+                       '{chat_id: $chat_id, text: $text}')" \
             > /dev/null 2>&1 || true
     fi
 }

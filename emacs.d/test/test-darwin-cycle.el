@@ -280,8 +280,7 @@ Mocks call-process to capture the arguments and return a success response."
     (should captured-payload)
     (should (string-match-p "987654321" captured-payload))
     (should (string-match-p "Test Cycle Complete" captured-payload))
-    (should (string-match-p "Markdown" captured-payload))
-    ;; Verify it's valid JSON with correct structure
+    ;; Verify it's valid JSON with correct structure (no parse_mode -- plain text)
     (let ((parsed (with-temp-buffer
                     (insert captured-payload)
                     (goto-char (point-min))
@@ -289,7 +288,7 @@ Mocks call-process to capture the arguments and return a success response."
                       (json-read)))))
       (should (equal (plist-get parsed :chat_id) "987654321"))
       (should (string-match-p "Test Cycle Complete" (plist-get parsed :text)))
-      (should (equal (plist-get parsed :parse_mode) "Markdown")))))
+      (should (null (plist-get parsed :parse_mode))))))
 
 (ert-deftest test-darwin-notify-telegram-detects-success ()
   "iar--cycle-notify-telegram should detect success from \"ok\":true in response.

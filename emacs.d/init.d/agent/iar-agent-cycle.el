@@ -106,7 +106,7 @@ Silently skips if either is empty.  Logs success or failure."
             (payload (json-serialize
                       `(:chat_id ,chat-id
                         :text ,message
-                        :parse_mode "Markdown"))))
+                        ))))
         (message "[agent] Sending Telegram notification...")
         (let ((result (condition-case err
                           (with-temp-buffer
