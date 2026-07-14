@@ -32,6 +32,8 @@
   "Keybinding to display prompt size info.")
 (defvar iar-key-view-prompt nil
   "Keybinding to view the full system prompt in a read-only buffer.")
+(defvar iar-key-buffer-info nil
+  "Keybinding to display conversation buffer size.")
 (defvar iar-knowledge-open-delimiter nil
   "Format string for knowledge block opening delimiter.")
 (defvar iar-knowledge-close-delimiter nil
@@ -212,6 +214,22 @@ breakdown of personality vs injected knowledge."
                "not loaded")
              (iar--format-size total))))
 
+(defun iar-buffer-info ()
+  "Display the current conversation buffer size in chars and approx tokens.
+This is the total size of everything sent to the LLM on the next request:
+system prompt + all conversation turns + tool results.  Use this to
+decide when to start a new session before context gets too large."
+  (interactive)
+  (let* ((chars (save-restriction
+                  (widen)
+                  (point-max)))
+         (prompt-chars (length (or gptel-system-prompt "")))
+         (conv-chars (- chars prompt-chars)))
+    (message "=== Buffer Info ===\nTotal: %s\n  Prompt: %s\n  Conversation: %s"
+             (iar--format-size chars)
+             (iar--format-size prompt-chars)
+             (iar--format-size conv-chars))))
+
 (defun iar-view-prompt ()
   "Display the full system prompt in a read-only buffer.
 Shows exactly what the LLM receives as its system message -- agent
@@ -237,6 +255,7 @@ The buffer uses `view-mode' so you can search but not edit."
 (with-eval-after-load 'gptel
   (keymap-set gptel-mode-map iar-key-load-knowledge #'iar-load-knowledge)
   (keymap-set gptel-mode-map iar-key-prompt-info #'iar-prompt-info)
-  (keymap-set gptel-mode-map iar-key-view-prompt #'iar-view-prompt))
+  (keymap-set gptel-mode-map iar-key-view-prompt #'iar-view-prompt)
+  (keymap-set gptel-mode-map iar-key-buffer-info #'iar-buffer-info))
 
 (provide 'iar-knowledge-loader)

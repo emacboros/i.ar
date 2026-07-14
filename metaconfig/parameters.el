@@ -88,6 +88,11 @@ Contains per-agent subdirectories with .md task files
   :type 'key
   :group 'iar)
 
+(defcustom iar-key-buffer-info "C-c b"
+  "Keybinding to display conversation buffer size (chars and approx tokens)."
+  :type 'key
+  :group 'iar)
+
 (defcustom iar-key-summarize "C-c m"
   "Keybinding to summarize the session to SUMMARY.md."
   :type 'key
