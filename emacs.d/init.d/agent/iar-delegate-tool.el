@@ -271,6 +271,16 @@ so the user can watch progress in real time."
                            (fboundp 'iar--extra-mounts-prompt-string))
                       (concat profile (iar--extra-mounts-prompt-string))
                     profile))
+      ;; Set agent name for debug modules (request logger, FSM tracer, etc.)
+      ;; Both buffer-local and global default so advice running in gptel's
+      ;; process buffers can resolve the agent name.
+      (setq-local iar--current-agent-name agent)
+      (setq iar--current-agent-name agent)
+      (let ((agent-dir (expand-file-name iar-agents-path user-emacs-directory)))
+        (setq-local iar--current-agent-file
+                    (expand-file-name (format "%s/prompt.org" agent) agent-dir))
+        (setq iar--current-agent-file
+              (expand-file-name (format "%s/prompt.org" agent) agent-dir)))
       (setq-local my-gptel--delegate-depth (1+ parent-depth))
       (setq-local gptel-confirm-tool-calls nil)
       (when (>= my-gptel--delegate-depth iar-delegate-max-depth)

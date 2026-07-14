@@ -301,10 +301,19 @@ until it either completes all steps or reaches the turn limit."
                     profile))
       (setq-local gptel-confirm-tool-calls nil)
       (setq-local gptel-stream t)
+      ;; Set both buffer-local (for cycle buffer context) and global default
+      ;; (for debug modules whose advice runs in gptel's process buffers).
+      ;; Without the global default, iar--get-agent-name returns "unknown"
+      ;; in process buffers, causing logs to go to audit/unknown/ instead of
+      ;; audit/<agent-name>/.
       (setq-local iar--current-agent-name agent-name)
+      (setq iar--current-agent-name agent-name)
       (setq-local iar--current-agent-file
                   (expand-file-name (format "%s/prompt.org" agent-name)
                                     (expand-file-name iar-agents-path user-emacs-directory)))
+      (setq iar--current-agent-file
+            (expand-file-name (format "%s/prompt.org" agent-name)
+                              (expand-file-name iar-agents-path user-emacs-directory)))
       ;; Set self-modification mode so the agent can edit init.d/**/*.el.
       ;; Use setq-local (not setq) so only THIS buffer has self-modification
       ;; enabled.  Delegate buffers inherit the global nil value.

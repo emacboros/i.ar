@@ -158,9 +158,14 @@ Discovers agent directories under agents.d/<name>/ containing prompt.org."
                     (concat profile (iar--extra-mounts-prompt-string))
                   profile))
     ;; Track which agent file was loaded (for reload_agent tool)
+    ;; Set both buffer-local and global default so debug modules (request
+    ;; logger, FSM tracer, buffer monitor) can resolve the agent name when
+    ;; their advice runs in gptel's process buffers, not the gptel buffer.
     (setq-local iar--current-agent-file full-path)
+    (setq iar--current-agent-file full-path)
     ;; Track the agent name (for memory tools and per-agent file paths)
     (setq-local iar--current-agent-name chosen)
+    (setq iar--current-agent-name chosen)
     ;; Reset knowledge state when loading a new agent
     (setq-local iar--knowledge-base-prompt nil)
     (setq-local iar--knowledge-loaded-labels nil)

@@ -25,18 +25,34 @@
 (defun iar--get-agent-name ()
   "Return the current agent name.
 Checks `iar--current-agent-name' (buffer-local, set by
-iar-agent-loader or iar-agent-cycle).  Falls back to deriving the name
-from `iar--current-agent-file' (the prompt.org path).
-Returns \"unknown\" if neither is set."
-  (if (and (boundp 'iar--current-agent-name)
-           iar--current-agent-name)
-      iar--current-agent-name
-    (if (and (boundp 'iar--current-agent-file)
-             iar--current-agent-file)
-        (file-name-nondirectory
-         (directory-file-name
-          (file-name-directory iar--current-agent-file)))
-      "unknown")))
+iar-agent-loader or iar-agent-cycle).  Falls back to the global
+default value (set by agent-cycle for process-buffer contexts).
+Then falls back to deriving the name from `iar--current-agent-file'
+(the prompt.org path), checking buffer-local then global default.
+Returns \"unknown\" if none are set.
+
+This function is called from debug module advice (request-logger,
+fsm-tracer, buffer-monitor) which run in gptel's process buffers,
+not in the gptel conversation buffer.  The agent name is set
+buffer-locally in the conversation buffer AND as a global default
+so it is visible in process buffer contexts."
+  (let ((name (if (boundp 'iar--current-agent-name)
+                  (or (and (local-variable-p 'iar--current-agent-name)
+                           iar--current-agent-name)
+                      (default-value 'iar--current-agent-name))
+                nil)))
+    (if name
+        name
+      (let ((file (if (boundp 'iar--current-agent-file)
+                      (or (and (local-variable-p 'iar--current-agent-file)
+                               iar--current-agent-file)
+                          (default-value 'iar--current-agent-file))
+                    nil)))
+        (if file
+            (file-name-nondirectory
+             (directory-file-name
+              (file-name-directory file)))
+          "unknown")))))
 
 ;;; --- Approximate token counting ---
 

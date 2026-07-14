@@ -83,9 +83,11 @@ instead of the currently loaded one."
                              (fboundp 'iar--extra-mounts-prompt-string))
                         (concat profile (iar--extra-mounts-prompt-string))
                       profile))
-        ;; Track the loaded agent file and name
+        ;; Track the loaded agent file and name (both buffer-local and global)
         (setq-local iar--current-agent-file target-file)
+        (setq iar--current-agent-file target-file)
         (setq-local iar--current-agent-name target-name)
+        (setq iar--current-agent-name target-name)
         (format "Success: Reloaded agent profile '%s'. System message updated in current buffer (%d chars)."
                 target-name (length profile)))
     (error
