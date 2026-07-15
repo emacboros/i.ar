@@ -17,6 +17,7 @@
 (require 'iar-agent-utils)  ; validation (moved from task_tools)
 (require 'iar-agent-loader)  ; iar--load-agent-profile (moved from here)
 (require 'iar-tool-guard)    ; iar--mygptel--block-unknown-tools (moved from here)
+(require 'iar-gptel-compat)  ; gptel internal wrappers
 
 ;; Declared in metaconfig/parameters.el (loaded before init.d modules).
 (defvar iar-delegation-result-marker nil
@@ -293,7 +294,7 @@ so the user can watch progress in real time."
       ;; This lets the completion hook distinguish between a genuine final
       ;; response (after tool use) and a premature text-only response where
       ;; the model narrates its plan without actually calling tools.
-      (add-hook 'gptel-post-tool-call-functions
+      (add-hook 'iar-gptel-post-tool-call-functions
                 (lambda (_info)
                   (set tools-called-sym t))
                 nil t)
@@ -301,7 +302,7 @@ so the user can watch progress in real time."
       ;; Unknown tool guard: provide early interception of hallucinated tool
       ;; names at TPRE stage with a cleaner error message than gptel's
       ;; built-in handling in gptel--handle-tool-use (TOOL state).
-      (add-hook 'gptel-pre-tool-call-functions
+      (add-hook 'iar-gptel-pre-tool-call-functions
                 #'iar--mygptel--block-unknown-tools
                 nil t)
 
@@ -310,7 +311,7 @@ so the user can watch progress in real time."
              (iar--mygptel--delegate-completion-fn
               buf callback agent completed-sym timer-sym timeout-secs
               tools-called-sym turn-count-sym iar-delegate-max-turns)))
-        (add-hook 'gptel-post-response-functions completion-fn nil t)
+        (add-hook 'iar-gptel-post-response-functions completion-fn nil t)
 
         ;; Timeout timer: fires once after timeout-secs.
         (set timer-sym

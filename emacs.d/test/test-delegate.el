@@ -380,7 +380,9 @@ The error from iar--load-agent-profile propagates through the callback."
                         (lambda (_r)) "testagent" "task" "ctx" 30
                         "You are a test agent."))
              (with-current-buffer buf
-               (should (> (length gptel-post-response-functions) 0))))
+               (should (> (length (if (boundp 'iar-gptel-post-response-functions)
+                                      iar-gptel-post-response-functions
+                                    gptel-post-response-functions)) 0))))
         (when (buffer-live-p buf) (kill-buffer buf))))))
 
 (ert-deftest test-delegate-spawn-adds-pre-tool-hook ()
@@ -393,7 +395,9 @@ The error from iar--load-agent-profile propagates through the callback."
                         (lambda (_r)) "testagent" "task" "ctx" 30
                         "You are a test agent."))
              (with-current-buffer buf
-               (should (> (length gptel-pre-tool-call-functions) 0))))
+               (should (> (length (if (boundp 'iar-gptel-pre-tool-call-functions)
+                                      iar-gptel-pre-tool-call-functions
+                                    gptel-pre-tool-call-functions)) 0))))
         (when (buffer-live-p buf) (kill-buffer buf))))))
 
 (ert-deftest test-delegate-spawn-removes-delegate-tool-at-max-depth ()

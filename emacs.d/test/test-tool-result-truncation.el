@@ -67,6 +67,10 @@
   "Truncation advice should be installed on gptel--process-tool-call."
   (when (fboundp 'gptel--process-tool-call)
     (should (advice-member-p #'iar--truncate-tool-result-advice
+                             'gptel--process-tool-call)))
+  ;; Also verify via our compat layer
+  (when (fboundp 'iar-gptel-process-tool-call)
+    (should (advice-member-p #'iar--truncate-tool-result-advice
                              'gptel--process-tool-call))))
 
 (ert-deftest iar-truncate-notice-format ()

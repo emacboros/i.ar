@@ -32,6 +32,7 @@
 (require 'subr-x)
 (require 'json)
 (require 'iar-utils)
+(require 'iar-gptel-compat)
 
 ;; Declared in metaconfig/parameters.el (loaded before init.d modules).
 (defvar iar-audit-path nil
@@ -217,17 +218,17 @@ Also parses token counts from the response before truncation."
   "Install request logging via advice-add on gptel curl functions.
 Call this once during initialization to enable request logging."
   ;; Outgoing: capture the config string returned by gptel-curl--get-config
-  (advice-add 'gptel-curl--get-config :around
+  (iar-gptel-advise-curl-get-config :around
               (lambda (orig-fn info uuid)
                 (let ((result (funcall orig-fn info uuid)))
                   (iar--mygptel--request-log-outgoing result)
                   result)))
   ;; Incoming (streaming): snapshot before stream-cleanup parses
-  (advice-add 'gptel-curl--stream-cleanup :before
+  (iar-gptel-advise-curl-stream-cleanup :before
               (lambda (process _status)
                 (iar--mygptel--request-log-incoming process)))
   ;; Incoming (non-streaming): snapshot before sentinel parses
-  (advice-add 'gptel-curl--sentinel :before
+  (iar-gptel-advise-curl-sentinel :before
               (lambda (process _status)
                 (iar--mygptel--request-log-incoming process)))
   (message "[request-logger] Installed on gptel-curl functions"))

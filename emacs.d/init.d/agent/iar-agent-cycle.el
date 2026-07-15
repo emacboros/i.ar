@@ -30,6 +30,7 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'json)
+(require 'iar-gptel-compat)
 
 (defvar iar-guard-allow-self-modification)
 
@@ -349,7 +350,7 @@ until it either completes all steps or reaches the turn limit."
         (iar-load-knowledge-dir label))
 
       ;; Tool call tracker: log every tool call for debugging
-      (add-hook 'gptel-post-tool-call-functions
+      (add-hook 'iar-gptel-post-tool-call-functions
                 (lambda (info)
                   (cl-incf tool-call-count)
                   (let ((name (plist-get info :name))
@@ -364,7 +365,7 @@ until it either completes all steps or reaches the turn limit."
       ;; Unknown tool guard: provide early interception of hallucinated tool
       ;; names at TPRE stage with a cleaner error message than gptel's
       ;; built-in handling in gptel--handle-tool-use (TOOL state).
-      (add-hook 'gptel-pre-tool-call-functions
+      (add-hook 'iar-gptel-pre-tool-call-functions
                 #'iar--mygptel--block-unknown-tools
                 nil t)
 
@@ -438,7 +439,7 @@ until it either completes all steps or reaches the turn limit."
                                 (setq continuation-pending nil)
                                 (gptel-send)))
                           (setq continuation-pending nil)))))))))))
-        (add-hook 'gptel-post-response-functions cont-hook nil t)
+        (add-hook 'iar-gptel-post-response-functions cont-hook nil t)
 
         ;; Timeout handler
         (run-with-timer
@@ -479,17 +480,17 @@ until it either completes all steps or reaches the turn limit."
                    (cl-some
                     (lambda (entry)
                       (let* ((fsm (cadr entry))
-                             (info (and fsm (gptel-fsm-p fsm)
-                                        (gptel-fsm-info fsm)))
+                             (info (and fsm (iar-gptel-fsm-p fsm)
+                                        (iar-gptel-fsm-info fsm)))
                              (req-buf (and info (plist-get info :buffer))))
                         (and req-buf (buffer-live-p req-buf))))
-                    gptel--request-alist)))
+                    (iar-gptel-get-request-alist))))
               (if active-requests
                   (setq idle-count 0)
-                (let ((fsm (buffer-local-value 'gptel--fsm-last cycle-buf)))
+                (let ((fsm (iar-gptel-fsm-last cycle-buf)))
                   ;; Debug: log FSM state changes
-                  (let ((current-state (and fsm (gptel-fsm-p fsm)
-                                            (gptel-fsm-state fsm))))
+                  (let ((current-state (and fsm (iar-gptel-fsm-p fsm)
+                                            (iar-gptel-fsm-state fsm))))
                     (when (and current-state (not (eq current-state last-fsm-state)))
                       (message "[%s] FSM state changed: %s (idle: %d, turns: %d, tools: %d)"
                                agent-name current-state idle-count turn-count tool-call-count)
@@ -498,25 +499,25 @@ until it either completes all steps or reaches the turn limit."
                     (when (zerop (% debug-counter 50))
                       (message "[%s] Still waiting... FSM: %s idle: %d turns: %d tools: %d pending: %s active-procs: %s"
                                agent-name
-                               (and fsm (gptel-fsm-p fsm) (gptel-fsm-state fsm))
+                               (and fsm (iar-gptel-fsm-p fsm) (iar-gptel-fsm-state fsm))
                                idle-count turn-count tool-call-count
                                (if continuation-pending "yes" "no")
                                (if (get-buffer-process cycle-buf) "yes" "no"))))
                   (cond
-                   ((and fsm (gptel-fsm-p fsm)
-                         (memq (gptel-fsm-state fsm) '(DONE ERRS ABRT))
+                   ((and fsm (iar-gptel-fsm-p fsm)
+                         (memq (iar-gptel-fsm-state fsm) '(DONE ERRS ABRT))
                          (not continuation-pending)
                          (> turn-count 0))
                     (setq completed t)
                     (message "[%s] FSM reached terminal state: %s"
-                             agent-name (gptel-fsm-state fsm))
+                             agent-name (iar-gptel-fsm-state fsm))
                     (setq iar-cycle-result-message
                           (format "*%s Cycle: FSM Terminal*\nState: %s\nTool calls: %d\nTurns: %d%s\nThe FSM reached a terminal state without explicit completion."
-                                  (capitalize agent-name) (gptel-fsm-state fsm) tool-call-count turn-count
+                                  (capitalize agent-name) (iar-gptel-fsm-state fsm) tool-call-count turn-count
                                   (iar--cycle-token-summary)))
                     (run-with-timer 1 nil (lambda () (kill-emacs exit-code))))
-                   ((and fsm (gptel-fsm-p fsm)
-                         (memq (gptel-fsm-state fsm) '(DONE ERRS ABRT))
+                   ((and fsm (iar-gptel-fsm-p fsm)
+                         (memq (iar-gptel-fsm-state fsm) '(DONE ERRS ABRT))
                          continuation-pending)
                     (cl-incf idle-count))
                    ((and (not fsm) (> idle-count 60))
@@ -527,8 +528,8 @@ until it either completes all steps or reaches the turn limit."
                                   (capitalize agent-name) tool-call-count turn-count
                                   (iar--cycle-token-summary)))
                     (run-with-timer 1 nil (lambda () (kill-emacs exit-code))))
-                   ((and fsm (gptel-fsm-p fsm)
-                         (not (memq (gptel-fsm-state fsm) '(DONE ERRS ABRT))))
+                   ((and fsm (iar-gptel-fsm-p fsm)
+                         (not (memq (iar-gptel-fsm-state fsm) '(DONE ERRS ABRT))))
                     (setq idle-count 0))
                    (t
                     (cl-incf idle-count))))

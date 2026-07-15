@@ -67,6 +67,14 @@
 ;; GPTEL backend configuration
 (load (expand-file-name "iar-gptel-setup.el" init-core-dir))
 
+;; Gptel compatibility layer -- wraps gptel internal symbols so that
+;; init.d/ modules reference our wrappers, not gptel internals directly.
+;; Must load after gptel but before any init.d/ module that hooks into
+;; gptel internals (debug modules, security hooks, agent cycle, etc.).
+(let ((gptel-specific-dir (expand-file-name "gptel-specific" user-emacs-directory)))
+  (add-to-list 'load-path gptel-specific-dir)
+  (load (expand-file-name "iar-gptel-compat.el" gptel-specific-dir)))
+
 ;; Mount awareness -- parse IAR_EXTRA_MOUNTS env var so agents know
 ;; what extra directories are mounted. Must load before agent-loader
 ;; (which injects mount info into the system prompt).

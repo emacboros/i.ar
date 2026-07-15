@@ -21,6 +21,7 @@
 ;; and how much was kept.
 
 (require 'subr-x)
+(require 'iar-gptel-compat)
 
 (defvar iar-tool-result-max-chars 10000
   "Maximum characters of tool result output before truncation.
@@ -58,7 +59,7 @@ Truncates RESULT before it enters the conversation buffer."
 ;;;###autoload
 (defun iar-tool-result-truncation-setup ()
   "Install tool result truncation advice."
-  (advice-add 'gptel--process-tool-call :around
+  (iar-gptel-advise-process-tool-call :around
               #'iar--truncate-tool-result-advice))
 
 (iar-tool-result-truncation-setup)

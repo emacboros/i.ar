@@ -499,14 +499,16 @@ Without the guard, (>= total \"3\") would signal wrong-type-argument."
 ;;; --- Hook registration test ---
 
 (ert-deftest test-loop-guard-registered-in-hook ()
-  "iar--mygptel--loop-guard should be registered in `gptel-pre-tool-call-functions'.
+  "iar--mygptel--loop-guard should be registered in pre-tool-call functions.
 The top-level call to `my-gptel--loop-guard-setup' in iar-loop-guard.el
 adds the hook at load time.  If that call is accidentally removed,
 the loop guard would silently stop working -- no other test would
 catch this because all other tests call `iar--mygptel--loop-guard'
 directly rather than through the hook mechanism."
   (should (memq #'iar--mygptel--loop-guard
-                (default-value 'gptel-pre-tool-call-functions))))
+                (default-value (if (boundp 'iar-gptel-pre-tool-call-functions)
+                                    'iar-gptel-pre-tool-call-functions
+                                  'gptel-pre-tool-call-functions)))))
 
 (provide 'test-loop)
 ;;; test-loop.el ends here

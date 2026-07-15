@@ -11,6 +11,7 @@
 ;; built-in handling.
 
 (require 'cl-lib)
+(require 'iar-gptel-compat)
 
 (declare-function iar--load-prompt "iar-prompt-loader" (name))
 

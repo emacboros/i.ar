@@ -101,6 +101,12 @@
                         (expand-file-name "shared" test-init-dir))
       nil t)
 
+;; --- Load gptel compatibility layer (must be before init.d modules) ---
+
+(let ((gptel-specific-dir (expand-file-name "gptel-specific" user-emacs-directory)))
+  (add-to-list 'load-path gptel-specific-dir)
+  (load (expand-file-name "iar-gptel-compat.el" gptel-specific-dir) nil t))
+
 ;; --- Load prompt loader (must be before modules that use prompts) ---
 ;; iar-prompt-loader.el lives in init.d/agent/ and must load before
 ;; iar-delegate-tool, iar-memory-tools, and iar-loop-guard which call
