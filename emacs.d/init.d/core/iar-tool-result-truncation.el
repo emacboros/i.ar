@@ -23,7 +23,7 @@
 (require 'subr-x)
 (require 'iar-gptel-compat)
 
-(defvar iar-tool-result-max-chars 10000
+(defvar iar-tool-result-max-chars nil
   "Maximum characters of tool result output before truncation.
 Forward-declared here, owned by parameters.el.")
 
