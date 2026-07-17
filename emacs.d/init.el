@@ -54,7 +54,7 @@
 (load (expand-file-name "iar-utils.el" init-shared-dir))
 
 ;; Shared agent utilities (validation + path resolution, must load before
-;; task_tools, iar-agent-loader, iar-delegate-tool, iar-reload-tools, iar-memory-tools)
+;; task_tools, iar-agent-loader, iar-delegate-tool, iar-reload-os, iar-reload-agent, iar-memory-tools)
 (load (expand-file-name "iar-agent-utils.el" init-shared-dir))
 
 ;; Self-modification mode -- controlled by EMACBOROS_SELF_MODIFICATION env var.
@@ -155,7 +155,8 @@
 (let ((tools-agent-dir (expand-file-name "tools/agent" init-dir)))
   (add-to-list 'load-path tools-agent-dir)
   (load (expand-file-name "delegate.el" tools-agent-dir))
-  (load (expand-file-name "reload-tools.el" tools-agent-dir)))
+  (load (expand-file-name "reload_os.el" tools-agent-dir))
+  (load (expand-file-name "reload_agent.el" tools-agent-dir)))
 
 ;; Memory summarization tool (C-c m in gptel-mode)
 (load (expand-file-name "iar-memory-tools.el" init-agent-dir))

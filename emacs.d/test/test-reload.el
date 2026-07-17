@@ -8,7 +8,8 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'subr-x)
-(require 'iar-reload-tools)
+(require 'iar-reload-os)
+(require 'iar-reload-agent)
 
 ;;; --- reload_agent tests ---
 

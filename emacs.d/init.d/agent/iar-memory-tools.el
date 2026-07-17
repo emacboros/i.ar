@@ -19,7 +19,7 @@
 (require 'subr-x)
 (require 'iar-agent-utils)
 (require 'iar-prompt-loader)
-(require 'iar-reload-tools)
+(require 'iar-reload-agent)
 
 ;; Forward-declared: owned by configs/memory.el.
 ;; Declared here so this module can reference them before configs load.
