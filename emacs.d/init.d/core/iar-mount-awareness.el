@@ -2,8 +2,8 @@
 
 ;;; Mount Awareness -- Extra Mount Discovery
 ;;
-;; Reads the IAR_EXTRA_MOUNTS environment variable (set by iar.sh) and
-;; makes extra mount information available for injection into agent
+;; Reads the IAR_EXTRA_MOUNTS environment variable (set by emacboros.sh)
+;; and makes extra mount information available for injection into agent
 ;; system prompts.  This lets agents discover mounted directories
 ;; without being told verbally.
 ;;
@@ -13,6 +13,9 @@
 ;; When no extra mounts are present, the env var is unset and
 ;; `iar--extra-mounts' returns nil.  The agent loader checks this
 ;; and appends mount info to the system prompt only when mounts exist.
+
+(require 'subr-x)
+(require 'iar-prompt-loader)
 
 ;;; --- Mount parsing ---
 
@@ -41,18 +44,17 @@ Nil when no extra mounts are configured.")
 
 (defun iar--extra-mounts-prompt-string ()
   "Return a string describing extra mounts for the system prompt.
-Returns empty string when no extra mounts are configured."
+Returns empty string when no extra mounts are configured.
+Prompt text is loaded from agents.d/common/mount_info.org (rule 53)."
   (if (null iar--extra-mounts)
       ""
-    (with-temp-buffer
-      (insert "\n\n--- Extra Mounts ---\n")
-      (insert "The following directories are mounted into this container and available for access:\n\n")
-      (dolist (mount iar--extra-mounts)
-        (let ((path (car mount))
-              (mode (cdr mount)))
-          (insert (format "- %s (%s)\n" path
-                          (if (string= mode "ro") "read-only" "read-write")))))
-      (insert "\nUse list_directory and read_file to explore these mounts when relevant.\n")
-      (buffer-string))))
+    (let ((template (or (iar--load-prompt "mount_info") ""))
+          (entries
+           (mapconcat
+            (lambda (mount)
+              (format "- %s (%s)" (car mount)
+                      (if (string= (cdr mount) "ro") "read-only" "read-write")))
+            iar--extra-mounts "\n")))
+      (format template entries))))
 
 (provide 'iar-mount-awareness)

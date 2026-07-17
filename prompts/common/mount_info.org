@@ -1,0 +1,5 @@
+The following directories are mounted into this container and available for access:
+
+%s
+
+Use list_directory and read_file to explore these mounts when relevant.

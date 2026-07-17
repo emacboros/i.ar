@@ -121,38 +121,39 @@ Uses `iar--knowledge-base-prompt' as the personality and
 
 (defun iar-load-knowledge-dir (label)
   "Non-interactively load a knowledge directory into the current buffer.
-LABEL is a string like \"iar/\" matching a subdirectory of the knowledge dir.
+LABEL is a string like "iar/" matching a subdirectory of the knowledge dir.
 Returns t if loaded, nil if not found or already loaded.
 Safe for batch/non-interactive use -- no completing-read, no user-error."
   (let* ((candidates (iar--knowledge-candidates))
          (entry (assoc label candidates))
          (path (cdr entry)))
-    (unless path
+    (cond
+     ((null path)
       (message "[knowledge] Directory '%s' not found in %s" label (iar--knowledge-dir))
-      (cl-return-from iar-load-knowledge-dir nil))
-    ;; No-op if already loaded
-    (when (member label iar--knowledge-loaded-labels)
+      nil)
+     ((member label iar--knowledge-loaded-labels)
       (message "[knowledge] '%s' is already loaded." label)
-      (cl-return-from iar-load-knowledge-dir t))
-    ;; Read the knowledge content
-    (let ((content (iar--read-knowledge-files path)))
-      (unless content
-        (message "[knowledge] No .md or .org files found in '%s'" label)
-        (cl-return-from iar-load-knowledge-dir nil))
-      ;; Save original prompt on first knowledge load
-      (unless iar--knowledge-base-prompt
-        (setq-local iar--knowledge-base-prompt gptel-system-prompt))
-      ;; Add to knowledge blocks alist
-      (setf (alist-get label iar--knowledge-blocks nil nil #'equal) content)
-      ;; Track the label
-      (add-to-list 'iar--knowledge-loaded-labels label)
-      ;; Rebuild the full system prompt
-      (setq-local gptel-system-prompt (iar--knowledge-rebuild-prompt))
-      (message "[knowledge] '%s' loaded (%d chars). Loaded: %s. Total: %s"
-               label (length content)
-               (mapconcat #'identity iar--knowledge-loaded-labels ", ")
-               (iar--format-size (length gptel-system-prompt)))
-      t)))
+      t)
+     (t
+      (let ((content (iar--read-knowledge-files path)))
+        (if (null content)
+            (progn
+              (message "[knowledge] No .md or .org files found in '%s'" label)
+              nil)
+          ;; Save original prompt on first knowledge load
+          (unless iar--knowledge-base-prompt
+            (setq-local iar--knowledge-base-prompt gptel-system-prompt))
+          ;; Add to knowledge blocks alist
+          (setf (alist-get label iar--knowledge-blocks nil nil #'equal) content)
+          ;; Track the label
+          (add-to-list 'iar--knowledge-loaded-labels label)
+          ;; Rebuild the full system prompt
+          (setq-local gptel-system-prompt (iar--knowledge-rebuild-prompt))
+          (message "[knowledge] '%s' loaded (%d chars). Loaded: %s. Total: %s"
+                   label (length content)
+                   (mapconcat #'identity iar--knowledge-loaded-labels ", ")
+                   (iar--format-size (length gptel-system-prompt)))
+          t))))))
 
 (defun iar-load-knowledge ()
   "Prompt user to select a knowledge folder and inject it

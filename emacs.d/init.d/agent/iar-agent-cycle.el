@@ -105,19 +105,13 @@ expands #+INCLUDE directives."
   "Load the cycle prompt for AGENT-NAME.
 Tries agents.d/common/<agent-name>_cycle.org first, then falls back to
 agents.d/common/agent_cycle.org."
-  (or (condition-case nil
-          (iar--load-prompt (format "%s_cycle" agent-name))
-        (error nil))
+  (or (ignore-errors (iar--load-prompt (format "%s_cycle" agent-name)))
       (iar--load-prompt "agent_cycle")))
 
 (defun iar--cycle-load-continue-prompt (_agent-name)
   "Load the shared continue prompt from agents.d/common/agent_cycle_continue.org.
 Returns nil if the file is not found (the caller handles the nil case)."
-  (condition-case nil
-      (iar--load-prompt "agent_cycle_continue")
-    (error
-     (message "[agent] No continue prompt found")
-     nil)))
+  (ignore-errors (iar--load-prompt "agent_cycle_continue")))
 
 ;;; ---------------------------------------------------------
 ;;; Completion detection

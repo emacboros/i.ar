@@ -87,6 +87,11 @@
 ;; Owns: tool registration, hooks, truncation, audit logging, token parsing.
 (load (expand-file-name "iar-tool-call.el" init-tool-call-dir))
 
+;; Prompt loader -- load prompt templates from common/ directory.
+;; Must load before mount-awareness, delegate, memory-tools, and loop-guard
+;; which call iar--load-prompt at load time.
+(load (expand-file-name "iar-prompt-loader.el" init-agent-dir))
+
 ;; Mount awareness -- parse IAR_EXTRA_MOUNTS env var so agents know
 ;; what extra directories are mounted. Must load before agent-loader
 ;; (which injects mount info into the system prompt).
@@ -107,14 +112,12 @@
 ;; Loop guard — detect and break repetitive tool call loops
 (load (expand-file-name "iar-loop-guard.el" init-security-dir))
 
+;; Tool guard — block unknown/hallucinated tool names
+(load (expand-file-name "iar-tool-guard.el" init-security-dir))
+
 ;; ──────────────────────────────────────────────────────────
 ;; Tools modules
 ;; ──────────────────────────────────────────────────────────
-;; Prompt loader -- load prompt templates from common/ directory
-;; Must load before iar-delegate-tool, iar-memory-tools, and iar-loop-guard which
-;; call iar--load-prompt at load time (in defconst forms).
-(load (expand-file-name "iar-prompt-loader.el" init-agent-dir))
-
 ;; Filesystem tools (one tool per file)
 (load (expand-file-name "list_directory.el" init-tools-fs-dir))
 (load (expand-file-name "read_file.el" init-tools-fs-dir))
