@@ -75,15 +75,14 @@ and rotates it if so.  This prevents unbounded growth of the audit log."
             (safe-detail (iar--audit-sanitize-detail detail)))
         ;; Rotate the log if it has grown too large.
         (iar--audit-maybe-rotate)
-        ;; Ensure the workspace directory exists before writing.
-        ;; Check file-exists-p first to avoid a stat syscall on every call
-        ;; after the directory has been created.
+        ;; Ensure the audit directory exists (defense in depth --
+        ;; also created at load time by iar--audit-log-setup).
         (let ((log-dir (file-name-directory iar--audit-log-path)))
           (unless (file-exists-p log-dir)
             (make-directory log-dir t)))
-        ;; write-region accepts a string directly -- no temp buffer needed.
         (write-region (format "[%s] %s | %s | %s\n" timestamp agent tool safe-detail)
                       nil iar--audit-log-path t 'silent))
+        ;; write-region accepts a string directly -- no temp buffer needed.
     (error
      (message "Warning: audit log write failed: %s"
               (error-message-string err)))))
@@ -112,3 +111,15 @@ or -1 if the command was killed due to timeout."
                          (format "exit=%d cmd=%s" exit-code truncated-cmd))))
 
 (provide 'iar-audit-log)
+
+;;; ---------------------------------------------------------
+;;; Setup
+;;; ---------------------------------------------------------
+
+(defun iar--audit-log-setup ()
+  "Create the audit log directory at load time."
+  (let ((log-dir (file-name-directory iar--audit-log-path)))
+    (unless (file-exists-p log-dir)
+      (make-directory log-dir t))))
+
+(iar--audit-log-setup)
