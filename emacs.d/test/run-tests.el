@@ -46,7 +46,7 @@
 (require 'undercover)
 
 ;; --- Module subdirectories (must match init.el ordering) ---
-;; Listed in dependency order: core, security, tools, agent, session, dynamic.
+;; Listed in dependency order: core, security, tools, agent, debug, session, dynamic.
 ;; This mirrors the explicit load order in init.el so that inter-module
 ;; dependencies (e.g., iar-prompt-loader before iar-delegate-tool, iar-output-sanitizer
 ;; before code_tools, iar-file-guard before iar-audit-log) are satisfied.
@@ -55,7 +55,7 @@
 (defconst test-init-subdirs
   '("shared" "core" "gptel-specific" "tool-call" "security" "tools" "tools/filesystem" "tools/code" "tools/tasks"
     "tools/notify" "tools/git" "tools/agent"
-    "agent" "session" "dynamic"))
+    "agent" "debug" "session" "dynamic"))
 
 ;; --- Add all subdirectories to load-path (for cross-module requires) ---
 

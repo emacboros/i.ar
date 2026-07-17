@@ -171,6 +171,11 @@
 ;; ──────────────────────────────────────────────────────────
 ;; Debug modules
 ;; ──────────────────────────────────────────────────────────
+;; Status mode -- custom mode-line display replacing buffer-monitor,
+;; request-logger, and fsm-tracer. Shows agent name, prompt size,
+;; last and cumulative token counts. No gptel internals.
+(load (expand-file-name "iar-status-mode.el" init-debug-dir))
+
 ;; Buffer size monitor -- logs buffer size before each gptel-send,
 ;; warns at threshold, optional hard cap to prevent host crash.
 (load (expand-file-name "iar-buffer-monitor.el" init-debug-dir))

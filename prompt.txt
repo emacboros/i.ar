@@ -1,0 +1,56 @@
+We are in the middle of the Ownership Refactor of i.ar. Read the following files before doing anything:
+
+1. `/root/i.ar/GUIDELINES.org` -- the 58 coding rules (12 sections) that govern the refactor. Every change must
+comply.
+2. `/root/.emacs.d/tasks/mirror/ownership-refactor-plan.md` -- the step-by-step plan with status tracking. Phases 0,
+1, and 2 are DONE. Phase 2 Step 2.6 is DEFERRED to Phase 4. We are starting Phase 3.
+3. `/root/.emacs.d/init.d/tool-call/iar-tool-call.el` -- the tool call layer built in Phase 2. This is the single
+integration point with gptel. It owns tool registration, i.ar hooks, result truncation, audit logging, and token
+usage accumulators. Phase 3 builds on this.
+4. `/root/.emacs.d/init.d/debug/iar-buffer-monitor.el` -- old debug module being replaced.
+5. `/root/.emacs.d/init.d/debug/iar-request-logger.el` -- old debug module being replaced. Note: the
+`iar--usage-parse-tokens` function here is still the canonical token parser (writes to tool call layer accumulators).
+6. `/root/.emacs.d/init.d/debug/iar-fsm-tracer.el` -- old debug module being replaced.
+7. `/root/.emacs.d/init.el` -- current load order. Debug modules are loaded near the end.
+8. `/root/.emacs.d/test/run-tests.el` -- test runner. Subdirectory list and load order.
+
+**Phase 3 has 2 steps:**
+
+**Step 3.1: Build `init.d/debug/iar-status-mode.el`**
+- A custom status bar (mode-line display) that shows: agent name, prompt size (chars), last request input tokens,
+last response output tokens, cumulative input tokens, cumulative output tokens.
+- No gptel internals (no FSM state, no tool call counts). Just the 6 data points.
+- Hooks into the tool call layer for token data (`iar--usage-totals`, `iar--usage-last-input`,
+`iar--usage-last-output`).
+- Gets agent name from `iar--get-agent-name` and prompt size from `gptel-system-prompt`.
+- Write tests. Commit. **REVIEW CHECKPOINT: I review the status bar design before proceeding.**
+
+**Step 3.2: Delete old debug modules**
+- Delete `iar-buffer-monitor.el`, `iar-request-logger.el`, `iar-fsm-tracer.el`.
+- Delete corresponding test files (`test-buffer-monitor.el`, `test-debug-modules.el`).
+- BUT: preserve `iar--usage-parse-tokens` -- it must move into the tool call layer (`iar-tool-call.el`) before
+deleting the request-logger. This function parses token counts from Ollama streaming responses via regex and writes
+to the accumulators. It's currently called from the request-logger's curl advice. When the request-logger is
+deleted, the parse function needs a new caller. For now, move the function to the tool call layer. The curl advice
+that calls it can be removed (we lose request/response logging, but the status bar replaces the need for real-time
+monitoring).
+- Remove debug modules from `init.el` load order.
+- Remove `gptel-specific/` from `init.el` load order if no remaining modules need it (check: agent-cycle still uses
+`iar-gptel-fsm-*` functions from compat layer -- those are deferred to Phase 4 Step 4.2).
+- Run tests. Commit.
+
+**Key decisions already made (from previous sessions):**
+- Tool call layer owns truncation, audit logging, and token accumulators.
+- Status bar shows 6 data points only: agent name, prompt size, last input tokens, last output tokens, cumulative
+input tokens, cumulative output tokens.
+- No FSM state in the status bar.
+- `gptel-compat.el` deletion is deferred to Phase 4 (agent-cycle still needs FSM access).
+- All `my-gptel--` prefixes have been renamed to `iar--`.
+- All tools register via `iar-tool-register` (not `add-to-list 'gptel-tools`).
+- All i.ar modules use `iar-pre-tool-call-functions` / `iar-post-tool-call-functions` /
+`iar-post-response-functions` (not gptel's hooks directly).
+- Config files are split in `configs/` directory (not `metaconfig/`).
+- 531 tests currently pass.
+
+**Commit at every checkpoint. Update the task file after each step.**
+
