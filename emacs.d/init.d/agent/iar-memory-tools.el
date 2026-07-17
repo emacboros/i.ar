@@ -19,9 +19,9 @@
 (require 'json)
 (require 'cl-lib)
 (require 'subr-x)
-(require 'iar-agent-utils)  ; iar--resolve-agent-audit-dir (moved from task_tools)
-(declare-function iar--tool-reload-agent "iar-reload-tools" (&optional agent-name))
-(declare-function iar--load-prompt "iar-prompt-loader" (name))
+(require 'iar-agent-utils)  ; iar--resolve-agent-audit-dir
+(require 'iar-prompt-loader)  ; iar--load-prompt
+(require 'iar-reload-tools)  ; iar--tool-reload-agent
 
 ;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-key-summarize nil
@@ -178,7 +178,7 @@ this limit, causing execve to fail with E2BIG."
               ;; setting done/exit-code, but we've already branched here
               ;; so it has no effect on the current flow.
               (delete-process proc)
-              (if (string-match-p "\\S-" raw-output)
+              (if (iar--non-blank-p raw-output)
                   (format "Error: Timeout after %ds. Partial output:\n%s" timeout raw-output)
                 (format "Error: Timeout after %ds. No output received." timeout)))
              ((and exit-code (/= exit-code 0))

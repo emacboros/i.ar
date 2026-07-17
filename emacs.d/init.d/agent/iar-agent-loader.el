@@ -5,7 +5,11 @@
 ;; and loads them with #+INCLUDE expansion.
 
 (require 'cl-lib)
-(require 'iar-agent-utils)  ; iar--validate-agent-name (moved from task_tools)
+(require 'subr-x)
+(require 'ox)  ; org-export-expand-include-keyword (boot-time require, GUIDELINES.org rule 8)
+(require 'iar-agent-utils)  ; iar--validate-agent-name, iar--path-traversal-check
+(require 'iar-utils)  ; iar--non-blank-p
+(require 'iar-mount-awareness)  ; iar--extra-mounts-prompt-string
 
 (declare-function gptel-mode "gptel" (&optional arg))
 (defvar gptel-mode-map)
@@ -37,8 +41,6 @@ Set buffer-local by `iar-load-agent' and `iar--tool-reload-agent'.")
 (defvar iar--knowledge-blocks nil)
 
 ;;; --- Profile reading ---
-
-(declare-function org-export-expand-include-keyword "ox" ())
 
 (defun iar--read-personal-file (agent-name filename)
   "Read a personal file for AGENT-NAME from the tasks mount.
@@ -83,14 +85,14 @@ prompt.org in the agents.d directory."
          (memories (iar--read-personal-file agent-name "MEMORIES.md"))
          (parts (list profile)))
     ;; Darwin's MEMORIES.md replaces LOGS.md + SUMMARY.md
-    (when (and (string-match-p "\\S-" memories)
-               (not (string-match-p "\\S-" logs))
-               (not (string-match-p "\\S-" summary)))
+    (when (and (iar--non-blank-p memories)
+               (not (iar--non-blank-p logs))
+               (not (iar--non-blank-p summary)))
       (push (format "\n\n%s" memories) parts))
     ;; Standard agents: LOGS.md + SUMMARY.md
-    (when (string-match-p "\\S-" logs)
+    (when (iar--non-blank-p logs)
       (push (format "\n\n%s" logs) parts))
-    (when (string-match-p "\\S-" summary)
+    (when (iar--non-blank-p summary)
       (push (format "\n\n%s" summary) parts))
     (mapconcat #'identity (nreverse parts) "")))
 
@@ -101,7 +103,6 @@ the tasks mount, NOT via #+INCLUDE.  This keeps personal data out of
 the agents.d directory (which is the shared prompts repo).
 
 The agent name is derived from FILEPATH's parent directory name."
-  (require 'ox)
   (let* ((agent-name (file-name-nondirectory
                       (directory-file-name
                        (file-name-directory filepath))))
@@ -153,8 +154,7 @@ Discovers agent directories under agents.d/<name>/ containing prompt.org."
     (unless (bound-and-true-p gptel-mode)
       (gptel-mode 1))
     (setq-local gptel-system-prompt
-                (if (and (boundp 'iar--extra-mounts-prompt-string)
-                         (fboundp 'iar--extra-mounts-prompt-string))
+                (if (fboundp 'iar--extra-mounts-prompt-string)
                     (concat profile (iar--extra-mounts-prompt-string))
                   profile))
     ;; Track which agent file was loaded (for reload_agent tool)

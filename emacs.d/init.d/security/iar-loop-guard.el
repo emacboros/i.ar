@@ -23,7 +23,7 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'iar-gptel-compat)
-(declare-function iar--load-prompt "iar-prompt-loader" (name))
+(require 'iar-prompt-loader)  ; iar--load-prompt
 
 ;;; --- Configuration ---
 ;; Parameters iar-loop-soft-threshold, iar-loop-hard-threshold,

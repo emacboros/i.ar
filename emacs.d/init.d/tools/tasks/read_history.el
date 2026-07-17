@@ -21,7 +21,7 @@ HISTORY.log files live in the audit mount at
 /root/.emacs.d/audit/<agent-name>/HISTORY.log."
   (condition-case err
       (let* ((audit-base (expand-file-name iar-audit-path user-emacs-directory)))
-        (if (and agent-name (stringp agent-name) (string-match-p "\\S-" agent-name))
+        (if (and agent-name (stringp agent-name) (iar--non-blank-p agent-name))
             (progn
               (iar--validate-agent-name agent-name)
               (let ((log-file (expand-file-name (format "%s/HISTORY.log" agent-name) audit-base)))

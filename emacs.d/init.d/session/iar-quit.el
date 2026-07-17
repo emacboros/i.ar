@@ -17,7 +17,7 @@
 ;; If no gptel buffer is active, skips summarization and quits directly.
 
 (require 'subr-x)
-(declare-function iar-summarize-session "iar-memory-tools" ())
+(require 'iar-memory-tools)  ; iar-summarize-session
 
 ;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-key-quit nil

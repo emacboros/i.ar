@@ -12,6 +12,7 @@
 (require 'iar-agent-utils)  ; validation (moved from task_tools)
 (require 'iar-utils)
 (require 'iar-agent-loader)  ; iar--load-agent-profile (now defined here)
+(require 'iar-mount-awareness)  ; iar--extra-mounts-prompt-string
 
 ;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-agents-path nil
@@ -58,7 +59,7 @@ instead of the currently loaded one."
       (let* ((agent-dir (expand-file-name iar-agents-path user-emacs-directory))
              ;; Determine which agent to load
              (target-name
-              (if (and agent-name (stringp agent-name) (string-match-p "\\S-" agent-name))
+              (if (and agent-name (stringp agent-name) (iar--non-blank-p agent-name))
                   (progn
                     (iar--validate-agent-name agent-name)
                     agent-name)
@@ -79,8 +80,7 @@ instead of the currently loaded one."
           (error "Agent profile '%s' not found in agents.d/" target-name))
         ;; Update system prompt in current buffer (with mount info if available)
         (setq-local gptel-system-prompt
-                    (if (and (boundp 'iar--extra-mounts-prompt-string)
-                             (fboundp 'iar--extra-mounts-prompt-string))
+                    (if (fboundp 'iar--extra-mounts-prompt-string)
                         (concat profile (iar--extra-mounts-prompt-string))
                       profile))
         ;; Track the loaded agent file and name (both buffer-local and global)

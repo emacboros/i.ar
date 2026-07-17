@@ -12,8 +12,7 @@
 
 (require 'cl-lib)
 (require 'iar-gptel-compat)
-
-(declare-function iar--load-prompt "iar-prompt-loader" (name))
+(require 'iar-prompt-loader)  ; iar--load-prompt
 
 (defun iar--block-unknown-tools (info)
   "Pre-tool-call hook to block unknown tool names.

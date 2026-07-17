@@ -92,7 +92,7 @@ Returns nil if no content was found."
              (content (with-temp-buffer
                         (insert-file-contents file)
                         (string-trim-right (buffer-string) "\n"))))
-        (when (and content (string-match-p "\\S-" content))
+        (when (and content (iar--non-blank-p content))
           (push (format (concat iar-knowledge-file-separator "\n\n%s") fname content) parts))))
     (when parts
       (mapconcat #'identity (nreverse parts) "\n\n"))))

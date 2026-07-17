@@ -44,7 +44,7 @@ the source or leaving .elc artifacts.  Captures the *Compile-Log* buffer."
               (when (get-buffer log-buf-name)
                 (with-current-buffer log-buf-name
                   (let ((content (buffer-string)))
-                    (when (string-match-p "\\S-" content)
+                    (when (iar--non-blank-p content)
                       (setq result (string-trim content))))
                   (let ((inhibit-read-only t))
                     (erase-buffer)))))

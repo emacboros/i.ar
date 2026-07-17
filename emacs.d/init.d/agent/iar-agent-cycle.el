@@ -31,6 +31,10 @@
 (require 'subr-x)
 (require 'json)
 (require 'iar-gptel-compat)
+(require 'iar-prompt-loader)  ; iar--load-prompt
+(require 'iar-knowledge-loader)  ; iar-load-knowledge-dir
+(require 'iar-tool-guard)  ; iar--block-unknown-tools
+(require 'iar-mount-awareness)  ; iar--extra-mounts-prompt-string
 
 (defvar iar-guard-allow-self-modification)
 
@@ -44,9 +48,7 @@
 (defvar iar-agents-path nil
   "Relative path to agent profile directories.")
 
-(declare-function iar--block-unknown-tools "iar-tool-guard" (info))
-(declare-function iar--load-prompt "iar-prompt-loader" (name))
-(declare-function iar-load-knowledge-dir "iar-knowledge-loader" (label))
+
 
 ;; Forward declarations for token usage tracking (defined in iar-request-logger.el)
 (defvar iar--usage-requests 0)
@@ -320,8 +322,7 @@ until it either completes all steps or reaches the turn limit."
       (text-mode)
       (gptel-mode 1)
       (setq-local gptel-system-prompt
-                  (if (and (boundp 'iar--extra-mounts-prompt-string)
-                           (fboundp 'iar--extra-mounts-prompt-string))
+                  (if (fboundp 'iar--extra-mounts-prompt-string)
                       (concat profile (iar--extra-mounts-prompt-string))
                     profile))
       (setq-local gptel-confirm-tool-calls nil)

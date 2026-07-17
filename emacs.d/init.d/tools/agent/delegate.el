@@ -14,16 +14,18 @@
 (require 'gptel)
 (require 'cl-lib)
 (require 'subr-x)
-(require 'iar-agent-utils)  ; validation (moved from task_tools)
-(require 'iar-agent-loader)  ; iar--load-agent-profile (moved from here)
-(require 'iar-tool-guard)    ; iar--block-unknown-tools (moved from here)
+(require 'iar-agent-utils)  ; validation
+(require 'iar-agent-loader)  ; iar--load-agent-profile
+(require 'iar-tool-guard)    ; iar--block-unknown-tools
+(require 'iar-prompt-loader)  ; iar--load-prompt
 (require 'iar-gptel-compat)  ; gptel internal wrappers
+(require 'iar-mount-awareness)  ; iar--extra-mounts-prompt-string
 
 ;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-delegation-result-marker nil
   "Marker that sub-agents emit before their concise summary.")
 
-(declare-function iar--load-prompt "iar-prompt-loader" (name))
+
 
 ;;; Buffer-local state for tracking delegation depth
 
@@ -86,7 +88,7 @@ and avoids a double-callback race."
             (lambda ()
               (when (buffer-live-p buf) (kill-buffer buf))))
            (funcall callback
-                    (if (and partial (string-match-p "\\S-" partial))
+                    (if (and partial (iar--non-blank-p partial))
                         (format "[TIMEOUT after %ds -- partial response captured]\n\n%s"
                                 timeout-secs partial)
                       (format "[TIMEOUT after %ds -- no response was generated before timeout]"
@@ -195,7 +197,7 @@ full response if the marker is not found."
              (lambda ()
                (when (buffer-live-p buf) (kill-buffer buf))))
             (funcall callback
-                     (if (and response (string-match-p "\\S-" response))
+                     (if (and response (iar--non-blank-p response))
                          (format "Delegate '%s' completed:\n\n%s" agent response)
                        (format "Delegate '%s' returned empty response (timeout: %ds)."
                                agent timeout-secs)))))
@@ -238,7 +240,7 @@ full response if the marker is not found."
              (lambda ()
                (when (buffer-live-p buf) (kill-buffer buf))))
             (funcall callback
-                     (if (and response (string-match-p "\\S-" response))
+                     (if (and response (iar--non-blank-p response))
                          (format "Delegate '%s' completed (max text-only turns reached):\n\n%s"
                                  agent response)
                        (format "Delegate '%s' returned empty response after %d text-only turns."
@@ -268,8 +270,7 @@ so the user can watch progress in real time."
       (text-mode)
       (gptel-mode 1)
       (setq-local gptel-system-prompt
-                  (if (and (boundp 'iar--extra-mounts-prompt-string)
-                           (fboundp 'iar--extra-mounts-prompt-string))
+                  (if (fboundp 'iar--extra-mounts-prompt-string)
                       (concat profile (iar--extra-mounts-prompt-string))
                     profile))
       ;; Set agent name for debug modules (request logger, FSM tracer, etc.)
