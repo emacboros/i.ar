@@ -53,7 +53,7 @@
 
 (defconst test-init-dir (expand-file-name "init.d" user-emacs-directory))
 (defconst test-init-subdirs
-  '("shared" "core" "security" "tools" "tools/filesystem" "tools/code" "tools/tasks"
+  '("shared" "core" "gptel-specific" "security" "tools" "tools/filesystem" "tools/code" "tools/tasks"
     "tools/notify" "tools/git"
     "agent" "session" "dynamic"))
 
@@ -115,7 +115,7 @@
 
 ;; --- Load gptel compatibility layer (must be before init.d modules) ---
 
-(let ((gptel-specific-dir (expand-file-name "gptel-specific" user-emacs-directory)))
+(let ((gptel-specific-dir (expand-file-name "init.d/gptel-specific" user-emacs-directory)))
   (add-to-list 'load-path gptel-specific-dir)
   (load (expand-file-name "iar-gptel-compat.el" gptel-specific-dir) nil t))
 
