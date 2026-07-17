@@ -48,41 +48,11 @@ Can be set buffer-locally to disable logging for specific buffers."
   :safe #'booleanp
   :group 'iar)
 
-;;; --- Token usage accumulators (global, not buffer-local) ---
-;; These are global because the response capture advice runs in gptel's
-;; process buffers, not the gptel conversation buffer. Same pattern as
-;; iar--current-agent-name.
+;;; --- Token usage accumulators ---
+;; Accumulators are owned by the tool call layer (iar-tool-call.el).
+;; This module provides the parse function that writes to them.
 
-(defvar iar--usage-requests 0
-  "Number of LLM requests made in this session/cycle.")
-(defvar iar--usage-input-tokens 0
-  "Total input tokens (prompt_eval_count) consumed in this session/cycle.")
-(defvar iar--usage-output-tokens 0
-  "Total output tokens (eval_count) consumed in this session/cycle.")
-(defvar iar--usage-model nil
-  "Model name from the last response, for usage logging.")
-(defvar iar--usage-start-time (current-time)
-  "Session/cycle start time for duration calculation.")
-
-(defun iar--usage-reset ()
-  "Reset all usage accumulators to zero.
-Called at the start of each cycle in loop mode."
-  (setq iar--usage-requests 0
-        iar--usage-input-tokens 0
-        iar--usage-output-tokens 0
-        iar--usage-model nil
-        iar--usage-start-time (current-time)))
-
-(defun iar--usage-totals ()
-  "Return a plist with current usage totals.
-:requests :input-tokens :output-tokens :total-tokens :duration-secs :model"
-  (let ((duration (float-time (time-subtract (current-time) iar--usage-start-time))))
-    (list :requests iar--usage-requests
-          :input-tokens iar--usage-input-tokens
-          :output-tokens iar--usage-output-tokens
-          :total-tokens (+ iar--usage-input-tokens iar--usage-output-tokens)
-          :duration-secs (round duration)
-          :model (or iar--usage-model "nil"))))
+(require 'iar-tool-call)  ; usage accumulators and functions
 
 (defun iar--usage-parse-tokens (body)
   "Parse token counts from response BODY.
@@ -93,44 +63,19 @@ Also extracts the model name from the response."
   ;; Extract model name (appears in every chunk)
   (when (string-match "\"model\":\"\\([^\"]+\\)\"" body)
     (setq iar--usage-model (match-string 1 body)))
-  ;; Extract token counts from the final chunk
-  ;; prompt_eval_count is the input token count
-  (when (string-match "\"prompt_eval_count\":\\([0-9]+\\)" body)
+  ;; Extract token counts. Use [^0-9]* to skip spaces after colon.
+  ;; Anchor eval_count with a preceding quote to avoid matching inside prompt_eval_count.
+  (when (string-match "prompt_eval_count[^0-9]*\\([0-9]+\\)" body)
     (let ((input-tokens (string-to-number (match-string 1 body))))
+      (setq iar--usage-last-input input-tokens)
       (setq iar--usage-input-tokens (+ iar--usage-input-tokens input-tokens))))
-  ;; eval_count is the output token count
-  (when (string-match "\"eval_count\":\\([0-9]+\\)" body)
+  (when (string-match "\"eval_count\"[^0-9]*\\([0-9]+\\)" body)
     (let ((output-tokens (string-to-number (match-string 1 body))))
+      (setq iar--usage-last-output output-tokens)
       (setq iar--usage-output-tokens (+ iar--usage-output-tokens output-tokens)))))
 
-(defun iar--usage-write-log ()
-  "Write a usage summary line to audit/<agent>/USAGE.log.
-Called on kill-emacs-hook. Writes one line per session/cycle."
-  (condition-case err
-      (let* ((agent (iar--get-agent-name))
-             (totals (iar--usage-totals))
-             (log-path (expand-file-name
-                         (format "%s/USAGE.log" agent)
-                         (expand-file-name iar-audit-path user-emacs-directory)))
-             (timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
-             (line (format "[%s] %s: requests=%d input_tokens=%d output_tokens=%d total_tokens=%d duration=%ds model=%s\n"
-                           timestamp agent
-                           (plist-get totals :requests)
-                           (plist-get totals :input-tokens)
-                           (plist-get totals :output-tokens)
-                           (plist-get totals :total-tokens)
-                           (plist-get totals :duration-secs)
-                           (plist-get totals :model))))
-        (make-directory (file-name-directory log-path) t)
-        (with-temp-buffer
-          (insert line)
-          (let ((coding-system-for-write 'utf-8))
-            (append-to-file (point-min) (point-max) log-path))))
-    (error
-     (message "Warning: usage log write failed: %s"
-              (error-message-string err)))))
-
-(add-hook 'kill-emacs-hook #'iar--usage-write-log)
+;; Usage log writing is owned by the tool call layer (iar-tool-call.el).
+;; kill-emacs-hook for usage log is installed there.
 
 ;;; --- Internal helpers ---
 
@@ -201,7 +146,7 @@ Also parses token counts from the response before truncation."
                 ;; Parse token counts BEFORE truncation (final chunk is at end)
                 (iar--usage-parse-tokens body)
                 ;; Count this as a request
-                (setq iar--usage-requests (1+ iar--usage-requests))
+                (cl-incf iar--usage-requests)
                 ;; Truncate extremely large responses to prevent log explosion
                 (when (> (length body) 100000)
                   (setq body (concat (substring body 0 100000)

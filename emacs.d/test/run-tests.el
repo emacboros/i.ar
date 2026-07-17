@@ -53,7 +53,7 @@
 
 (defconst test-init-dir (expand-file-name "init.d" user-emacs-directory))
 (defconst test-init-subdirs
-  '("shared" "core" "gptel-specific" "security" "tools" "tools/filesystem" "tools/code" "tools/tasks"
+  '("shared" "core" "gptel-specific" "tool-call" "security" "tools" "tools/filesystem" "tools/code" "tools/tasks"
     "tools/notify" "tools/git" "tools/agent"
     "agent" "session" "dynamic"))
 

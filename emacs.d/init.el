@@ -21,6 +21,7 @@
 (defconst init-dynamic-dir (expand-file-name "dynamic" init-dir))
 (defconst init-debug-dir (expand-file-name "debug" init-dir))
 (defconst init-shared-dir (expand-file-name "shared" init-dir))
+(defconst init-tool-call-dir (expand-file-name "tool-call" init-dir))
 
 ;; Add all module subdirectories to load-path so that cross-module
 ;; require calls (e.g., (require 'iar-agent-utils) in iar-delegate-tool.el) can
@@ -29,7 +30,7 @@
                        init-tools-fs-dir init-tools-code-dir init-tools-tasks-dir
                        init-tools-notify-dir init-tools-git-dir
                        init-security-dir init-session-dir init-dynamic-dir
-                       init-debug-dir))
+                       init-debug-dir init-tool-call-dir))
   (add-to-list 'load-path subdir))
 
 ;; Configuration files (must load before any init.d modules)
@@ -81,14 +82,15 @@
 ;; GPTEL backend configuration
 (load (expand-file-name "iar-gptel-setup.el" init-core-dir))
 
-;; Gptel compatibility layer -- wraps gptel internal symbols so that
-;; init.d/ modules reference our wrappers, not gptel internals directly.
-;; Must load after gptel but before any init.d/ module that hooks into
-;; gptel internals (debug modules, security hooks, agent cycle, etc.).
-;; TEMPORARY: this file will be deleted in Phase 2 (tool call layer).
+;; Gptel compatibility layer -- TEMPORARY: will be deleted after all
+;; modules are migrated to the tool call layer.
 (let ((gptel-specific-dir (expand-file-name "init.d/gptel-specific" user-emacs-directory)))
   (add-to-list 'load-path gptel-specific-dir)
   (load (expand-file-name "iar-gptel-compat.el" gptel-specific-dir)))
+
+;; Tool call layer -- the single integration point with gptel.
+;; All i.ar modules hook into this, not gptel internals directly.
+(load (expand-file-name "iar-tool-call.el" init-tool-call-dir))
 
 ;; Mount awareness -- parse IAR_EXTRA_MOUNTS env var so agents know
 ;; what extra directories are mounted. Must load before agent-loader

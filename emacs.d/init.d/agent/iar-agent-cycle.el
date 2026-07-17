@@ -51,11 +51,9 @@
 
 
 ;; Forward declarations for token usage tracking (defined in iar-request-logger.el)
-(defvar iar--usage-requests 0)
-(defvar iar--usage-input-tokens 0)
-(defvar iar--usage-output-tokens 0)
-(declare-function iar--usage-reset "iar-request-logger" ())
-(declare-function iar--usage-totals "iar-request-logger" ())
+;; Token usage tracking is owned by the tool call layer.
+(declare-function iar--usage-reset "iar-tool-call" ())
+(declare-function iar--usage-totals "iar-tool-call" ())
 
 ;;; --- Configuration ---
 
