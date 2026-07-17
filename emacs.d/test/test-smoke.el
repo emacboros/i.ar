@@ -37,7 +37,7 @@ agent, session, dynamic).  We traverse each subdirectory to find
   "All expected tool names should be registered in gptel-tools."
   :tags '(smoke)
   (let* ((expected-names '("list_directory" "read_file" "write_file" "append_file"
-                           "execute_code_local" "replace_in_file"
+                           "execute_code_local" 
                            "delegate" "reload_os" "reload_agent"
                            "check_elisp" "read_tasks" "read_history"))
          (registered-names (mapcar #'gptel-tool-name (default-value 'gptel-tools))))

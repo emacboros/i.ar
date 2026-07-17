@@ -555,59 +555,6 @@ have a trailing newline even though the appended content did not include one."
       (iar--fs-write-file target content)
       (should (string= (iar--fs-read-file target) content)))))
 
-;;; --- replace_in_file tests ---
-
-(ert-deftest test-fs-replace-success ()
-  "replace_in_file should replace exact match and return success."
-  (with-fs-fixture
-    (let* ((target (expand-file-name "replace.txt" test-fs--tmpdir)))
-      (iar--fs-write-file target "alpha\nbeta\ngamma\n")
-      (let ((result (iar--fs-replace target "beta" "BETA")))
-        (should (string-match-p "Success" result))
-        (should (string= (iar--fs-read-file target)
-                         "alpha\nBETA\ngamma\n"))))))
-
-(ert-deftest test-fs-replace-not-found ()
-  "replace_in_file should return error when search text not found."
-  (with-fs-fixture
-    (let* ((target (expand-file-name "replace2.txt" test-fs--tmpdir)))
-      (iar--fs-write-file target "alpha\nbeta\ngamma\n")
-      (let ((result (iar--fs-replace target "nonexistent" "whatever")))
-        (should (string-match-p "Error" result))
-        ;; File should be unchanged
-        (should (string= (iar--fs-read-file target)
-                         "alpha\nbeta\ngamma\n"))))))
-
-(ert-deftest test-fs-replace-multiline ()
-  "replace_in_file should handle multi-line search and replace."
-  (with-fs-fixture
-    (let* ((target (expand-file-name "ml.txt" test-fs--tmpdir))
-           (original "function foo() {\n  return 1;\n}\n")
-           (search "function foo() {\n  return 1;\n}")
-           (replace "function foo() {\n  return 2;\n}"))
-      (iar--fs-write-file target original)
-      (let ((result (iar--fs-replace target search replace)))
-        (should (string-match-p "Success" result))
-        (should (string= (iar--fs-read-file target)
-                         "function foo() {\n  return 2;\n}\n"))))))
-
-(ert-deftest test-fs-replace-whitespace-significant ()
-  "replace_in_file should treat whitespace as significant (no trimming)."
-  (with-fs-fixture
-    (let* ((target (expand-file-name "ws.txt" test-fs--tmpdir)))
-      (iar--fs-write-file target "  indented line\n  other line\n")
-      ;; Search with leading spaces -- should match
-      (let ((result (iar--fs-replace target "  indented line" "  replaced line")))
-        (should (string-match-p "Success" result)))
-      ;; Search without leading spaces -- should NOT match the indented version
-      (let ((result (iar--fs-replace target "indented line" "should not match")))
-        (should (string-match-p "Error" result))))))
-
-(ert-deftest test-fs-replace-missing-file ()
-  "replace_in_file on missing file should return clean error."
-  (let ((result (iar--fs-replace "/nonexistent/file.txt" "foo" "bar")))
-    (should (stringp result))
-    (should (string-match-p "Error" result))))
 
 ;;; --- write_file buffer-aware tests ---
 

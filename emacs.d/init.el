@@ -127,7 +127,6 @@
 (load (expand-file-name "read_file.el" init-tools-fs-dir))
 (load (expand-file-name "write_file.el" init-tools-fs-dir))
 (load (expand-file-name "append_file.el" init-tools-fs-dir))
-(load (expand-file-name "replace_in_file.el" init-tools-fs-dir))
 
 ;; Code execution tools
 (load (expand-file-name "execute_code_local.el" init-tools-code-dir))
