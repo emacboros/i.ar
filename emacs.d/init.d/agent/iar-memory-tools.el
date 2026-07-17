@@ -135,7 +135,7 @@ this limit, causing execve to fail with E2BIG."
           ;; Create resources inside unwind-protect so cleanup always runs,
           ;; even if generate-new-buffer or make-temp-file fails.
           (setq buf (generate-new-buffer " *gptel-memory-summary*"))
-          (setq payload-file (make-temp-file "gptel-payload-"))
+          (setq payload-file (make-temp-file "iar-payload-"))
           ;; Write payload to temp file to avoid ARG_MAX / MAX_ARG_STRLEN limits
           (with-temp-file payload-file
             (insert payload))
@@ -226,7 +226,7 @@ The temp file is cleaned up on failure via unwind-protect."
     (unwind-protect
         (condition-case err
             (progn
-              (setq tmp-file (make-temp-file "gptel-summary-"))
+              (setq tmp-file (make-temp-file "iar-summary-"))
               (with-temp-file tmp-file
                 (insert new-summary)
                 (insert "\n"))

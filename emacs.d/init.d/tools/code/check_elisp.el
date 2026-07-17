@@ -28,7 +28,7 @@ Returns nil if parentheses are balanced."
   "Byte-compile FILEPATH and return warnings/errors string, or nil if clean.
 Uses `byte-compile-file' with a temp .elc destination to avoid modifying
 the source or leaving .elc artifacts.  Captures the *Compile-Log* buffer."
-  (let ((dest-file (make-temp-file "elc-check-" nil ".elc"))
+  (let ((dest-file (make-temp-file "iar-elc-check-" nil ".elc"))
         (log-buf-name "*Compile-Log*")
         (result nil))
     (unwind-protect

@@ -37,7 +37,7 @@ Returns a string starting with \\='Success:\\=' or \\='Error:\\='."
                         (save-buffer))
                       (iar--audit-log-write expanded-path)
                       (format "Success: File written to '%s'" expanded-path))))
-                (let ((tmp-file (make-temp-file "gptel-write-")))
+                (let ((tmp-file (make-temp-file "iar-write-")))
                   (with-temp-file tmp-file
                     (insert content))
                   (rename-file tmp-file expanded-path t)
