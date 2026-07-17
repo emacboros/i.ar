@@ -32,8 +32,21 @@
                        init-debug-dir))
   (add-to-list 'load-path subdir))
 
-;; Central parameter configuration (must load before any init.d modules)
-(load-file (expand-file-name "metaconfig/parameters.el" user-emacs-directory))
+;; Configuration files (must load before any init.d modules)
+;; Each config file owns defcustoms for a functional area.
+(let ((configs-dir (expand-file-name "configs" user-emacs-directory)))
+  (add-to-list 'load-path configs-dir)
+  (load (expand-file-name "paths.el" configs-dir))
+  (load (expand-file-name "keybindings.el" configs-dir))
+  (load (expand-file-name "delimiters.el" configs-dir))
+  (load (expand-file-name "git.el" configs-dir))
+  (load (expand-file-name "fork.el" configs-dir))
+  (load (expand-file-name "delegate.el" configs-dir))
+  (load (expand-file-name "cycle.el" configs-dir))
+  (load (expand-file-name "loop-guard.el" configs-dir))
+  (load (expand-file-name "memory.el" configs-dir))
+  (load (expand-file-name "file-guard.el" configs-dir))
+  (load (expand-file-name "debug.el" configs-dir)))
 
 ;; Shared utilities (must load before all other init.d modules)
 (load (expand-file-name "iar-utils.el" init-shared-dir))

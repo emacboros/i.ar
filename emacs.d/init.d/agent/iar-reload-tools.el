@@ -13,7 +13,7 @@
 (require 'iar-utils)
 (require 'iar-agent-loader)  ; iar--load-agent-profile (now defined here)
 
-;; Declared in metaconfig/parameters.el (loaded before init.d modules).
+;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-agents-path nil
   "Relative path to agent profile directories.")
 

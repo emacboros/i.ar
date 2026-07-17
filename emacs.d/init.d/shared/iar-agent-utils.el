@@ -11,7 +11,7 @@
 (require 'subr-x)
 (require 'iar-utils)  ; iar--get-agent-name
 
-;; Declared in metaconfig/parameters.el (loaded before init.d modules).
+;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-tasks-path nil
   "Relative path to task files directory.")
 (defvar iar-audit-path nil

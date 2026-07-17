@@ -23,7 +23,7 @@
 (require 'subr-x)
 (require 'iar-utils)
 
-;; Declared in metaconfig/parameters.el (loaded before init.d modules).
+;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-knowledge-path nil
   "Relative path to the knowledge base directory.")
 (defvar iar-key-load-knowledge nil

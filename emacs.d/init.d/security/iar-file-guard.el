@@ -20,7 +20,7 @@
 ;; regardless — an agent should never silently rewrite its own prompt
 ;; or the shared context.
 ;;
-;; Protected path patterns are defined as defcustoms in iar-parameters.el:
+;; Protected path patterns are defined as defcustoms in configs/ (split parameter files):
 ;;   `iar-guard-always-protected'
 ;;   `iar-guard-conditional-protected'
 ;; Each entry is (regex reason append-allowed).  This module implements
@@ -36,16 +36,16 @@
 
 ;;; --- Configuration ---
 
-;; Forward-declare defcustoms owned by iar-parameters.el.
+;; Forward-declare defcustoms owned by configs/ (split parameter files).
 ;; They are loaded before this module in init.el and run-tests.el.
 (defvar iar-guard-always-protected nil
   "List of always-active protected path patterns.
 Each entry is (regex reason append-allowed).
-Owned by iar-parameters.el; forward-declared here for compiler silence.")
+Owned by configs/ (split parameter files); forward-declared here for compiler silence.")
 (defvar iar-guard-conditional-protected nil
   "List of conditionally-active protected path patterns.
 Each entry is (regex reason append-allowed).
-Owned by iar-parameters.el; forward-declared here for compiler silence.")
+Owned by configs/ (split parameter files); forward-declared here for compiler silence.")
 
 (defcustom iar-guard-allow-self-modification nil
   "When non-nil, relax file guard protections for self-modification.

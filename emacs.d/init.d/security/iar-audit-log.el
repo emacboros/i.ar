@@ -17,7 +17,7 @@
 ;; iar--get-agent-name is now defined in shared/utils.el.
 
 ;; Parameter iar-audit-log-max-size is defined in
-;; metaconfig/parameters.el (loaded early in init.el).
+;; configs/ (split parameter files) (loaded early in init.el).
 
 (defun my-gptel--audit-sanitize-detail (detail)
   "Sanitize DETAIL for single-line audit log entry.

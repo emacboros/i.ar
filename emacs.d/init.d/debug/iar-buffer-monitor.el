@@ -23,11 +23,11 @@
 (require 'subr-x)
 (require 'iar-utils)
 
-;; Declared in metaconfig/parameters.el (loaded before init.d modules).
+;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-audit-path nil
   "Relative path to audit log directory.")
 
-;; Parameters are defined in metaconfig/parameters.el (loaded early).
+;; Parameters are defined in configs/ (split parameter files) (loaded early).
 ;; Forward declarations for byte-compiler.
 (defvar iar-buffer-warn-size nil)
 (defvar iar-buffer-hard-cap nil)

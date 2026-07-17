@@ -17,7 +17,8 @@
 (use-package gptel
   :ensure t
   :config
-  (load-file (expand-file-name "metaconfig/gptel.el" user-emacs-directory))
+  (load (expand-file-name "gptel.el"
+                          (expand-file-name "configs" user-emacs-directory)))
   (setq-default gptel-backend iar-gptel-backend)
   (setq-default gptel-model iar-gptel-default-model))
 (provide 'iar-gptel-setup)

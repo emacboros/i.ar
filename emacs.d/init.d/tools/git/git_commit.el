@@ -17,7 +17,7 @@
 (require 'iar-utils)
 (require 'iar-audit-log)
 
-;; Declared in metaconfig/parameters.el (loaded before init.d modules).
+;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-git-author-name nil
   "Default git author name for agent commits.")
 (defvar iar-git-author-email nil

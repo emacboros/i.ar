@@ -19,7 +19,7 @@
 (require 'iar-tool-guard)    ; iar--mygptel--block-unknown-tools (moved from here)
 (require 'iar-gptel-compat)  ; gptel internal wrappers
 
-;; Declared in metaconfig/parameters.el (loaded before init.d modules).
+;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-delegation-result-marker nil
   "Marker that sub-agents emit before their concise summary.")
 
@@ -33,7 +33,7 @@
 1+ = spawned via delegate. Used to limit recursion depth.")
 
 ;; Parameters iar-delegate-max-depth and iar-delegate-max-turns
-;; are defined in metaconfig/parameters.el (loaded early in init.el).
+;; are defined in configs/ (split parameter files) (loaded early in init.el).
 ;; No defcustom here -- the module references them as dynamic variables.
 
 ;;; Internal functions

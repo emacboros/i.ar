@@ -16,7 +16,7 @@
 
 (require 'subr-x)
 
-;; Declared in metaconfig/parameters.el (loaded before init.d modules).
+;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-audit-path nil
   "Relative path to audit log directory.")
 

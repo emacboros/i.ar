@@ -19,7 +19,7 @@
 (require 'subr-x)
 (declare-function iar-summarize-session "iar-memory-tools" ())
 
-;; Declared in metaconfig/parameters.el (loaded before init.d modules).
+;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-key-quit nil
   "Keybinding for session-aware quit.")
 

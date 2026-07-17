@@ -10,7 +10,7 @@
 (declare-function gptel-mode "gptel" (&optional arg))
 (defvar gptel-mode-map)
 
-;; Declared in metaconfig/parameters.el (loaded before init.d modules).
+;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-personal-file-max-lines nil
   "Maximum lines to inject from personal files. nil = no limit.")
 (defvar iar-agents-path nil

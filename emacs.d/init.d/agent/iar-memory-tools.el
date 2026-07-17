@@ -23,14 +23,14 @@
 (declare-function iar--mygptel--tool-reload-agent "iar-reload-tools" (&optional agent-name))
 (declare-function iar--load-prompt "iar-prompt-loader" (name))
 
-;; Declared in metaconfig/parameters.el (loaded before init.d modules).
+;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-key-summarize nil
   "Keybinding to summarize the session to SUMMARY.md.")
 
 ;;; --- Configuration ---
 ;; Parameters iar-memory-max-entries, iar-memory-timeout,
 ;; and iar-memory-max-conversation-chars are defined in
-;; metaconfig/parameters.el (loaded early in init.el).
+;; configs/ (split parameter files) (loaded early in init.el).
 
 (defun iar--memory-build-system-prompt ()
   "Build the system prompt for the summarizer.

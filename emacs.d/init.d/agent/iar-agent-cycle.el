@@ -34,7 +34,7 @@
 
 (defvar iar-guard-allow-self-modification)
 
-;; Declared in metaconfig/parameters.el (loaded before init.d modules).
+;; Declared in configs/ (split parameter files) (loaded before init.d modules).
 (defvar iar-cycle-timeout nil
   "Default timeout for an agent cycle in seconds.")
 (defvar iar-cycle-max-turns nil
@@ -62,7 +62,7 @@
   :group 'iar)
 
 ;; Parameters iar-cycle-timeout and iar-cycle-max-turns are defined
-;; in metaconfig/parameters.el (loaded early in init.el).
+;; in configs/ (split parameter files) (loaded early in init.el).
 
 (defcustom iar-telegram-bot-token
   (or (getenv "AGENT_TELEGRAM_BOT_TOKEN") "")

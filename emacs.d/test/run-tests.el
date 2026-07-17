@@ -85,9 +85,21 @@
            (list (list :report-file report-path)
                  (list :report-format 'text)))))
 
-;; --- Load central iar-parameters (must be before init.d modules) ---
+;; --- Load config files (must be before init.d modules) ---
 
-(load-file (expand-file-name "metaconfig/parameters.el" user-emacs-directory))
+(let ((configs-dir (expand-file-name "configs" user-emacs-directory)))
+  (add-to-list 'load-path configs-dir)
+  (load (expand-file-name "paths.el" configs-dir))
+  (load (expand-file-name "keybindings.el" configs-dir))
+  (load (expand-file-name "delimiters.el" configs-dir))
+  (load (expand-file-name "git.el" configs-dir))
+  (load (expand-file-name "fork.el" configs-dir))
+  (load (expand-file-name "delegate.el" configs-dir))
+  (load (expand-file-name "cycle.el" configs-dir))
+  (load (expand-file-name "loop-guard.el" configs-dir))
+  (load (expand-file-name "memory.el" configs-dir))
+  (load (expand-file-name "file-guard.el" configs-dir))
+  (load (expand-file-name "debug.el" configs-dir)))
 
 ;; --- Load shared utilities (must be before all other init.d modules) ---
 

@@ -27,7 +27,7 @@
 
 ;;; --- Configuration ---
 ;; Parameters iar-loop-soft-threshold, iar-loop-hard-threshold,
-;; and iar-loop-history-size are defined in metaconfig/parameters.el
+;; and iar-loop-history-size are defined in configs/ (split parameter files)
 ;; (loaded early in init.el).
 
 ;;; --- State ---
