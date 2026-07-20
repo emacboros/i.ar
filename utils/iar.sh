@@ -312,7 +312,7 @@ SSH_KEY_NAME="${SSH_KEY_NAME:-emacboros_ed25519}"
 
 if [[ "${MODE}" == "loop" ]]; then
     CONTAINER_NAME="${AGENT_NAME}-loop-$$"
-    GIT_AUTHOR_NAME="$(tr '[:lower:]' '[:upper:]' <<< "${AGENT_NAME:0:1}")${AGENT_NAME:1} Agent"
+    GIT_AUTHOR_NAME="${AGENT_NAME}-agent"
     GIT_AUTHOR_EMAIL="${AGENT_NAME}@emacboros.local"
 else
     CONTAINER_NAME="iar-interactive-$$"
