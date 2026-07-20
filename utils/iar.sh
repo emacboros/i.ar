@@ -87,6 +87,9 @@ Options (both modes):
                        memory to prevent host OOM kills on long sessions.
   --knowledge LABEL    Knowledge directory label to load (default: iar/).
                        Can be specified multiple times to load multiple bases.
+  --cycle-prompt NAME  Override cycle prompt file (e.g. matrix_turn).
+                       Loads from agents.d/common/<NAME>.org instead of
+                       the default agent cycle prompt.
   --help, -h            Show this message and exit.
 
 Options (loop mode only):
@@ -153,6 +156,7 @@ MEMORY_LIMIT="8g"
 MOUNT_ARGS=()
 MOUNT_RO_ARGS=()
 KNOWLEDGE_LABELS=()
+CYCLE_PROMPT=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -217,6 +221,11 @@ while [[ $# -gt 0 ]]; do
         --knowledge)
             [[ $# -lt 2 ]] && error "--knowledge requires a label argument" && exit 1
             KNOWLEDGE_LABELS+=("$2")
+            shift 2
+            ;;
+        --cycle-prompt)
+            [[ $# -lt 2 ]] && error "--cycle-prompt requires a name argument" && exit 1
+            CYCLE_PROMPT="$2"
             shift 2
             ;;
         --mount)
@@ -444,6 +453,14 @@ if [[ ${#KNOWLEDGE_LABELS[@]} -gt 0 ]]; then
     KNOWLEDGE_EVAL=":knowledge (list ${LABELS_LISP})"
 fi
 
+
+# =============================================================================
+# Cycle prompt override for Emacs eval (loop mode)
+# =============================================================================
+CYCLE_PROMPT_EVAL=""
+if [[ -n "${CYCLE_PROMPT}" ]]; then
+    CYCLE_PROMPT_EVAL=":cycle-prompt \"${CYCLE_PROMPT}\""
+fi
 # =============================================================================
 # Gptel fork mount
 # =============================================================================
@@ -569,7 +586,7 @@ run_cycle() {
         -e "TERM=dumb" \
         --entrypoint /bin/bash \
         "${IMAGE_NAME}" \
-        -c "preflight.sh && emacs --batch -l /root/.emacs.d/init.el --eval '(iar-run-cycle :agent \"${AGENT_NAME}\" :timeout ${TIMEOUT} :self-modification ${SELF_MODIFICATION:-0} ${KNOWLEDGE_EVAL})'" 2>&1 | tee -a "${LOG_FILE}"
+        -c "preflight.sh && emacs --batch -l /root/.emacs.d/init.el --eval '(iar-run-cycle :agent \"${AGENT_NAME}\" :timeout ${TIMEOUT} :self-modification ${SELF_MODIFICATION:-0} ${KNOWLEDGE_EVAL} ${CYCLE_PROMPT_EVAL})'" 2>&1 | tee -a "${LOG_FILE}"
 
     return ${PIPESTATUS[0]}
 }

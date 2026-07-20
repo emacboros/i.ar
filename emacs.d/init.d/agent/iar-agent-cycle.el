@@ -241,7 +241,8 @@ STATUS and INFO come from `iar-post-response-functions'."
 Keywords args:
   :agent NAME       -- agent profile name (default: \"darwin\")
   :timeout SECONDS  -- override iar-cycle-timeout
-  :prompt STRING    -- override the cycle prompt
+  :prompt STRING    -- override the cycle prompt (inline string)
+  :cycle-prompt NAME -- override cycle prompt file (loads agents.d/common/<NAME>.org)
   :knowledge LABEL  -- knowledge directory label(s) to load (default: \"iar/\")
                        Can be a single label string or a list of labels.
   :self-modification BOOL -- enable self-modification in cycle buffer (default: nil)
@@ -259,7 +260,10 @@ until it either completes all steps or reaches the turn limit."
                       raw-timeout
                     7200))
          (prompt (or (plist-get args :prompt)
-                     (iar--cycle-load-cycle-prompt agent-name)))
+                     (let ((cp (plist-get args :cycle-prompt)))
+                       (if cp
+                           (iar--load-prompt cp)
+                         (iar--cycle-load-cycle-prompt agent-name)))))
          (continue-prompt (iar--cycle-load-continue-prompt agent-name))
          (profile (iar--cycle-load-profile agent-name))
          (knowledge-labels (let ((k (plist-get args :knowledge)))
