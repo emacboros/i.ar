@@ -494,6 +494,20 @@ Tools are gated by the project's #+TOOLS metadata."
               (message "[%s] One-shot: no active requests for 1800s, exiting"
                        agent-name)
               (setf (plist-get iar--one-shot-state :completed) t))))
+        ;; Timeout check: if deadline passed and not completed, ask for summary
+        (when (and (not (plist-get iar--one-shot-state :completed))
+                   (not (time-less-p nil deadline)))
+          (message "[%s] One-shot: timeout reached, requesting summary..." agent-name)
+          (let ((summary-prompt "Time limit reached. Stop all tool calls immediately. Summarize all findings so far and wrap your summary in === BEGIN FINAL RESPONSE === and === END FINAL RESPONSE === markers. Include all vulnerabilities discovered, even partial ones."))
+            (with-current-buffer os-buf
+              (goto-char (point-max))
+              (insert summary-prompt)
+              (gptel-send)))
+          ;; Wait up to 120s for the summary response
+          (let ((summary-deadline (time-add nil (seconds-to-time 120))))
+            (while (and (not (plist-get iar--one-shot-state :completed))
+                        (time-less-p nil summary-deadline))
+              (accept-process-output nil 1))))
         ;; One-shot ended -- print result and exit
         (let ((exit-code (plist-get iar--one-shot-state :exit-code))
               (turn-count (plist-get iar--one-shot-state :turn-count))
@@ -507,7 +521,12 @@ Tools are gated by the project's #+TOOLS metadata."
                      agent-name timeout turn-count tool-call-count
                      (iar--cycle-token-summary)))
           ;; Print final response to stdout (clean output)
-          (when final-response
-            (princ final-response))
+          ;; On timeout with no final-response, extract whatever is in the buffer
+          (if final-response
+              (princ final-response)
+            (let ((buf-content (with-current-buffer os-buf
+                                 (buffer-substring-no-properties (point-min) (point-max)))))
+              (when (and buf-content (> (length buf-content) 0))
+                (princ buf-content))))
           (setq iar--one-shot-state nil)
           (kill-emacs exit-code))))))
