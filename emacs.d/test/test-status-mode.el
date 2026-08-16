@@ -206,3 +206,56 @@
           (iar-status-mode-disable)
           (should (= 1 (length mode-line-misc-info))))
       (test-status-mode--restore-mli old-mli))))
+;;; --- Edge case tests ---
+
+(ert-deftest test-status-mode-format-size-exact-1024 ()
+  "format-size should show 1.0K at exactly 1024."
+  (should (equal (iar--status-mode-format-size 1024) "1.0K")))
+
+(ert-deftest test-status-mode-format-size-exact-1M ()
+  "format-size should show 1.0M at exactly 1048576."
+  (should (equal (iar--status-mode-format-size 1048576) "1.0M")))
+
+(ert-deftest test-status-mode-format-tokens-exact-1000 ()
+  "format-tokens should show 1.0K at exactly 1000."
+  (should (equal (iar--status-mode-format-tokens 1000) "1.0K")))
+
+(ert-deftest test-status-mode-format-tokens-exact-1M ()
+  "format-tokens should show 1.0M at exactly 1000000."
+  (should (equal (iar--status-mode-format-tokens 1000000) "1.0M")))
+
+(ert-deftest test-status-mode-own-p-nil ()
+  "own-p should return nil for nil."
+  (should-not (iar--status-mode-own-p nil)))
+
+(ert-deftest test-status-mode-own-p-non-cons ()
+  "own-p should return nil for non-cons."
+  (should-not (iar--status-mode-own-p "string"))
+  (should-not (iar--status-mode-own-p 42)))
+
+(ert-deftest test-status-mode-own-p-wrong-key ()
+  "own-p should return nil for :eval with wrong function."
+  (should-not (iar--status-mode-own-p '(:eval (some-other-function))))
+  (should-not (iar--status-mode-own-p '(:wrong (iar--status-mode-format)))))
+
+(ert-deftest test-status-mode-own-p-no-cdr ()
+  "own-p should return nil when :eval has no cdr."
+  (should-not (iar--status-mode-own-p '(:eval))))
+
+(ert-deftest test-status-mode-own-p-correct ()
+  "own-p should return t for correct construct."
+  (should (iar--status-mode-own-p '(:eval (iar--status-mode-format)))))
+
+(ert-deftest test-status-mode-update-with-args ()
+  "update should accept and ignore hook arguments."
+  (iar--status-mode-update :some :hook :args)
+  (should t))
+
+(ert-deftest test-status-mode-remove-when-not-bound ()
+  "remove-from-mode-line should not error when mode-line-misc-info is unbound."
+  (cl-letf (((symbol-function 'boundp) (lambda (sym) (not (eq sym 'mode-line-misc-info)))))
+    (iar--status-mode-remove-from-mode-line)
+    (should t)))
+
+(provide 'test-status-mode)
+;;; test-status-mode.el ends here

@@ -183,3 +183,66 @@ Temporarily rebinds user-emacs-directory and knowledge config vars."
     (should (string-match-p "tokens" result))))
 
 (provide 'test-knowledge-loader)
+;;; --- iar--knowledge-dir tests ---
+
+(ert-deftest test-knowledge-dir-returns-path ()
+  "iar--knowledge-dir should return a path containing docs."
+  (let ((result (iar--knowledge-dir)))
+    (should (stringp result))
+    (should (string-match-p "docs" result))))
+
+;;; --- iar--read-knowledge-files tests ---
+
+(ert-deftest test-knowledge-read-files-empty-dir ()
+  "iar--read-knowledge-files should return nil for empty dir."
+  (let ((tmpdir (make-temp-file "test-knowledge-" :dir-flag)))
+    (unwind-protect
+        (should (null (iar--read-knowledge-files tmpdir)))
+      (delete-directory tmpdir t))))
+
+(ert-deftest test-knowledge-read-files-nonexistent-dir ()
+  "iar--read-knowledge-files should return nil for nonexistent dir."
+  (should-error (iar--read-knowledge-files "/nonexistent/path/") :type (quote error)))
+
+;;; --- iar--knowledge-label tests ---
+
+(ert-deftest test-knowledge-label-returns-display ()
+  "iar--knowledge-label should return the display string."
+  (should (string= "iar/" (iar--knowledge-label "iar/" "/some/path"))))
+
+;;; --- iar-load-knowledge-dir tests ---
+
+;;; --- iar-prompt-info tests ---
+
+(ert-deftest test-knowledge-prompt-info-no-knowledge ()
+  "iar-prompt-info should display info without error when no knowledge loaded."
+  (with-temp-buffer
+    (let ((gptel-system-prompt "test system prompt")
+          (iar--knowledge-base-prompt nil)
+          (iar--knowledge-loaded-labels nil)
+          (iar--current-agent-name "test-agent"))
+      (iar-prompt-info)
+      (should t))))
+
+(ert-deftest test-knowledge-prompt-info-with-knowledge ()
+  "iar-prompt-info should display info with knowledge loaded."
+  (with-temp-buffer
+    (let ((gptel-system-prompt "test prompt with knowledge")
+          (iar--knowledge-base-prompt "base prompt")
+          (iar--knowledge-loaded-labels '("iar/"))
+          (iar--current-agent-name "test-agent"))
+      (iar-prompt-info)
+      (should t))))
+
+(ert-deftest test-knowledge-prompt-info-nil-prompt ()
+  "iar-prompt-info should handle nil gptel-system-prompt."
+  (with-temp-buffer
+    (let ((gptel-system-prompt nil)
+          (iar--knowledge-base-prompt nil)
+          (iar--knowledge-loaded-labels nil)
+          (iar--current-agent-name nil))
+      (iar-prompt-info)
+      (should t))))
+
+(provide 'test-knowledge-loader)
+;;; test-knowledge-loader.el ends here
