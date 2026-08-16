@@ -187,3 +187,61 @@
       (should (string-match-p "linux" result)))))
 
 (provide 'test-read-knowledge)
+;;; --- Additional coverage tests ---
+
+(ert-deftest test-rk-knowledge-base-dir ()
+  "iar--knowledge-base-dir should return a path containing knowledge."
+  (let ((result (iar--knowledge-base-dir)))
+    (should (stringp result))
+    (should (string-match-p "knowledge" result))))
+
+(ert-deftest test-rk-valid-path-segment-p ()
+  "iar--knowledge-valid-path-segment-p should validate path segments."
+  (should (iar--knowledge-valid-path-segment-p "linux"))
+  (should (iar--knowledge-valid-path-segment-p "linux.networking"))
+  (should (iar--knowledge-valid-path-segment-p "a-b_c"))
+  (should-not (iar--knowledge-valid-path-segment-p ""))
+  (should-not (iar--knowledge-valid-path-segment-p nil))
+  (should-not (iar--knowledge-valid-path-segment-p "foo/bar")))
+
+(ert-deftest test-rk-has-subdirs-p-true ()
+  "iar--knowledge-has-subdirs-p should return t for dir with subdirs."
+  (let ((tmpdir (make-temp-file "test-rk-subdirs-" :dir-flag)))
+    (unwind-protect
+        (progn
+          (make-directory (expand-file-name "subdir" tmpdir) t)
+          (should (iar--knowledge-has-subdirs-p tmpdir)))
+      (delete-directory tmpdir t))))
+
+(ert-deftest test-rk-has-subdirs-p-false ()
+  "iar--knowledge-has-subdirs-p should return nil for dir without subdirs."
+  (let ((tmpdir (make-temp-file "test-rk-nosubdirs-" :dir-flag)))
+    (unwind-protect
+        (progn
+          (with-temp-file (expand-file-name "file.txt" tmpdir)
+            (insert "content"))
+          (should-not (iar--knowledge-has-subdirs-p tmpdir)))
+      (delete-directory tmpdir t))))
+
+(ert-deftest test-rk-read-all-files-empty ()
+  "iar--knowledge-read-all-files should return empty string for empty dir."
+  (let ((tmpdir (make-temp-file "test-rk-empty-" :dir-flag)))
+    (unwind-protect
+        (let ((result (iar--knowledge-read-all-files tmpdir)))
+          (should (null result)))
+      (delete-directory tmpdir t))))
+
+(ert-deftest test-rk-resolve-path-valid ()
+  "iar--knowledge-resolve-path should resolve valid path."
+  (let ((result (iar--knowledge-resolve-path "linux")))
+    (should (stringp result))
+    (should (string-match-p "linux" result))))
+
+(ert-deftest test-rk-resolve-path-nested ()
+  "iar--knowledge-resolve-path should resolve nested path."
+  (let ((result (iar--knowledge-resolve-path "linux/networking")))
+    (should (stringp result))
+    (should (string-match-p "linux" result))))
+
+(provide 'test-read-knowledge)
+;;; test-read-knowledge.el ends here

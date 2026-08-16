@@ -134,7 +134,10 @@
 (let ((stats (ert-run-tests-batch
               '(not (or (tag :reload)
                         "test-reload-os-rebuilds-tools"
-                        "test-reload-os-returns-success" "test-unknown-tool-fsm-recovery")))))
+                        "test-reload-os-returns-success"
+                        "test-reload-os-error-on-missing-init"
+                        "test-reload-os-clears-buffer-local-tools"
+                        "test-unknown-tool-fsm-recovery")))))
   (princ (format "\nTests: %d run, %d expected, %d unexpected\n"
                  (ert-stats-completed stats)
                  (ert-stats-completed-expected stats)

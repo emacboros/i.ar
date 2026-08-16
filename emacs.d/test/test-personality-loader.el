@@ -92,3 +92,53 @@
     (should (string= "mirror" (iar-personality-info)))))
 
 (provide 'test-personality-loader)
+
+;;; --- Additional coverage tests ---
+
+(ert-deftest test-pers-load-personality-interactive ()
+  "iar-load-personality-interactive should switch personality interactively."
+  (with-temp-buffer
+    (text-mode)
+    (iar-load-personality "mirror")
+    (should (string= "mirror" iar--current-personality))
+    ;; Now switch to darwin
+    (iar-load-personality "darwin")
+    (should (string= "darwin" iar--current-personality))
+    (should (string-match-p "Darwin" gptel-system-prompt))))
+
+(ert-deftest test-pers-setup-sets-containers ()
+  "iar--setup-assembled-buffer should set iar--current-containers."
+  (with-temp-buffer
+    (text-mode)
+    (let ((result (iar--setup-assembled-buffer "interactive" "mirror" "iar")))
+      (should (plistp result))
+      ;; iar project has no containers, so should be nil
+      (should (null iar--current-containers)))))
+
+(ert-deftest test-pers-setup-sets-mode ()
+  "iar--setup-assembled-buffer should set iar--current-mode."
+  (with-temp-buffer
+    (text-mode)
+    (iar--setup-assembled-buffer "interactive" "mirror" "iar")
+    (should (eq 'interactive iar--current-mode))))
+
+(ert-deftest test-pers-setup-sets-project ()
+  "iar--setup-assembled-buffer should set iar--current-project."
+  (with-temp-buffer
+    (text-mode)
+    (iar--setup-assembled-buffer "interactive" "mirror" "iar")
+    (should (string= "iar" iar--current-project))))
+
+(ert-deftest test-pers-archetype-for-personality ()
+  "iar--archetype-for-personality should return correct archetype."
+  (should (string= "interactive" (iar--archetype-for-personality "mirror")))
+  (should (string= "autonomous" (iar--archetype-for-personality "darwin")))
+  (should (string= "continuous" (iar--archetype-for-personality "gardener"))))
+
+(ert-deftest test-pers-project-for-personality ()
+  "iar--project-for-personality should return correct project."
+  (should (string= "iar" (iar--project-for-personality "mirror")))
+  (should (string= "darwin" (iar--project-for-personality "darwin"))))
+
+(provide 'test-personality-loader)
+;;; test-personality-loader.el ends here

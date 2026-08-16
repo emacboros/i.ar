@@ -184,7 +184,7 @@ The count should be at least 1 (non-empty profile)."
 Binds user-emacs-directory to a temp dir without init.el.
 Saves and restores global gptel-tools because the production code
 calls set-default 'gptel-tools nil before attempting the load."
-  :tags '(integration)
+  :tags '(reload integration)
   (let ((old-tools (default-value 'gptel-tools)))
     (unwind-protect
         (let ((tmp-dir (make-temp-file "test-reload-os-" :dir-flag)))
@@ -197,3 +197,22 @@ calls set-default 'gptel-tools nil before attempting the load."
       (set-default 'gptel-tools old-tools))))
 
 (provide 'test-reload)
+;;; --- Additional reload_os coverage ---
+
+(ert-deftest test-reload-os-clears-buffer-local-tools ()
+  "reload_os should clear buffer-local gptel-tools."
+  :tags '(reload integration)
+  (let ((old-tools (default-value 'gptel-tools)))
+    (unwind-protect
+        (with-temp-buffer
+          (setq-local gptel-tools '(some-local-tool))
+          (should (local-variable-p 'gptel-tools))
+          (let ((result (iar--tool-reload-os)))
+            (should (stringp result))
+            (should (string-match-p "Success" result))
+            ;; Buffer-local should be cleared
+            (should-not (local-variable-p 'gptel-tools))))
+      (set-default 'gptel-tools old-tools))))
+
+(provide 'test-reload)
+;;; test-reload.el ends here
