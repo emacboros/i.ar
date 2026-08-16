@@ -252,3 +252,122 @@
   (should (eq (default-value 'iar-cycle-max-turns) 40)))
 
 (provide 'test-darwin-cycle)
+;;; --- Additional coverage tests ---
+
+(ert-deftest test-cycle-load-cycle-prompt-success ()
+  "iar--cycle-load-cycle-prompt should load existing cycle."
+  (let ((result (iar--cycle-load-cycle-prompt "self_modification")))
+    (should (stringp result))
+    (should (> (length result) 0))))
+
+(ert-deftest test-cycle-load-cycle-prompt-not-found ()
+  "iar--cycle-load-cycle-prompt should error for nonexistent cycle."
+  (should-error (iar--cycle-load-cycle-prompt "nonexistent_cycle")
+                :type 'error))
+
+(ert-deftest test-cycle-for-personality-darwin ()
+  "iar--cycle-for-personality should return self_modification for darwin."
+  (should (string= "self_modification" (iar--cycle-for-personality "darwin"))))
+
+(ert-deftest test-cycle-for-personality-unknown ()
+  "iar--cycle-for-personality should return nil for unknown personality."
+  (should (null (iar--cycle-for-personality "nonexistent"))))
+
+(ert-deftest test-cycle-load-continue-prompt ()
+  "iar--cycle-load-continue-prompt should load or return nil."
+  (let ((result (iar--cycle-load-continue-prompt "darwin")))
+    ;; Returns nil if file not found, or string if found
+    (should (or (null result) (stringp result)))))
+
+(ert-deftest test-cycle-make-state ()
+  "iar--cycle-make-state should create a state plist."
+  (let ((buf (get-buffer-create "*test-cycle-state*"))
+        (continue-prompt "continue"))
+    (unwind-protect
+        (let ((state (iar--cycle-make-state "test-agent" buf continue-prompt 40)))
+          (should (plistp state))
+          (should (string= "test-agent" (plist-get state :agent)))
+          (should (eq buf (plist-get state :buffer)))
+          (should (string= "continue" (plist-get state :continue)))
+          (should (= 40 (plist-get state :max-turns)))
+          (should (= 0 (plist-get state :turn-count)))
+          (should (= 0 (plist-get state :tool-call-count)))
+          (should (null (plist-get state :completed)))
+          (should (= 0 (plist-get state :exit-code))))
+      (kill-buffer buf))))
+
+(ert-deftest test-cycle-tool-call-tracker ()
+  "iar--cycle-tool-call-tracker should increment tool-call-count."
+  (let ((buf (get-buffer-create "*test-cycle-tracker*")))
+    (unwind-protect
+        (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+          (iar--cycle-tool-call-tracker nil)
+          (should (= 1 (plist-get iar--cycle-state :tool-call-count))))
+      (kill-buffer buf))))
+
+(ert-deftest test-cycle-log-append ()
+  "iar--cycle-log-append should write to cycle.log."
+  (let* ((tmpdir (make-temp-file "test-cycle-log-" :dir-flag))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit"))
+    (cl-letf (((symbol-function 'iar--current-project-name) (lambda () "test-project")))
+      (unwind-protect
+          (with-temp-buffer
+            (insert "test response content")
+            (iar--cycle-log-append "test-agent" 1 20)
+            (let ((log-path (expand-file-name
+                             "audit/test-project/test-agent/cycle.log" tmpdir)))
+              (should (file-exists-p log-path))))
+        (delete-directory tmpdir t)))))
+
+(ert-deftest test-cycle-log-append-skips-invalid-args ()
+  "iar--cycle-log-append should skip when args are invalid."
+  (with-temp-buffer
+    (insert "content")
+    ;; Non-integer args should be skipped
+    (iar--cycle-log-append "agent" nil nil)
+    (iar--cycle-log-append "agent" "a" "b")
+    ;; start >= end should be skipped
+    (iar--cycle-log-append "agent" 10 5)
+    (should t)))
+
+(ert-deftest test-cycle-post-response-loop-complete ()
+  "iar--cycle-post-response-handler should detect LOOP_COMPLETE."
+  (let ((buf (get-buffer-create "*test-cycle-pr*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (insert "some response\nLOOP_COMPLETE\n")
+          (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+            (iar--cycle-post-response-handler)
+            (should (plist-get iar--cycle-state :completed))
+            (should (= 0 (plist-get iar--cycle-state :exit-code)))))
+      (kill-buffer buf))))
+
+(ert-deftest test-cycle-post-response-cycle-complete ()
+  "iar--cycle-post-response-handler should detect CYCLE_COMPLETE."
+  (let ((buf (get-buffer-create "*test-cycle-pr2*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (insert "some response\nCYCLE_COMPLETE\n")
+          (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+            (iar--cycle-post-response-handler)
+            ;; CYCLE_COMPLETE does NOT complete -- it sends continue prompt
+            ;; But with nil continue prompt, it should not send
+            (should-not (plist-get iar--cycle-state :completed))))
+      (kill-buffer buf))))
+
+(ert-deftest test-cycle-post-response-max-turns ()
+  "iar--cycle-post-response-handler should end cycle at max turns."
+  (let ((buf (get-buffer-create "*test-cycle-pr3*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (insert "response without sentinel\n")
+          (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 2)))
+            ;; Simulate 2 turns (max-turns)
+            (iar--cycle-post-response-handler)
+            (iar--cycle-post-response-handler)
+            (should (plist-get iar--cycle-state :completed))))
+      (kill-buffer buf))))
+
+(provide 'test-darwin-cycle)
+;;; test-darwin-cycle.el ends here

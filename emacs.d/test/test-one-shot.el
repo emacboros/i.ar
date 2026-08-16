@@ -108,3 +108,42 @@
   (should (string-match-p "END FINAL RESPONSE" iar--one-shot-nudge-prompt)))
 
 (provide 'test-one-shot)
+;;; --- Additional coverage tests ---
+
+(ert-deftest test-one-shot-post-response-handler-complete ()
+  "iar--one-shot-post-response-handler should detect completion delimiters."
+  (let ((buf (get-buffer-create "*test-oneshot-pr*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (insert "=== BEGIN FINAL RESPONSE ===\nTest response\n=== END FINAL RESPONSE ===\n")
+          (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
+            (iar--one-shot-post-response-handler)
+            (should (plist-get iar--one-shot-state :completed))
+            (should (string= "Test response" (plist-get iar--one-shot-state :final-response)))))
+      (kill-buffer buf))))
+
+(ert-deftest test-one-shot-post-response-handler-no-delimiters ()
+  "iar--one-shot-post-response-handler should not complete without delimiters."
+  (let ((buf (get-buffer-create "*test-oneshot-pr2*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (insert "response without delimiters\n")
+          (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
+            (iar--one-shot-post-response-handler)
+            (should-not (plist-get iar--one-shot-state :completed))))
+      (kill-buffer buf))))
+
+(ert-deftest test-one-shot-post-response-handler-max-turns ()
+  "iar--one-shot-post-response-handler should end at max turns."
+  (let ((buf (get-buffer-create "*test-oneshot-pr3*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (insert "response\n")
+          (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 2)))
+            (iar--one-shot-post-response-handler)
+            (iar--one-shot-post-response-handler)
+            (should (plist-get iar--one-shot-state :completed))))
+      (kill-buffer buf))))
+
+(provide 'test-one-shot)
+;;; test-one-shot.el ends here
