@@ -178,7 +178,7 @@ Signals an error if the personality is not found."
   (list :agent agent :buffer buf :continue continue :max-turns max-turns
         :turn-count 0 :tool-call-count 0 :completed nil :exit-code 0))
 
-(defun iar--cycle-tool-call-tracker (_info)
+(defun iar--cycle-tool-call-tracker (_tool-name _tool-result)
   "Track tool calls in the cycle. Increments tool-call-count."
   (cl-incf (plist-get iar--cycle-state :tool-call-count)))
 
@@ -356,7 +356,7 @@ Tools are gated by the project's #+TOOLS metadata."
         :turn-count 0 :tool-call-count 0
         :completed nil :exit-code 0 :final-response nil))
 
-(defun iar--one-shot-tool-call-tracker (_info)
+(defun iar--one-shot-tool-call-tracker (_tool-name _tool-result)
   "Track tool calls in one-shot mode. Increments tool-call-count."
   (cl-incf (plist-get iar--one-shot-state :tool-call-count)))
 
