@@ -523,7 +523,7 @@ Tools are gated by the project's #+TOOLS metadata."
           ;; Print final response to stdout (clean output)
           ;; On timeout with no final-response, extract whatever is in the buffer
           (if final-response
-              (princ final-response)
+              (princ (format "=== BEGIN FINAL RESPONSE ===\n%s\n=== END FINAL RESPONSE ===" final-response))
             (let ((buf-content (with-current-buffer os-buf
                                  (buffer-substring-no-properties (point-min) (point-max)))))
               (when (and buf-content (> (length buf-content) 0))
