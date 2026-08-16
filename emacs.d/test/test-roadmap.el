@@ -139,3 +139,20 @@
 
 (provide 'test-roadmap)
 ;;; test-roadmap.el ends here
+;;; --- error handler tests ---
+
+(ert-deftest test-roadmap-write-error-handler ()
+  "iar--tool-write-roadmap should return error string on failure."
+  (cl-letf (((symbol-function 'iar--resolve-project-tasks-dir)
+             (lambda () (signal 'file-error "mock error"))))
+    (let ((result (iar--tool-write-roadmap "test content")))
+      (should (stringp result))
+      (should (string-match-p "Error writing roadmap" result)))))
+
+(ert-deftest test-roadmap-read-error-handler ()
+  "iar--tool-read-roadmap should return error string on failure."
+  (cl-letf (((symbol-function 'iar--resolve-project-tasks-dir)
+             (lambda () (signal 'file-error "mock error"))))
+    (let ((result (iar--tool-read-roadmap)))
+      (should (stringp result))
+      (should (string-match-p "Error reading roadmap" result)))))

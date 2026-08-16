@@ -479,7 +479,7 @@ Conditional: init.el, init.d/*.el, Containerfile, emacboros.sh, containers/, .gi
   "write_file should be blocked when path is a symlink to a protected file."
   (with-fg-fixture
     (let ((link (expand-file-name "test-fg-symlink.el" temporary-file-directory)))
-      (when (file-exists-p link) (delete-file link))
+      (when (or (file-exists-p link) (file-symlink-p link)) (delete-file link))
       (make-symbolic-link "/root/.emacs.d/init.el" link)
       (unwind-protect
           (should (stringp (iar--guard-check-write link)))
@@ -489,7 +489,7 @@ Conditional: init.el, init.d/*.el, Containerfile, emacboros.sh, containers/, .gi
   "write_file should be blocked when path is a symlink to a protected file."
   (with-fg-fixture
     (let ((link (expand-file-name "test-fg-symlink-replace.el" temporary-file-directory)))
-      (when (file-exists-p link) (delete-file link))
+      (when (or (file-exists-p link) (file-symlink-p link)) (delete-file link))
       (make-symbolic-link "/root/.emacs.d/init.d/security/file_guard.el" link)
       (unwind-protect
           (should (stringp (iar--guard-check-write link)))
@@ -537,3 +537,23 @@ this won't match, but the test documents the intended behavior.)"
       (should-not (iar--guard-check-write "some-file.txt")))))
 
 (provide 'test-file-guard)
+;;; test-file-guard.el ends here
+;;; --- file-truename error fallback ---
+
+(ert-deftest test-fg-write-truename-error-mock ()
+  "iar--guard-check-write should use expanded path when file-truename errors.
+Mocks file-truename to signal an error, testing the condition-case fallback."
+  (with-fg-fixture
+    (cl-letf (((symbol-function 'file-truename)
+               (lambda (_path) (signal 'file-error "mock truename error"))))
+      ;; Path doesn't match any protected pattern, so should return nil
+      (let ((result (iar--guard-check-write "/tmp/some-unprotected-file.txt")))
+        (should-not result)))))
+
+(ert-deftest test-fg-append-truename-error-mock ()
+  "iar--guard-check-append should use expanded path when file-truename errors."
+  (with-fg-fixture
+    (cl-letf (((symbol-function 'file-truename)
+               (lambda (_path) (signal 'file-error "mock truename error"))))
+      (let ((result (iar--guard-check-append "/tmp/some-unprotected-file.txt")))
+        (should-not result)))))

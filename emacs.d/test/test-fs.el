@@ -1227,4 +1227,17 @@ With the guard, non-integers are rejected and truncation is skipped."
         (let ((result (iar--fs-read-file target)))
           (should (string= result content)))))))
 
+;;; --- write_file error handler test ---
+
+(ert-deftest test-fs-write-file-error-handler ()
+  "iar--fs-write-file should return error string when write fails."
+  (with-fs-fixture
+    (cl-letf (((symbol-function 'rename-file)
+               (lambda (_src _dst &optional _ok) (signal 'file-error "mock error"))))
+      (let ((result (iar--fs-write-file (expand-file-name "fail.txt" test-fs--tmpdir) "content")))
+        (should (stringp result))
+        (should (string-match-p "Error" result))))))
+
 (provide 'test-fs)
+;;; --- write_file error handler test ---
+

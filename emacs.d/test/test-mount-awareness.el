@@ -85,3 +85,12 @@ standard mounts if those directories exist."
       (should (string-match-p "read-write" result)))))
 
 (provide 'test-mount-awareness)
+;;; --- both nil case (empty string return) ---
+
+(ert-deftest test-mount-prompt-string-both-nil ()
+  "iar--extra-mounts-prompt-string should return empty string when no mounts at all."
+  (cl-letf (((symbol-value 'iar--extra-mounts) nil)
+            ((symbol-function 'file-directory-p) (lambda (_dir) nil)))
+    (let ((result (iar--extra-mounts-prompt-string)))
+      (should (stringp result))
+      (should (string= "" result)))))

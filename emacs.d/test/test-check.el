@@ -139,3 +139,18 @@ temp files remain after the call."
       (delete-file tmpfile))))
 
 (provide 'test-check)
+;;; --- byte-compile error handler test ---
+
+(ert-deftest test-check-byte-compile-error-handler ()
+  "iar--byte-compile-check should handle byte-compile-file errors."
+  (let ((tmpfile (make-temp-file "test-check-err-" nil ".el")))
+    (unwind-protect
+        (progn
+          (with-temp-file tmpfile
+            (insert "(defun foo () 1)\n"))
+          (cl-letf (((symbol-function 'byte-compile-file)
+                     (lambda (_f) (signal 'error '("mock compile error")))))
+            (let ((result (iar--byte-compile-check tmpfile)))
+              (should (stringp result))
+              (should (string-match-p "Byte-compile error" result)))))
+      (delete-file tmpfile))))

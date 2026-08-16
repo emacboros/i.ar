@@ -92,3 +92,20 @@ Uses 0.1s sleep to keep test fast."
 
 (provide 'test-rate-limit)
 ;;; test-rate-limit.el ends here
+;;; --- interactive form test ---
+
+(ert-deftest test-rate-limit-set-interactive ()
+  "iar-rate-limit-set interactive form should work via call-interactively."
+  (cl-letf (((symbol-function 'read-number) (lambda (&rest _) 5)))
+    (let ((prefix-arg nil))
+      (call-interactively 'iar-rate-limit-set)
+      (should (eq iar-rate-limit-seconds 5))))
+  ;; Reset
+  (iar-rate-limit-set nil))
+
+(ert-deftest test-rate-limit-set-interactive-disable ()
+  "iar-rate-limit-set interactive form with 0 should disable."
+  (cl-letf (((symbol-function 'read-number) (lambda (&rest _) 0)))
+    (let ((prefix-arg nil))
+      (call-interactively 'iar-rate-limit-set)
+      (should (null iar-rate-limit-seconds)))))

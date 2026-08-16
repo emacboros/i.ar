@@ -349,3 +349,17 @@
 
 (provide 'test-task)
 ;;; test-task.el ends here
+;;; --- remove_task edge cases ---
+
+(ert-deftest test-task-remove-empty-path ()
+  "iar--tool-remove-task should return error for empty path."
+  (let ((result (iar--tool-remove-task "  ")))
+    (should (stringp result))
+    (should (string-match-p "Error removing task" result))))
+
+(ert-deftest test-task-remove-error-handler ()
+  "iar--tool-remove-task should return error string on unexpected failure."
+  (cl-letf (((symbol-function 'string-trim) (lambda (_s) (signal 'error "mock error"))))
+    (let ((result (iar--tool-remove-task "some/path")))
+      (should (stringp result))
+      (should (string-match-p "Error removing task" result)))))
