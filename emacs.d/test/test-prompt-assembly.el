@@ -219,3 +219,89 @@
 
 (provide 'test-prompt-assembly)
 ;;; test-prompt-assembly.el ends here
+;;; --- Additional coverage tests ---
+
+(ert-deftest test-assembly-archetypes-dir ()
+  "iar--archetypes-dir should return a path containing archetypes."
+  (let ((result (iar--archetypes-dir)))
+    (should (stringp result))
+    (should (string-match-p "archetypes" result))))
+
+(ert-deftest test-assembly-personalities-dir ()
+  "iar--personalities-dir should return a path containing personalities."
+  (let ((result (iar--personalities-dir)))
+    (should (stringp result))
+    (should (string-match-p "personalities" result))))
+
+(ert-deftest test-assembly-read-base-context ()
+  "iar--read-base-context should return content from base_context.org."
+  (let ((result (iar--read-base-context)))
+    (should (stringp result))
+    (should (> (length result) 0))))
+
+(ert-deftest test-assembly-format-mcp-servers-empty ()
+  "iar--format-mcp-servers should return empty string for nil/empty."
+  (should (string= "" (iar--format-mcp-servers nil)))
+  (should (string= "" (iar--format-mcp-servers '()))))
+
+(ert-deftest test-assembly-format-mcp-servers-single ()
+  "iar--format-mcp-servers should format a single server."
+  (let ((result (iar--format-mcp-servers '("burp"))))
+    (should (stringp result))
+    (should (string-match-p "burp" result))))
+
+(ert-deftest test-assembly-format-mcp-servers-multiple ()
+  "iar--format-mcp-servers should format multiple servers."
+  (let ((result (iar--format-mcp-servers '("burp" "other"))))
+    (should (stringp result))
+    (should (string-match-p "burp" result))
+    (should (string-match-p "other" result))))
+
+(ert-deftest test-assembly-inject-memory-autonomous ()
+  "iar--inject-memory should inject STATE.org for autonomous mode."
+  (let ((result (iar--inject-memory "autonomous" "darwin")))
+    (should (stringp result))
+    ;; STATE.org may or may not exist, but the function should not error
+    ))
+
+(ert-deftest test-assembly-inject-memory-continuous ()
+  "iar--inject-memory should inject STATE.org for continuous mode."
+  (let ((result (iar--inject-memory "continuous" "gardener")))
+    (should (stringp result))))
+
+(ert-deftest test-assembly-read-memory-file-nonexistent ()
+  "iar--read-memory-file should return empty string for nonexistent file."
+  (let ((result (iar--read-memory-file "nonexistent_agent" "LOGS.md")))
+    (should (stringp result))
+    (should (string= "" result))))
+
+(ert-deftest test-assembly-auto-load-knowledge-nil ()
+  "iar--auto-load-knowledge should return empty content for nil labels."
+  (let ((result (iar--auto-load-knowledge nil)))
+    (should (consp result))
+    (should (string= "" (car result)))
+    (should (null (cdr result)))))
+
+(ert-deftest test-assembly-auto-load-knowledge-nonexistent ()
+  "iar--auto-load-knowledge should handle nonexistent label gracefully."
+  (let ((result (iar--auto-load-knowledge '("nonexistent_label/"))))
+    (should (consp result))
+    (should (string= "" (car result)))
+    (should (null (cdr result)))))
+
+(ert-deftest test-assembly-assemble-one-shot ()
+  "iar--assemble-prompt should work with one-shot archetype."
+  (let ((result (iar--assemble-prompt "one-shot" "mirror" "iar")))
+    (should (plistp result))
+    (should (stringp (plist-get result :prompt)))
+    (should (eq (plist-get result :mode) 'one-shot))))
+
+(ert-deftest test-assembly-assemble-continuous ()
+  "iar--assemble-prompt should work with continuous archetype."
+  (let ((result (iar--assemble-prompt "continuous" "gardener" "gardener")))
+    (should (plistp result))
+    (should (stringp (plist-get result :prompt)))
+    (should (eq (plist-get result :mode) 'continuous))))
+
+(provide 'test-prompt-assembly)
+;;; test-prompt-assembly.el ends here
