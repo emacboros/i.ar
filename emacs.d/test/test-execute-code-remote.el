@@ -154,3 +154,79 @@
 
 (provide 'test-execute-code-remote)
 ;;; test-execute-code-remote.el ends here
+;;; --- Additional coverage tests ---
+
+(ert-deftest test-remote-tool-error-handler ()
+  "iar--tool-execute-code-remote should catch errors and return via callback."
+  (let ((iar--current-containers '("test-target")))
+    (cl-letf (((symbol-function 'iar--resolve-target)
+               (lambda (_target) (signal 'error "mock error"))))
+      (let (result)
+        (iar--tool-execute-code-remote
+         (lambda (r) (setq result r))
+         "test-target" "echo hello")
+        (should (stringp result))
+        (should (string-match-p "Error" result))))))
+
+(ert-deftest test-remote-tool-local-dispatch ()
+  "iar--tool-execute-code-remote should dispatch to local container."
+  (let ((iar--current-containers '("test-target"))
+        (dispatched nil))
+    (cl-letf (((symbol-function 'iar--resolve-target)
+               (lambda (_target) (list :type :local :container "test-container")))
+              ((symbol-function 'iar--exec-local-container)
+               (lambda (callback _target _command &optional _timeout)
+                 (setq dispatched :local)
+                 (funcall callback "local result"))))
+      (let (result)
+        (iar--tool-execute-code-remote
+         (lambda (r) (setq result r))
+         "test-target" "echo hello")
+        (should (eq dispatched :local))
+        (should (string= "local result" result))))))
+
+(ert-deftest test-remote-tool-remote-dispatch ()
+  "iar--tool-execute-code-remote should dispatch to remote SSH."
+  (let ((iar--current-containers '("test-target"))
+        (dispatched nil))
+    (cl-letf (((symbol-function 'iar--resolve-target)
+               (lambda (_target) (list :type :remote :host "10.66.0.5" :port 22 :user "debug-agent")))
+              ((symbol-function 'iar--exec-remote-ssh)
+               (lambda (callback _target _command &optional _timeout)
+                 (setq dispatched :remote)
+                 (funcall callback "remote result"))))
+      (let (result)
+        (iar--tool-execute-code-remote
+         (lambda (r) (setq result r))
+         "test-target" "echo hello")
+        (should (eq dispatched :remote))
+        (should (string= "remote result" result))))))
+
+(ert-deftest test-remote-tool-unknown-type-dispatch ()
+  "iar--tool-execute-code-remote should handle unknown target type."
+  (let ((iar--current-containers '("test-target")))
+    (cl-letf (((symbol-function 'iar--resolve-target)
+               (lambda (_target) (list :type :unknown))))
+      (let (result)
+        (iar--tool-execute-code-remote
+         (lambda (r) (setq result r))
+         "test-target" "echo hello")
+        (should (stringp result))
+        (should (string-match-p "Error" result))
+        (should (string-match-p "Unknown target" result))))))
+
+(ert-deftest test-remote-resolve-remote-target-from-env ()
+  "iar--resolve-remote-target should find target from env var."
+  (cl-letf (((symbol-function 'getenv)
+             (lambda (var)
+               (cond ((string= var "IAR_REMOTE_TARGETS")
+                      "test-host:10.66.0.99:22:debug-user")
+                     (t (let ((old (symbol-function 'getenv)))
+                          (funcall old var)))))))
+    (let ((result (iar--resolve-remote-target "test-host")))
+      (should (string= "10.66.0.99" (plist-get result :host)))
+      (should (= 22 (plist-get result :port)))
+      (should (string= "debug-user" (plist-get result :user))))))
+
+(provide 'test-execute-code-remote)
+;;; test-execute-code-remote.el ends here

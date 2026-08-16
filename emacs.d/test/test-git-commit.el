@@ -156,3 +156,51 @@
       (should-not (= 0 (car result))))))
 
 (provide 'test-git-commit)
+;;; --- Additional coverage tests ---
+
+(ert-deftest test-git-commit-add-fails ()
+  "iar--tool-git-commit should return error when git add fails."
+  (let ((tmpdir (make-temp-file "test-git-add-fail-" :dir-flag)))
+    (unwind-protect
+        (progn
+          (make-directory (expand-file-name ".git" tmpdir) t)
+          (cl-letf (((symbol-function 'iar--git-run)
+                     (lambda (repo-dir &rest args)
+                       (cond
+                        ((and (string= (car args) "config") (string= (cadr args) "user.name"))
+                         (cons 0 "Test User"))
+                        ((and (string= (car args) "config") (string= (cadr args) "user.email"))
+                         (cons 0 "test@test.com"))
+                        ((string= (car args) "add") (cons 1 "add error"))
+                        (t (cons 0 ""))))))
+            (let ((result (iar--tool-git-commit tmpdir "test message")))
+              (should (stringp result))
+              (should (string-match-p "Error" result))
+              (should (string-match-p "git add" result)))))
+      (delete-directory tmpdir t))))
+
+(ert-deftest test-git-commit-commit-fails ()
+  "iar--tool-git-commit should return error when git commit fails."
+  (let ((tmpdir (make-temp-file "test-git-commit-fail-" :dir-flag)))
+    (unwind-protect
+        (progn
+          (make-directory (expand-file-name ".git" tmpdir) t)
+          (cl-letf (((symbol-function 'iar--git-run)
+                     (lambda (repo-dir &rest args)
+                       (cond
+                        ((and (string= (car args) "config") (string= (cadr args) "user.name"))
+                         (cons 0 "Test User"))
+                        ((and (string= (car args) "config") (string= (cadr args) "user.email"))
+                         (cons 0 "test@test.com"))
+                        ((string= (car args) "add") (cons 0 ""))
+                        ((string= (car args) "diff") (cons 1 "has changes"))
+                        ((string= (car args) "commit") (cons 1 "commit error"))
+                        (t (cons 0 ""))))))
+            (let ((result (iar--tool-git-commit tmpdir "test message")))
+              (should (stringp result))
+              (should (string-match-p "Error" result))
+              (should (string-match-p "git commit failed" result)))))
+      (delete-directory tmpdir t))))
+
+(provide 'test-git-commit)
+;;; test-git-commit.el ends here
