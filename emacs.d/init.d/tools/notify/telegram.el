@@ -95,7 +95,7 @@ The message is prefixed with [AgentName] for identification."
 (iar-tool-register
  (gptel-make-tool
   :name "send_telegram"
-  :description "Send a Telegram notification message. The message is automatically prefixed with the agent name. Use this to notify the human about important findings, completed work, or issues that need attention."
+  :description "Send a Telegram notification. Message prefixed with agent name."
   :args (list '(:name "message" :type "string" :description "The message text to send. Keep it concise -- this is a notification, not a report."))
   :async t
   :function #'iar--tool-telegram))

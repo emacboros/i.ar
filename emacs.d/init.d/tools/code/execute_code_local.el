@@ -80,7 +80,7 @@ needed."
 (iar-tool-register
  (gptel-make-tool
   :name "execute_code_local"
-  :description "Execute bash/shell commands in the same container as the Emacs tools (has access to source code). Uses async process execution so Emacs stays responsive. The container is Fedora-based with: bash, dig, nmap, openssl, python3, jq, whois, traceroute, tcpdump, ripgrep (rg), git, curl, find, gawk, sed, grep, gcc, make, tar, gzip, unzip."
+  :description "Execute bash commands in the Emacs container. Available: bash, dig, nmap, openssl, python3, jq, whois, traceroute, tcpdump, rg, git, curl, find, gawk, sed, grep, gcc, make, tar, gzip, unzip."
   :args (list '(:name "command" :type "string" :description "The bash command to execute. Use bash syntax."))
   :async t
   :function (lambda (callback command)

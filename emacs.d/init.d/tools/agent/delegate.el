@@ -344,8 +344,8 @@ so the user can watch progress in real time."
 (iar-tool-register
  (gptel-make-tool
   :name "delegate"
-  :description "Spawn a sub-agent to handle a sub-task. If agent is omitted, defaults to agent-assistant (pipeline mode: plans, delegates to implementer/reviewer, coordinates correction loop). If agent is specified, spawns that personality directly. Returns the sub-agent's final response."
-  :args (list '(:name "agent" :type "string" :description "Personality name (e.g., 'mirror', 'darwin', 'implementer', 'reviewer'). Must exist as agents.d/personalities/<name>.org. If omitted, defaults to 'agent-assistant' for pipeline delegation." :optional t)
+  :description "Spawn a sub-agent for a sub-task. Omit agent for pipeline mode (agent-assistant plans, delegates to implementer/reviewer). Specify agent to spawn that personality directly."
+  :args (list '(:name "agent" :type "string" :description "Personality name (e.g., 'mirror', 'implementer'). Omit for agent-assistant pipeline." :optional t)
               '(:name "task" :type "string" :description "What you want the sub-agent to accomplish. Be specific and detailed.")
               '(:name "context" :type "string" :description "Relevant context from the current conversation to pass along. Optional but recommended.")
               '(:name "timeout" :type "integer" :description "Maximum seconds to wait for delegate response. Default 600." :optional t))

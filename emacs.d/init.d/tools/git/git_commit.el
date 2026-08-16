@@ -85,8 +85,8 @@ Returns a string starting with Success: or Error:."
 (iar-tool-register
  (gptel-make-tool
   :name "git_commit"
-  :description "Stage all changes (git add -A) and commit them in a git repository. Use this to persist your work. The repository must have a .git directory. Git identity is configured automatically if not already set."
-  :args (list '(:name "repo_path" :type "string" :description "Absolute path to the git repository root directory (must contain a .git directory).")
+  :description "Stage all changes and commit in a git repo. Git identity auto-configured."
+  :args (list '(:name "repo_path" :type "string" :description "Absolute path to repo root (must contain .git).")
               '(:name "message" :type "string" :description "Commit message describing what was changed. Keep it concise but descriptive."))
   :function #'iar--tool-git-commit))
 

@@ -246,3 +246,37 @@ Temporarily rebinds user-emacs-directory and knowledge config vars."
 
 (provide 'test-knowledge-loader)
 ;;; test-knowledge-loader.el ends here
+
+;;; --- _overview.md preference tests ---
+
+(ert-deftest test-knowledge-read-files-prefers-overview ()
+  "iar--read-knowledge-files should load only _overview.md when present."
+  (let ((tmpdir (make-temp-file "test-knowledge-" :dir-flag)))
+    (unwind-protect
+        (progn
+          (with-temp-file (expand-file-name "_overview.md" tmpdir)
+            (insert "# Overview\n\nSummary content only.\n"))
+          (with-temp-file (expand-file-name "detailed.md" tmpdir)
+            (insert "# Detailed Docs\n\nThis should NOT be loaded.\n"))
+          (let ((result (iar--read-knowledge-files tmpdir)))
+            (should (stringp result))
+            (should (string-match-p "Overview" result))
+            (should (string-match-p "_overview.md" result))
+            (should-not (string-match-p "Detailed Docs" result))
+            (should-not (string-match-p "detailed.md" result))))
+      (delete-directory tmpdir t))))
+
+(ert-deftest test-knowledge-read-files-no-overview-loads-all ()
+  "iar--read-knowledge-files should load all files when no _overview.md."
+  (let ((tmpdir (make-temp-file "test-knowledge-" :dir-flag)))
+    (unwind-protect
+        (progn
+          (with-temp-file (expand-file-name "file1.md" tmpdir)
+            (insert "# File 1\n\nContent 1.\n"))
+          (with-temp-file (expand-file-name "file2.md" tmpdir)
+            (insert "# File 2\n\nContent 2.\n"))
+          (let ((result (iar--read-knowledge-files tmpdir)))
+            (should (stringp result))
+            (should (string-match-p "File 1" result))
+            (should (string-match-p "File 2" result))))
+      (delete-directory tmpdir t))))

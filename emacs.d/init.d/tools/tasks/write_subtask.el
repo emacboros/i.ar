@@ -54,15 +54,10 @@ Warns if the parent task directory or description.org does not exist."
 (iar-tool-register
  (gptel-make-tool
   :name "write_subtask"
-  :description (concat "Write a subtask .org file inside a task directory. "
-                       "PATH is a slash-separated path where the last segment "
-                       "becomes the filename (e.g. track/subtask-name). "
-                       "Warns if the parent task directory or description.org "
-                       "does not exist. Use create_task first to create the "
-                       "task directory and description.org.")
+  :description "Write a subtask .org file in a task directory. Last path segment is the filename. Use create_task first."
   :args (list '(:name "path"
                  :type "string"
-                 :description "Slash-separated path. Last segment is the subtask name (becomes filename.org). E.g. i-ar-expansion/one-shot-execution-model/modify-cycle-el")
+                 :description "Slash-separated path. Last segment becomes filename.org.")
               '(:name "content"
                  :type "string"
                  :description "Subtask content in org-mode format."))

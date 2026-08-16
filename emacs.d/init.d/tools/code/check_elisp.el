@@ -87,7 +87,7 @@ The source file is never modified."
 (iar-tool-register
  (gptel-make-tool
   :name "check_elisp"
-  :description "Check an Emacs Lisp (.el) file for syntax errors, unbalanced parentheses, and byte-compilation warnings. Returns a diagnostic report. Does NOT modify the file."
+  :description "Check .el file for syntax errors and byte-compilation warnings. Does not modify the file."
   :args (list '(:name "filepath" :type "string" :description "Absolute path to the .el file to check."))
   :function #'iar--tool-check-elisp))
 

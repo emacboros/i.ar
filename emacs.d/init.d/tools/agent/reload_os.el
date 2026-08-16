@@ -29,7 +29,7 @@ in the current buffer so it inherits the fresh defaults."
 (iar-tool-register
  (gptel-make-tool
   :name "reload_os"
-  :description "Reload Emacs init.el to pick up modifications to .el files. Use after modifying Emacs Lisp files to test changes without restarting Emacs. Resets and rebuilds gptel-tools automatically."
+  :description "Reload Emacs init.el. Use after modifying .el files to test without restarting."
   :args (list)
   :function #'iar--tool-reload-os))
 

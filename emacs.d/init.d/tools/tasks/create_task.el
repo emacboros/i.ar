@@ -60,19 +60,13 @@ Warns if the parent task directory or parent description.org is missing."
 (iar-tool-register
  (gptel-make-tool
   :name "create_task"
-  :description (concat "Create a new task directory with a description.org file. "
-                       "PATH is a slash-separated path (e.g. track/subtask). "
-                       "Does NOT auto-create parent directories -- warns if parent "
-                       "task directory or description.org is missing. DESCRIPTION "
-                       "is limited to a configurable number of characters (default "
-                       "500) to force concise summaries. Use write_subtask for "
-                       "detailed task content.")
+  :description "Create a task directory with description.org. PATH is slash-separated. Description limited to 500 chars -- use write_subtask for detail."
   :args (list '(:name "path"
                  :type "string"
-                 :description "Slash-separated task path (e.g. i-ar-expansion/one-shot-execution-model). Only letters, digits, hyphens, underscores per segment.")
+                 :description "Slash-separated task path (e.g. track/subtask-name).")
               '(:name "description"
                  :type "string"
-                 :description "Task description text. Concise overview -- there is a character limit (default 500). Use write_subtask for detailed content."))
+                 :description "Concise task overview. Limited to 500 chars."))
   :function #'iar--tool-create-task))
 
 (provide 'iar-tool--create-task)

@@ -46,13 +46,10 @@ If PATH resolves to a .org file, removes just that file (subtask done)."
 (iar-tool-register
  (gptel-make-tool
   :name "remove_task"
-  :description (concat "Remove a task or subtask. If the path is a directory, "
-                       "removes the entire directory tree (task done). If the path "
-                       "is a file, removes just that file (subtask done). Use this "
-                       "to mark work as complete.")
+  :description "Remove a task or subtask. Directory: removes tree (task done). File: removes file (subtask done)."
   :args (list '(:name "path"
                  :type "string"
-                 :description "Slash-separated path to the task or subtask to remove."))
+                 :description "Slash-separated path to remove."))
   :function #'iar--tool-remove-task))
 
 (provide 'iar-tool--remove-task)

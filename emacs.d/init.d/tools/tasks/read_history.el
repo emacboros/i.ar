@@ -83,8 +83,8 @@ HISTORY.log files live in the audit mount at
 (iar-tool-register
  (gptel-make-tool
   :name "read_history"
-  :description "Read agent HISTORY.log files. With no arguments, merges all HISTORY.log files into a unified timeline sorted by timestamp. Pass agent_name to read a single agent's log."
-  :args (list '(:name "agent_name" :type "string" :description "Optional: name of agent whose HISTORY.log to read (e.g., 'mirror'). If omitted, reads unified merged history from all agents." :optional t))
+  :description "Read HISTORY.log files. No args: merged timeline from all agents. With agent_name: single agent log."
+  :args (list '(:name "agent_name" :type "string" :description "Agent name (e.g., 'mirror'). Omit for merged history." :optional t))
   :function #'iar--tool-read-history))
 
 (provide 'iar-tool--read-history)

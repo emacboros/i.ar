@@ -65,7 +65,7 @@ Returns a string starting with \\='Success:\\=' or \\='Error:\\='."
 (iar-tool-register
  (gptel-make-tool
   :name "append_file"
-  :description "Append text content to the end of an existing file. Use this to add new notes, logs, or subheadings to a file without erasing its current contents. Automatically prepends a newline if the file does not already end with one, ensuring appended content always starts on a fresh line."
+  :description "Append text to end of file. Prepends newline if needed."
   :args (list '(:name "filepath" :type "string" :description "Absolute path to the file.")
               '(:name "content" :type "string" :description "The text content to add to the end of the file."))
   :function #'iar--fs-append-file))

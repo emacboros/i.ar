@@ -46,7 +46,7 @@ Returns a string starting with \\='Success:\\=' or \\='Error:\\='."
 (iar-tool-register
  (gptel-make-tool
   :name "write_file"
-  :description "Create a new file or completely overwrite an existing file with new text content. Use this to save new agent profiles or rewrite configurations."
+  :description "Create or overwrite a file with new content."
   :args (list '(:name "filepath" :type "string" :description "Absolute path to the destination file.")
               '(:name "content" :type "string" :description "The full text content to write into the file."))
   :function #'iar--fs-write-file))

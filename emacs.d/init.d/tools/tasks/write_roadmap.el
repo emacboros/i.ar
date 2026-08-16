@@ -41,13 +41,10 @@ Overwrites any existing roadmap. File-guard protected."
 (iar-tool-register
  (gptel-make-tool
   :name "write_roadmap"
-  :description (concat "Write or overwrite the ROADMAP.org file in the current "
-                        "agent's tasks directory. The roadmap defines task ordering, "
-                        "dependencies, and serves as cycle guidelines for continuous "
-                        "agents. Overwrites any existing roadmap.")
+  :description "Write or overwrite ROADMAP.org in the agent's tasks directory. Overwrites existing."
   :args (list '(:name "content"
                  :type "string"
-                 :description "Full content of the roadmap in org-mode format."))
+                 :description "Roadmap content in org-mode format."))
   :function #'iar--tool-write-roadmap))
 
 (provide 'iar-tool--write-roadmap)

@@ -262,8 +262,8 @@ CALLBACK is called with the result string when done."
 (iar-tool-register
  (gptel-make-tool
   :name "execute_code_remote"
-  :description "Execute bash commands in a purpose-specific container (local or remote). Local targets run via podman exec into running containers. Remote targets run via SSH over WireGuard. Available targets are defined by the project's #+CONTAINERS metadata. Use this for pentesting (nmap, curl), simulation (Maxima, ngspice), life-org (hledger), or remote debugging (journalctl, systemctl)."
-  :args (list '(:name "target" :type "string" :description "Container target name (e.g., 'pentest', 'concepts', 'life-org', or a remote host name like 'sophon'). Must be in the project's #+CONTAINERS list.")
+  :description "Execute bash in a purpose-specific container (local via podman exec, remote via SSH). Targets defined by project #+CONTAINERS."
+  :args (list '(:name "target" :type "string" :description "Container target name (e.g., 'pentest', 'concepts', 'life-org').")
               '(:name "command" :type "string" :description "The bash command to execute in the target container. Use bash syntax."))
   :async t
   :function #'iar--tool-execute-code-remote))

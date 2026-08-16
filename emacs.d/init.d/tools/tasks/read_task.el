@@ -119,18 +119,10 @@ With a PATH, return detail for that specific task or file."
 (iar-tool-register
  (gptel-make-tool
   :name "read_task"
-  :description (concat "Read tasks from the current agent tasks directory. "
-                       "With no argument, returns a tree-like hierarchy of all "
-                       "tasks with their full descriptions. With a path argument "
-                       "(slash-separated, e.g. track/subtask), returns detail: "
-                       "if the path is a directory with subdirectories, returns "
-                       "the description and a tree of subdirectory descriptions; "
-                       "if the path is a directory without subdirectories, returns "
-                       "the description and all subtask file contents; if the path "
-                       "is a file, returns that single file content.")
+  :description "Read tasks. No args: full task tree. With path: task detail (description, subtasks, or file content)."
   :args (list '(:name "path"
                  :type "string"
-                 :description "Optional: slash-separated path to a specific task or subtask. Omit or leave empty to get the full task hierarchy."))
+                 :description "Optional: slash-separated path to a task or subtask. Omit for full tree."))
   :function #'iar--tool-read-task))
 
 (provide 'iar-tool--read-task)

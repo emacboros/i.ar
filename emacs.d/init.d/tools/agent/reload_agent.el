@@ -40,8 +40,8 @@ Updates gptel-system-prompt and gptel-tools in the current buffer."
 (iar-tool-register
  (gptel-make-tool
   :name "reload_agent"
-  :description "Reload the current agent's gptel prompt from its .org file, updating the system message in the current chat buffer. Use after modifying an agent's .org profile to test changes without killing the chat. Optionally pass agent_name to reload a specific agent."
-  :args (list '(:name "agent_name" :type "string" :description "Optional: name of agent to reload (e.g., 'mccarthy'). If omitted, reloads the currently loaded agent." :optional t))
+  :description "Reload agent prompt from .org file. Use after modifying agent profiles to test without restarting."
+  :args (list '(:name "agent_name" :type "string" :description "Agent name to reload. Omit for current agent." :optional t))
   :function #'iar--tool-reload-agent))
 
 (provide 'iar-reload-agent)

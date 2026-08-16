@@ -9,8 +9,8 @@
 ;; documentation files define what it knows about a specific subject.
 ;;
 ;; Usage: C-c k in gptel-mode.  Select a documentation folder.  All .md and
-;; .org files in that folder are read and appended to the system prompt
-;; with clear delimiters so the LLM can distinguish personality from
+;; .org files in the selected folder are read and appended to the system
+;; prompt with clear delimiters so the LLM can distinguish personality from
 ;; documentation.
 ;;
 ;; Multiple C-c k calls stack: you can load linux/ then iar/ then infra/
@@ -18,6 +18,10 @@
 ;; simultaneously.
 ;;
 ;; Keybindings: C-c k (load documentation), C-c p (prompt info)
+;;
+;; Overview mode: If a directory contains _overview.md, only that file is
+;; loaded instead of all .md/.org files. This keeps system prompts small.
+;; Full docs remain accessible via read_file when the agent needs detail.
 
 (require 'cl-lib)
 (require 'subr-x)
@@ -82,23 +86,33 @@ Returns a list of cons cells (DISPLAY . PATH) where:
     (nreverse candidates)))
 
 (defun iar--read-knowledge-files (path)
-  "Read all .md and .org files from PATH (a directory) and return them as a string.
-Reads all .md/.org files in the directory (non-recursive).
+  "Read knowledge files from PATH (a directory) and return them as a string.
+If PATH contains _overview.md, only that file is loaded (overview mode).
+Otherwise, all .md/.org files are loaded (full mode).
 Returns nil if no content was found."
-  (let ((files
-         (sort
-          (directory-files path t "\\.\\(md\\|org\\)\\'" t)
-          #'string<))
-        (parts nil))
-    (dolist (file files)
-      (let* ((fname (file-name-nondirectory file))
-             (content (with-temp-buffer
-                        (insert-file-contents file)
+  (let ((overview-file (expand-file-name "_overview.md" path)))
+    (if (file-exists-p overview-file)
+        ;; Overview mode: load only the overview file
+        (let ((content (with-temp-buffer
+                        (insert-file-contents overview-file)
                         (string-trim-right (buffer-string) "\n"))))
-        (when (and content (iar--non-blank-p content))
-          (push (format (concat iar-knowledge-file-separator "\n\n%s") fname content) parts))))
-    (when parts
-      (mapconcat #'identity (nreverse parts) "\n\n"))))
+          (when (and content (iar--non-blank-p content))
+            (format (concat iar-knowledge-file-separator "\n\n%s") "_overview.md" content)))
+      ;; Full mode: load all .md/.org files
+      (let ((files
+             (sort
+              (directory-files path t "\\.\\(md\\|org\\)\\'" t)
+              #'string<))
+            (parts nil))
+        (dolist (file files)
+          (let* ((fname (file-name-nondirectory file))
+                 (content (with-temp-buffer
+                           (insert-file-contents file)
+                           (string-trim-right (buffer-string) "\n"))))
+            (when (and content (iar--non-blank-p content))
+              (push (format (concat iar-knowledge-file-separator "\n\n%s") fname content) parts))))
+        (when parts
+          (mapconcat #'identity (nreverse parts) "\n\n"))))))
 
 (defun iar--knowledge-label (display _path)
   "Generate a human-readable label for the loaded knowledge.

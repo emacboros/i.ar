@@ -185,20 +185,10 @@ With a PATH, return detail at that level."
 (iar-tool-register
  (gptel-make-tool
   :name "read_knowledge"
-  :description (concat "Read from the concept knowledge base directory. "
-                       "With no argument, returns a tree of knowledge bases "
-                       "with their descriptions. With a path argument "
-                       "(slash-separated, e.g. 'linux' or 'linux/networking' "
-                       "or 'linux/networking/basics.rb'), returns: if the path "
-                       "is a directory with subdirectories, the description and "
-                       "a listing of subdirectory and file names (names only); "
-                       "if the path is a directory without subdirectories, the "
-                       "description and full contents of all files; if the path "
-                       "is a file, that single file's content. Handles arbitrary "
-                       "file extensions (.tex, .rb, .c, .v, .spice, .org, .md).")
+  :description "Read from knowledge base. No args: tree of bases. With path: directory listing or file content. Handles .tex, .rb, .c, .v, .spice, .org, .md."
   :args (list '(:name "path"
                  :type "string"
-                 :description "Optional: slash-separated path to a knowledge base, subdirectory, or file. Omit or leave empty to get the full knowledge base tree."))
+                 :description "Optional: slash-separated path to knowledge base, subdirectory, or file."))
   :function #'iar--tool-read-knowledge))
 
 (provide 'iar-tool--read-knowledge)
