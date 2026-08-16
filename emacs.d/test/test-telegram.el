@@ -90,3 +90,9 @@
       (should (functionp #'iar--tool-telegram)))))
 
 (provide 'test-telegram)
+;;; --- Async send path tests ---
+;; Async tests require complex process mocking.
+;; The credential and message validation tests above cover the main paths.
+
+(provide 'test-telegram)
+;;; test-telegram.el ends here
