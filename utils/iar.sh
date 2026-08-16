@@ -29,8 +29,8 @@ for arg in "$@"; do
 done
 
 source "${REPO_DIR}/metaconfig/header.sh"
-source "${REPO_DIR}/utils/telegram.sh"
-source "${REPO_DIR}/utils/matrix.sh"
+[[ -f "${REPO_DIR}/utils/telegram.sh" ]] && source "${REPO_DIR}/utils/telegram.sh"
+[[ -f "${REPO_DIR}/utils/matrix.sh" ]] && source "${REPO_DIR}/utils/matrix.sh"
 
 IMAGE_NAME="iar-emacboros"
 LOCAL_OLLAMA_HOST="${EMACBOROS_OLLAMA_HOST:-10.66.0.5:11434}"
