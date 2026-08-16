@@ -97,7 +97,7 @@ Creates the log file if it does not exist.  Prepends a timestamp."
 
 (defun iar--cycle-load-cycle-prompt (cycle-name)
   "Load a cycle prompt from agents.d/cycles/<cycle-name>.org.
-CYCLE-NAME is the cycle file name without extension (e.g., "self_modification").
+CYCLE-NAME is the cycle file name without extension (e.g., self_modification).
 Signals an error if the cycle file is not found."
   (let* ((cycles-dir (expand-file-name iar-cycles-path user-emacs-directory))
          (cycle-path (expand-file-name (format "%s.org" cycle-name) cycles-dir)))
@@ -121,7 +121,7 @@ Returns nil if the file is not found (the caller handles the nil case)."
 
 (defun iar--cycle-complete-p (&optional buffer start end)
   "Check if BUFFER contains a completion sentinel on its own line.
-Returns \'loop if LOOP_COMPLETE is found, \'cycle if CYCLE_COMPLETE is found.
+Returns `loop' if LOOP_COMPLETE is found, `cycle' if CYCLE_COMPLETE is found.
 Returns nil if neither is found. Search is case-sensitive.
 Sentinel must appear on its own line (surrounded by line boundaries).
 If START > END, swaps them. Positions clamped to buffer boundaries.
@@ -235,9 +235,10 @@ Keywords args:
   :agent NAME       -- personality name (default: \"darwin\")
   :timeout SECONDS  -- override iar-cycle-timeout
   :prompt STRING    -- override the cycle prompt (inline string)
-  :cycle NAME       -- cycle name (loads agents.d/cycles/<NAME>.org). Defaults to
-                       the personality's mapped cycle (e.g., darwin -> self_modification).
-  :self-modification BOOL -- enable self-modification in cycle buffer (default: nil)
+  :cycle NAME       -- cycle name (loads agents.d/cycles/<NAME>.org).
+                       Defaults to the personality's mapped cycle
+                       (e.g., darwin -> self_modification).
+  :self-modification BOOL -- enable self-modification (default: nil)
 
 The archetype is determined by the personality-to-archetype map.
 The project is determined by the personality name (matching project file
