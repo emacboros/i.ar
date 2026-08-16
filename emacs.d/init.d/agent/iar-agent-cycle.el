@@ -182,7 +182,7 @@ Signals an error if the personality is not found."
   "Track tool calls in the cycle. Increments tool-call-count."
   (cl-incf (plist-get iar--cycle-state :tool-call-count)))
 
-(defun iar--cycle-post-response-handler ()
+(defun iar--cycle-post-response-handler (_status _info)
   "Post-response handler for cycle. Logs response, checks completion."
   (let* ((state iar--cycle-state)
          (agent (plist-get state :agent))
@@ -379,7 +379,7 @@ to handle content that mentions the delimiter text."
               (string-trim (buffer-substring-no-properties start end)))))))))
 
 
-(defun iar--one-shot-post-response-handler ()
+(defun iar--one-shot-post-response-handler (_status _info)
   "Post-response handler for one-shot mode.
 Scans the buffer for one-shot delimiters. If found, extracts the
 final response and marks the one-shot as completed. If not found
