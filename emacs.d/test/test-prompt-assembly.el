@@ -305,3 +305,33 @@
 
 (provide 'test-prompt-assembly)
 ;;; test-prompt-assembly.el ends here
+
+;;; --- Additional assemble-prompt coverage ---
+
+(ert-deftest test-assembly-assemble-with-containers ()
+  "iar--assemble-prompt should include containers block when project has containers."
+  (let ((result (iar--assemble-prompt "interactive" "test" "test")))
+    (should (plistp result))
+    (should (plist-get result :containers))
+    (should (member "pentest" (plist-get result :containers)))))
+
+(ert-deftest test-assembly-assemble-delegated-mode ()
+  "iar--assemble-prompt should work with delegated archetype."
+  (let ((result (iar--assemble-prompt "agent-assistant" "agent-assistant" "agent-assistant")))
+    (should (plistp result))
+    (should (eq 'delegated (plist-get result :mode)))))
+
+(ert-deftest test-assembly-assemble-implementer ()
+  "iar--assemble-prompt should work with implementer personality."
+  (let ((result (iar--assemble-prompt "implementer" "implementer" "implementer")))
+    (should (plistp result))
+    (should (stringp (plist-get result :prompt)))))
+
+(ert-deftest test-assembly-assemble-reviewer ()
+  "iar--assemble-prompt should work with reviewer personality."
+  (let ((result (iar--assemble-prompt "reviewer" "reviewer" "reviewer")))
+    (should (plistp result))
+    (should (stringp (plist-get result :prompt)))))
+
+(provide 'test-prompt-assembly)
+;;; test-prompt-assembly.el ends here
