@@ -88,6 +88,7 @@ Set buffer-local by `iar-load-agent'. Kept for backward compat.")
     ("reviewer" . "reviewer")
     ("pentest" . "interactive")
     ("test" . "one-shot")
+    ("vuln-parser" . "one-shot")
     ("test-continuous" . "autonomous"))
   "Mapping from personality names to default archetype names.
 Used by the cycle runner to determine the archetype from the --agent flag.")
