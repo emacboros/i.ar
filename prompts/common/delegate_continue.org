@@ -1,1 +1,8 @@
-Your last response did not include any tool calls. If the task is complete, provide your final response now. If you still need to take action, call the available tools instead of describing what you plan to do. Read the relevant files, run commands, or delegate as needed.
+Your last response did not include any tool calls, but the task may be complete.
+
+If the task is complete, end your response with the DELEGATION RESULT marker and your concise summary:
+
+=== DELEGATION RESULT ===
+[Your concise summary here.]
+
+If the task is NOT complete, take action now. Call the available tools instead of describing what you plan to do. Read the relevant files, run commands, or delegate as needed. Do not narrate -- act.

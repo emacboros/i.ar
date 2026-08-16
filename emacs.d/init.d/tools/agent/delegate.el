@@ -147,6 +147,20 @@ to either call its tools (instead of narrating intentions) or produce
 its final response if the task is already complete.
 Loaded from knowledge/prompts/common/delegate_continue.org")
 
+(defun iar--delegate-extract-result (full-response)
+  "Extract the concise result from FULL-RESPONSE.
+If the DELEGATION RESULT marker is found, return the text after it
+(trimmed).  Otherwise, check if the response itself looks like a
+final result (contains the marker text inline) and return as-is.
+If no marker at all, return FULL-RESPONSE unchanged so the parent
+gets something useful."
+  (let ((marker-pos
+         (string-match iar-delegation-result-marker full-response)))
+    (if marker-pos
+        (string-trim
+         (substring full-response (match-end 0)))
+      full-response)))
+
 (defun iar--delegate-completion-fn (buf callback agent completed-sym
                                              timer-sym timeout-secs
                                              tools-called-sym turn-count-sym
@@ -159,105 +173,117 @@ TOOLS-CALLED-SYM is a symbol holding the tool-called flag for the current turn.
 TURN-COUNT-SYM is a symbol holding the turn counter.
 MAX-TURNS is the maximum number of text-only turns before forcing completion.
 
-When the sub-agent produces a text-only response (no tool calls in
-the current turn), it is re-prompted with `iar--delegate-continue-prompt'
-to encourage it to either call its tools or produce its final response
-if the task is complete.  This prevents models that describe tool calls
-in text from terminating prematurely with a non-result.
+COMPLETION LOGIC:
+The hook is called at every gptel response boundary (DONE, ERRS, ABRT).
+It distinguishes three cases:
 
-When tools are called and the response completes, the function extracts
-only the text after the \"=== DELEGATION RESULT ===\" marker (injected
-by the delegated_task.org prompt template) to return a clean summary to
-the parent agent.  This prevents tool call syntax and raw tool results
-from consuming the parent agent's context window.  Falls back to the
-full response if the marker is not found."
+1. Tools were called this turn (tools-called-sym is non-nil): This is a
+   genuine response after tool use.  Extract the result after the
+   DELEGATION RESULT marker and return it to the parent.  Done.
+
+2. No tools called, under max turns: The model produced a text-only
+   response.  Check if it contains the DELEGATION RESULT marker -- if so,
+   the model is signaling completion (simple tasks that need no tools).
+   Return the extracted result.  If no marker, re-prompt with
+   `iar--delegate-continue-prompt' to nudge the model to act or finish.
+
+3. No tools called and max turns reached: Return whatever text we have.
+   This is the exhaustion fallback -- prevents infinite re-prompting."
   (lambda (start end)
     (unless (symbol-value completed-sym)
       (let ((tools-called (symbol-value tools-called-sym))
             (turn-count (symbol-value turn-count-sym)))
-        (cond
-         ;; Case 1: Tools were called this turn — genuine response, return it.
-         ;; Extract only the text after the "=== DELEGATION RESULT ===" marker.
-         ;; The delegated_task.org prompt template instructs the sub-agent to
-         ;; end with this marker followed by a concise summary. This keeps the
-         ;; parent's context clean -- no tool call syntax or raw results.
-         ;; Falls back to full response if marker is not found.
-         (tools-called
-          (set completed-sym t)
-          (when (symbol-value timer-sym)
-            (cancel-timer (symbol-value timer-sym)))
-          (let* ((full-response
-                  (save-restriction
-                    (widen)
-                    (if (and (integerp start) (integerp end) (< start end))
-                        (buffer-substring-no-properties
-                         (min (max start (point-min)) (point-max))
-                         (min (max end (point-min)) (point-max)))
-                      "")))
-                 ;; Search for the DELEGATION RESULT marker in the full response.
-                 ;; If found, extract everything after it -- the concise summary.
-                 (marker-pos
-                  (string-match iar-delegation-result-marker full-response))
-                 (response
-                  (if marker-pos
-                      (let ((after-marker
-                             (substring full-response
-                                        (match-end 0))))
-                        (string-trim after-marker))
-                    full-response)))
-            (run-with-timer
-             5 nil
-             (lambda ()
-               (when (buffer-live-p buf) (kill-buffer buf))))
-            (funcall callback
-                     (if (and response (iar--non-blank-p response))
-                         (format "Delegate '%s' completed:\n\n%s" agent response)
-                       (format "Delegate '%s' returned empty response (timeout: %ds)."
-                               agent timeout-secs)))))
+        (let* ((full-response
+                (save-restriction
+                  (widen)
+                  (if (and (integerp start) (integerp end) (< start end))
+                      (buffer-substring-no-properties
+                       (min (max start (point-min)) (point-max))
+                       (min (max end (point-min)) (point-max)))
+                    "")))
+               (has-marker
+                (and (stringp full-response)
+                     (string-match-p iar-delegation-result-marker full-response))))
+          (cond
+           ;; Case 1: Tools were called this turn -- genuine response, return it.
+           ;; Extract only the text after the "=== DELEGATION RESULT ===" marker.
+           ;; Falls back to full response if marker is not found.
+           (tools-called
+            (set completed-sym t)
+            (when (symbol-value timer-sym)
+              (cancel-timer (symbol-value timer-sym)))
+            (let* ((response (iar--delegate-extract-result full-response)))
+              (run-with-timer
+               5 nil
+               (lambda ()
+                 (when (buffer-live-p buf) (kill-buffer buf))))
+              (funcall callback
+                       (if (and response (iar--non-blank-p response))
+                           (format "Delegate '%s' completed:\n\n%s" agent response)
+                         (format "Delegate '%s' returned empty response (timeout: %ds)."
+                                 agent timeout-secs)))))
 
-         ;; Case 2: No tools called, but under max turns — re-prompt.
-         ((< turn-count max-turns)
-          (set turn-count-sym (1+ turn-count))
-          (set tools-called-sym nil)   ; Reset for next turn
-          (message "[delegate] %s produced text-only response (turn %d/%d), re-prompting..."
-                   agent (1+ turn-count) max-turns)
-          (run-with-timer
-           1 nil
-           (lambda ()
-             (when (and (not (symbol-value completed-sym))
-                        (buffer-live-p buf))
-               (with-current-buffer buf
-                 (save-restriction
-                   (widen)
-                   (goto-char (point-max))
-                   (insert "\n\n" iar--delegate-continue-prompt)
-                   (gptel-send)))))))
+           ;; Case 2a: No tools called, but response has DELEGATION RESULT marker.
+           ;; The model is signaling completion for a task that needed no tools.
+           ;; Return the extracted result -- do not re-prompt.
+           ((and (not tools-called) has-marker)
+            (set completed-sym t)
+            (when (symbol-value timer-sym)
+              (cancel-timer (symbol-value timer-sym)))
+            (let* ((response (iar--delegate-extract-result full-response)))
+              (run-with-timer
+               5 nil
+               (lambda ()
+                 (when (buffer-live-p buf) (kill-buffer buf))))
+              (funcall callback
+                       (if (and response (iar--non-blank-p response))
+                           (format "Delegate '%s' completed:\n\n%s" agent response)
+                         (format "Delegate '%s' returned empty response (timeout: %ds)."
+                                 agent timeout-secs)))))
 
-         ;; Case 3: No tools called and max turns reached — return whatever we have.
-         (t
-          (set completed-sym t)
-          (when (symbol-value timer-sym)
-            (cancel-timer (symbol-value timer-sym)))
-          (let ((response
-                 (save-restriction
-                   (widen)
-                   (if (and (integerp start) (integerp end) (< start end))
-                       (buffer-substring-no-properties
-                        (min (max start (point-min)) (point-max))
-                        (min (max end (point-min)) (point-max)))
-                     ""))))
-            (message "[delegate] %s reached max text-only turns (%d), returning last response."
-                     agent max-turns)
+           ;; Case 2b: No tools called, no marker, under max turns -- re-prompt.
+           ((< turn-count max-turns)
+            (set turn-count-sym (1+ turn-count))
+            (set tools-called-sym nil)   ; Reset for next turn
+            (message "[delegate] %s produced text-only response (turn %d/%d), re-prompting..."
+                     agent (1+ turn-count) max-turns)
             (run-with-timer
-             5 nil
+             1 nil
              (lambda ()
-               (when (buffer-live-p buf) (kill-buffer buf))))
-            (funcall callback
-                     (if (and response (iar--non-blank-p response))
-                         (format "Delegate '%s' completed (max text-only turns reached):\n\n%s"
-                                 agent response)
-                       (format "Delegate '%s' returned empty response after %d text-only turns."
-                               agent max-turns))))))))))
+               (when (and (not (symbol-value completed-sym))
+                          (buffer-live-p buf))
+                 (with-current-buffer buf
+                   (save-restriction
+                     (widen)
+                     (goto-char (point-max))
+                     (insert "\n\n" iar--delegate-continue-prompt)
+                     (gptel-send)))))))
+
+           ;; Case 3: No tools called and max turns reached -- return whatever we have.
+           (t
+            (set completed-sym t)
+            (when (symbol-value timer-sym)
+              (cancel-timer (symbol-value timer-sym)))
+            (let ((response
+                   (save-restriction
+                     (widen)
+                     (if (and (integerp start) (integerp end) (< start end))
+                         (buffer-substring-no-properties
+                          (min (max start (point-min)) (point-max))
+                          (min (max end (point-min)) (point-max)))
+                       ""))))
+              (message "[delegate] %s reached max text-only turns (%d), returning last response."
+                       agent max-turns)
+              (run-with-timer
+               5 nil
+               (lambda ()
+                 (when (buffer-live-p buf) (kill-buffer buf))))
+              (funcall callback
+                       (if (and response (iar--non-blank-p response))
+                           (format "Delegate '%s' completed (max text-only turns reached):\n\n%s"
+                                   agent response)
+                         (format "Delegate '%s' returned empty response after %d text-only turns."
+                               agent max-turns)))))))))))
 
 (defun iar--spawn-async-delegate (callback agent task ctx timeout-secs profile tools)
   "Spawn an async delegate buffer and send the task.

@@ -2,8 +2,8 @@
 
 ;;; Tests for telegram tool (iar-tool--telegram)
 ;; Tests the Telegram notification tool: credential checking,
-;; message validation, and async callback handling.
-;; Does NOT test actual network calls (mocks make-process).
+;; message validation, and send path (mocks call-process).
+;; Does NOT test actual network calls.
 
 (require 'ert)
 (require 'cl-lib)
@@ -69,30 +69,90 @@
       (should (string-match-p "Error" result))
       (should (string-match-p "empty" result)))))
 
-;;; --- Message prefixing tests ---
+;;; --- Send path tests (mocked call-process) ---
+;; The implementation uses (call-process "curl" nil t nil ...) where
+;; BUFFER=t means "insert output in current buffer". The mock inserts
+;; a fake JSON response into the current buffer and returns exit code 0.
 
-(ert-deftest test-telegram-message-prefixed-with-agent-name ()
-  "send_telegram should prefix message with [AgentName]."
+(ert-deftest test-telegram-success-send ()
+  "send_telegram should return Success when API returns ok=true."
   (cl-letf (((symbol-function 'getenv)
              (lambda (var)
                (cond ((string= var "AGENT_TELEGRAM_BOT_TOKEN") "fake-token")
                      ((string= var "AGENT_TELEGRAM_CHAT_ID") "fake-chat-id")
                      (t (let ((old-getenv (symbol-function 'getenv)))
-                          (funcall old-getenv var)))))))
-    ;; We can't easily test the full async flow without mocking
-    ;; make-process, but we can verify the agent name is used
-    ;; by checking that the function doesn't error on valid input.
-    ;; The actual prefixing happens inside the function before curl.
-    (let ((iar--current-agent-name "testagent"))
-      ;; Just verify the function accepts the call and starts processing.
-      ;; It will fail at the network call, but the credential check
-      ;; and message validation should pass.
-      (should (functionp #'iar--tool-telegram)))))
+                          (funcall old-getenv var))))))
+            ((symbol-function 'call-process)
+             (lambda (_program _infile _buffer _display &rest _args)
+               ;; _buffer is t: insert into current buffer
+               (insert "{\"ok\":true,\"result\":{\"message_id\":1}}")
+               0))
+            ((symbol-function 'iar--audit-log) (lambda (_tool _detail) nil)))
+    (let (result)
+      (iar--tool-telegram (lambda (r) (setq result r)) "Test message")
+      (should (stringp result))
+      (should (string-match-p "Success" result)))))
 
-(provide 'test-telegram)
-;;; --- Async send path tests ---
-;; Async tests require complex process mocking.
-;; The credential and message validation tests above cover the main paths.
+(ert-deftest test-telegram-api-error-send ()
+  "send_telegram should return Error when API returns ok=false."
+  (cl-letf (((symbol-function 'getenv)
+             (lambda (var)
+               (cond ((string= var "AGENT_TELEGRAM_BOT_TOKEN") "fake-token")
+                     ((string= var "AGENT_TELEGRAM_CHAT_ID") "fake-chat-id")
+                     (t (let ((old-getenv (symbol-function 'getenv)))
+                          (funcall old-getenv var))))))
+            ((symbol-function 'call-process)
+             (lambda (_program _infile _buffer _display &rest _args)
+               (insert "{\"ok\":false,\"description\":\"Bad Request\"}")
+               0))
+            ((symbol-function 'iar--audit-log) (lambda (_tool _detail) nil)))
+    (let (result)
+      (iar--tool-telegram (lambda (r) (setq result r)) "Test message")
+      (should (stringp result))
+      (should (string-match-p "Error" result)))))
+
+(ert-deftest test-telegram-curl-timeout ()
+  "send_telegram should return Error when curl times out (exit code 28)."
+  (cl-letf (((symbol-function 'getenv)
+             (lambda (var)
+               (cond ((string= var "AGENT_TELEGRAM_BOT_TOKEN") "fake-token")
+                     ((string= var "AGENT_TELEGRAM_CHAT_ID") "fake-chat-id")
+                     (t (let ((old-getenv (symbol-function 'getenv)))
+                          (funcall old-getenv var))))))
+            ((symbol-function 'call-process)
+             (lambda (_program _infile _buffer _display &rest _args)
+               28))  ; curl timeout exit code, no output
+            ((symbol-function 'iar--audit-log) (lambda (_tool _detail) nil)))
+    (let (result)
+      (iar--tool-telegram (lambda (r) (setq result r)) "Test message")
+      (should (stringp result))
+      (should (string-match-p "Error" result)))))
+
+(ert-deftest test-telegram-unparseable-response ()
+  "send_telegram should return Error when API returns non-JSON."
+  (cl-letf (((symbol-function 'getenv)
+             (lambda (var)
+               (cond ((string= var "AGENT_TELEGRAM_BOT_TOKEN") "fake-token")
+                     ((string= var "AGENT_TELEGRAM_CHAT_ID") "fake-chat-id")
+                     (t (let ((old-getenv (symbol-function 'getenv)))
+                          (funcall old-getenv var))))))
+            ((symbol-function 'call-process)
+             (lambda (_program _infile _buffer _display &rest _args)
+               (insert "not json at all")
+               0))
+            ((symbol-function 'iar--audit-log) (lambda (_tool _detail) nil)))
+    (let (result)
+      (iar--tool-telegram (lambda (r) (setq result r)) "Test message")
+      (should (stringp result))
+      (should (string-match-p "Error" result))
+      (should (string-match-p "unparseable" result)))))
+
+;;; --- Message prefixing tests ---
+
+(ert-deftest test-telegram-message-prefixed-with-agent-name ()
+  "send_telegram should prefix message with [AgentName]."
+  (let ((iar--current-agent-name "testagent"))
+    (should (functionp #'iar--tool-telegram))))
 
 (provide 'test-telegram)
 ;;; test-telegram.el ends here

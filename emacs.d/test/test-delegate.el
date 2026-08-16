@@ -674,3 +674,104 @@ negatives, but this is defense-in-depth at the consumer level."
 
 (provide 'test-delegate)
 ;;; test-delegate.el ends here
+;;; --- Marker-based completion tests (Case 2a: no tools, but has marker) ---
+
+(ert-deftest test-delegate-completion-hook-marker-no-tools-completes ()
+  "Completion hook should complete when response has DELEGATION RESULT marker
+but no tools were called.  This handles simple tasks that need no tools."
+  (with-temp-buffer
+    (insert "prefix\nSome text.\n=== DELEGATION RESULT ===\nDone: the answer is 42.\n")
+    (let ((result nil)
+          (completed-sym (make-symbol "completed"))
+          (timer-sym (make-symbol "timer"))
+          (tools-called-sym (make-symbol "tools-called"))
+          (turn-count-sym (make-symbol "turn-count")))
+      (set completed-sym nil)
+      (set timer-sym nil)
+      (set tools-called-sym nil)
+      (set turn-count-sym 0)
+      (let ((fn (iar--delegate-completion-fn
+                 (current-buffer)
+                 (lambda (r) (setq result r))
+                 "testagent"
+                 completed-sym timer-sym 600
+                 tools-called-sym turn-count-sym
+                 iar-delegate-max-turns)))
+        (funcall fn 8 (point-max)))
+      (should result)
+      (should (string-match-p "the answer is 42" result))
+      (should (symbol-value completed-sym))
+      ;; Should NOT have re-prompted
+      (should (= (symbol-value turn-count-sym) 0)))))
+
+(ert-deftest test-delegate-completion-hook-marker-extracts-only-after-marker ()
+  "Completion hook should extract only text after the DELEGATION RESULT marker
+when no tools were called, not the full response."
+  (with-temp-buffer
+    (insert "prefix\nNarration about what I would do.\n=== DELEGATION RESULT ===\nConcise summary only.\n")
+    (let ((result nil)
+          (completed-sym (make-symbol "completed"))
+          (timer-sym (make-symbol "timer"))
+          (tools-called-sym (make-symbol "tools-called"))
+          (turn-count-sym (make-symbol "turn-count")))
+      (set completed-sym nil)
+      (set timer-sym nil)
+      (set tools-called-sym nil)
+      (set turn-count-sym 0)
+      (let ((fn (iar--delegate-completion-fn
+                 (current-buffer)
+                 (lambda (r) (setq result r))
+                 "testagent"
+                 completed-sym timer-sym 600
+                 tools-called-sym turn-count-sym
+                 iar-delegate-max-turns)))
+        (funcall fn 8 (point-max)))
+      (should result)
+      ;; Should contain the concise summary
+      (should (string-match-p "Concise summary only" result))
+      ;; Should NOT contain the narration prefix
+      (should-not (string-match-p "Narration about" result)))))
+
+(ert-deftest test-delegate-completion-hook-no-marker-no-tools-reprompts ()
+  "Completion hook should re-prompt when no tools and no marker in response."
+  (with-temp-buffer
+    (insert "prefix\nI will do the task now.\n")
+    (let ((result nil)
+          (completed-sym (make-symbol "completed"))
+          (timer-sym (make-symbol "timer"))
+          (tools-called-sym (make-symbol "tools-called"))
+          (turn-count-sym (make-symbol "turn-count")))
+      (set completed-sym nil)
+      (set timer-sym nil)
+      (set tools-called-sym nil)
+      (set turn-count-sym 0)
+      (let ((fn (iar--delegate-completion-fn
+                 (current-buffer)
+                 (lambda (r) (setq result r))
+                 "testagent"
+                 completed-sym timer-sym 600
+                 tools-called-sym turn-count-sym
+                 iar-delegate-max-turns)))
+        (funcall fn 8 (point-max)))
+      (should (null result))
+      (should (null (symbol-value completed-sym)))
+      (should (= (symbol-value turn-count-sym) 1)))))
+
+;;; --- Extract result helper tests ---
+
+(ert-deftest test-delegate-extract-result-with-marker ()
+  "iar--delegate-extract-result should return text after the marker."
+  (let ((result (iar--delegate-extract-result
+                 "some text\n=== DELEGATION RESULT ===\nThe answer.\n")))
+    (should (string= result "The answer."))))
+
+(ert-deftest test-delegate-extract-result-without-marker ()
+  "iar--delegate-extract-result should return full response when no marker."
+  (let ((result (iar--delegate-extract-result "just some text without marker")))
+    (should (string= result "just some text without marker"))))
+
+(ert-deftest test-delegate-extract-result-empty-after-marker ()
+  "iar--delegate-extract-result should return empty string when marker is at end."
+  (let ((result (iar--delegate-extract-result
+                 "text\n=== DELEGATION RESULT ===\n")))
+    (should (string= result ""))))

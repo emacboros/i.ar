@@ -13,6 +13,13 @@
 ;; are set by iar.sh and passed into the container via -e flags.
 ;;
 ;; Audit: every message sent is logged to the central audit log.
+;;
+;; IMPLEMENTATION NOTE: This tool uses synchronous `call-process' instead
+;; of async `make-process'.  The tool is already async from gptel's
+;; perspective (the callback is invoked when done), so we can block
+;; briefly while curl runs.  curl's -m flag provides a hard timeout,
+;; making the behavior deterministic and eliminating the sentinel/timer
+;; race conditions that caused the previous hang bug.
 
 (require 'iar-tool-call)
 (require 'iar-utils)
@@ -36,61 +43,51 @@ The message is prefixed with [AgentName] for identification."
      ;; Empty message
      ((or (null message) (string-empty-p message))
       (funcall callback "Error: Message is empty. Provide a non-empty message to send."))
-     ;; Send via curl
+     ;; Send via curl (synchronous, with hard timeout)
      (t
       (let* ((url (format "https://api.telegram.org/bot%s/sendMessage" token))
              (payload (json-serialize
                        `(:chat_id ,chat-id
                          :text ,full-message)))
-             (buf (generate-new-buffer " *telegram-send*"))
-             (proc nil))
-        (setq proc
-              (make-process
-               :name "telegram-send"
-               :buffer buf
-               :connection-type 'pipe
-               :command (list "curl" "-s" "-m" "10"
-                              "-X" "POST"
-                              "-H" "Content-Type: application/json"
-                              "-d" payload
-                              url)
-               :sentinel
-               (lambda (proc _event)
-                 (when (memq (process-status proc) '(exit signal))
-                   (let* ((exit-code (process-exit-status proc))
-                          (output (if (buffer-live-p buf)
-                                      (with-current-buffer buf (buffer-string))
-                                    ""))
-                          (ok nil)
-                          (parse-error nil))
-                     (when (buffer-live-p buf) (kill-buffer buf))
-                     ;; Parse JSON response to check success
-                     (condition-case err
-                         (let ((parsed (with-temp-buffer
-                                         (insert output)
-                                         (goto-char (point-min))
-                                         (let ((json-object-type 'plist))
-                                           (json-read)))))
-                           (setq ok (eq (plist-get parsed :ok) t)))
-                       (error
-                        (setq parse-error (error-message-string err))))
-                                          (format "msg=%s ok=%s" (substring full-message 0 (min 100 (length full-message))) (if ok "yes" "no")))
-                     (funcall callback
-                              (cond
-                               (ok
-                                (format "Success: Telegram message sent. [%s] %s" agent message))
-                               (parse-error
-                                (format "Error: Telegram API returned unparseable response: %s" output))
-                               (t
-                                (format "Error: Telegram API returned: %s" output))))))))
-        ;; Timeout: kill process after 15 seconds
-        (run-with-timer 15 nil
-                        (lambda ()
-                          (when (process-live-p proc)
-                            (delete-process proc)
-                            (when (buffer-live-p buf) (kill-buffer buf))
-                            (funcall callback
-                                     "Error: Telegram request timed out after 15 seconds.")))))))))
+             (output (with-temp-buffer
+                       (let ((exit-code
+                              (call-process
+                               "curl" nil t nil
+                               "-s" "-m" "10" "--connect-timeout" "5"
+                               "-X" "POST"
+                               "-H" "Content-Type: application/json"
+                               "-d" payload
+                               url)))
+                         (cons exit-code (buffer-string)))))
+             (exit-code (car output))
+             (response-text (cdr output))
+             (ok nil)
+             (parse-error nil))
+        ;; Parse JSON response to check success
+        (condition-case err
+            (let ((parsed (with-temp-buffer
+                            (insert response-text)
+                            (goto-char (point-min))
+                            (let ((json-object-type 'plist))
+                              (json-read)))))
+              (setq ok (eq (plist-get parsed :ok) t)))
+          (error
+           (setq parse-error (error-message-string err))))
+        ;; Log to audit (bare format was a no-op in previous version)
+        (iar--audit-log 'telegram
+                        (format "msg=%s ok=%s exit=%d"
+                                (substring full-message 0 (min 100 (length full-message)))
+                                (if ok "yes" "no") exit-code))
+        (funcall callback
+                 (cond
+                  (ok
+                   (format "Success: Telegram message sent. [%s] %s" agent message))
+                  (parse-error
+                   (format "Error: Telegram API returned unparseable response (exit %d): %s"
+                           exit-code response-text))
+                  (t
+                   (format "Error: Telegram API returned (exit %d): %s"
+                           exit-code response-text)))))))))
 
 (iar-tool-register
  (gptel-make-tool
