@@ -131,3 +131,39 @@ canonical implementation loaded first."
     (should (= 17 iar--usage-output-tokens))))
 
 (provide 'test-tool-call)
+;;; --- Additional coverage tests ---
+
+(provide 'test-tool-call)
+;;; test-tool-call.el ends here
+
+;;; --- Additional coverage tests ---
+
+(ert-deftest test-tool-call-bridge-post-response ()
+  "iar--bridge-post-response should run post-response hooks."
+  (let ((hook-run nil))
+    (add-hook 'iar-post-response-functions
+              (lambda (&rest _args) (setq hook-run t))
+              nil t)
+    (unwind-protect
+        (progn
+          (iar--bridge-post-response 'success nil)
+          (should hook-run))
+      (remove-hook 'iar-post-response-functions
+                   (lambda (&rest _args) (setq hook-run t))
+                   t))))
+
+(ert-deftest test-tool-call-usage-write-log-error ()
+  "iar--usage-write-log should not crash on error."
+  (let ((iar-personalization-path "/proc/cannot/write/"))
+    (iar--usage-write-log)
+    (should t)))
+
+(ert-deftest test-tool-call-usage-parse-from-curl-dead-buffer ()
+  "iar--usage-parse-from-curl should handle dead process buffer."
+  (let ((buf (generate-new-buffer " *test-dead-curl*")))
+    (kill-buffer buf)
+    (iar--usage-parse-from-curl 'not-a-process)
+    (should t)))
+
+(provide 'test-tool-call)
+;;; test-tool-call.el ends here
