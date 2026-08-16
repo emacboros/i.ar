@@ -110,4 +110,82 @@
       (should (null started)))))
 
 (provide 'test-mcp-setup)
+
+;;; --- Additional coverage tests ---
+
+(ert-deftest test-mcp-start-servers-no-config ()
+  "iar--mcp-start-servers should return nil when no servers configured."
+  (let ((iar-mcp-servers nil))
+    (should (null (iar--mcp-start-servers '("unknown"))))
+    (should (null (iar--mcp-start-servers nil)))))
+
+(ert-deftest test-mcp-start-servers-with-config ()
+  "iar--mcp-start-servers should start servers and return t."
+  (let ((iar-mcp-servers '(("test-server" . (:url "http://localhost:9876/sse"))))
+        (mcp-hub-servers nil)
+        (start-called nil))
+    (cl-letf (((symbol-function 'mcp-hub-start-all-server)
+               (lambda (cb)
+                 (setq start-called t)
+                 (when cb (funcall cb)))))
+      (let ((callback-called nil))
+        (let ((result (iar--mcp-start-servers '("test-server")
+                                               (lambda () (setq callback-called t)))))
+          (should (eq t result))
+          (should start-called)
+          (should callback-called)
+          (should mcp-hub-servers))))))
+
+(ert-deftest test-mcp-activate-tools ()
+  "iar--mcp-activate-tools should add tools to gptel-tools."
+  (with-temp-buffer
+    (let ((gptel-tools nil)
+          (tool (gptel-make-tool
+                 :name "test-mcp-act"
+                 :description "test"
+                 :args nil
+                 :function (lambda () "result")))
+          (iar--mcp-tools-registered nil))
+      (iar--mcp-activate-tools (list tool))
+      (should (member tool gptel-tools))
+      (should (member tool iar--mcp-tools-registered)))))
+
+(ert-deftest test-mcp-activate-tools-no-duplicates ()
+  "iar--mcp-activate-tools should not add duplicate tools."
+  (with-temp-buffer
+    (let ((gptel-tools nil)
+          (tool (gptel-make-tool
+                 :name "test-mcp-dup"
+                 :description "test"
+                 :args nil
+                 :function (lambda () "result")))
+          (iar--mcp-tools-registered nil))
+      (iar--mcp-activate-tools (list tool))
+      (iar--mcp-activate-tools (list tool))
+      (should (= 1 (length gptel-tools))))))
+
+(ert-deftest test-mcp-deactivate-tools ()
+  "iar--mcp-deactivate-tools should remove MCP tools from gptel-tools."
+  (with-temp-buffer
+    (let ((tool (gptel-make-tool
+                 :name "test-mcp-rem"
+                 :description "test"
+                 :args nil
+                 :function (lambda () "result")))
+          (gptel-tools nil)
+          (iar--mcp-tools-registered nil))
+      (iar--mcp-activate-tools (list tool))
+      (should (member tool gptel-tools))
+      (iar--mcp-deactivate-tools)
+      (should-not (member tool gptel-tools))
+      (should (null iar--mcp-tools-registered)))))
+
+(ert-deftest test-mcp-deactivate-no-tools ()
+  "iar--mcp-deactivate-tools should handle nil registered tools."
+  (with-temp-buffer
+    (let ((iar--mcp-tools-registered nil))
+      (iar--mcp-deactivate-tools)
+      (should t))))
+
+(provide 'test-mcp-setup)
 ;;; test-mcp-setup.el ends here
