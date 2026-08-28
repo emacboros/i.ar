@@ -114,6 +114,14 @@ Signals an error if the file is not found."
     (or (iar--read-file-string path)
         (error "Archetype '%s' not found at %s" name path))))
 
+(defun iar--parse-mode (archetype-content)
+  "Extract #+MODE: metadata from ARCHETYPE-CONTENT.
+Returns the mode as a lowercase symbol (interactive, autonomous,
+continuous, delegated, one-shot). Returns `interactive' if not found."
+  (if (string-match "^#\\+MODE:\\s-*\\(.+\\)$" archetype-content)
+      (intern (downcase (string-trim (match-string 1 archetype-content))))
+    'interactive))
+
 (defun iar--personalities-dir ()
   "Return the absolute path to the personalities directory."
   (expand-file-name iar-personalities-path user-emacs-directory))
