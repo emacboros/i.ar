@@ -212,7 +212,7 @@ Also runs post-tool-call audit logging after the original function."
   "Write usage summary to audit/<agent>/USAGE.log.
 Best-effort: errors are demoted to messages."
   (condition-case err
-      (let* ((agent (or (iar--get-agent-name) "nil"))
+      (let* ((agent (or (iar--get-agent-name) "unknown"))
              (project (or (iar--current-project-name) "nil"))
              (log-dir (expand-file-name
                        (format "%s/%s" project agent)
