@@ -1,0 +1,82 @@
+[2026-08-22 03:30:00] mirror: Major architecture discussion + Zulip deployment role
+
+## Discussion: i.ar future and the "Laboratory" concept
+
+Long conversation about the future direction after i.ar alpha completion.
+Key decisions:
+
+1. **i.ar is done as an exploratory project.** Alpha complete, all 19 steps done.
+   The framework proved its concepts (self-modification, three-axis assembly,
+   security model, knowledge bases, autonomous agents). No more framework work.
+
+2. **SecPlatform is a friend's project, not Nacho's passion.** It runs, it works,
+   but it's not the interesting path. Don't force productivity over curiosity.
+
+3. **New project: AI Research Laboratory.** A "digital research institution" where
+   agents with distinct personalities work alongside the human on open-ended
+   research problems. Foundation: co-simulation knowledge base (concept library
+   with multi-language implementations). North star: each session, human proposes
+   a research problem, agents work on it overnight (or interactively), human
+   reviews results.
+
+4. **Framework: LangGraph (Python) as agent runtime.** Not Deep Agents (too
+   opinionated about tree delegation), not Mastra (JS/TS, workflow too rigid),
+   not Google ADK (too Gemini-optimized). LangGraph gives primitives without
+   opinions. Multi-agent layer (message bus, engagement model, threading) is
+   custom-built on top.
+
+5. **Chat platform: Zulip.** Self-hosted at agora.randazzo.ar. Stream/topic model
+   maps exactly to channel/sub-thread structure. Python bot API (same language
+   as LangGraph agents). The chat platform IS the message bus -- no Redis, no
+   MQTT. Agents are Zulip bots that subscribe to streams.
+
+6. **No hardcoded workflows.** Agents self-organize through conversation. No
+   dependency graphs, no engagement rules, no routing logic. Personalities are
+   in prompts, not code. The human wants to be surprised by emergent behavior.
+
+7. **Chat is first-class citizen.** Human interjects in real time, doesn't just
+   wake up to results. More hands-on than the "go to sleep" model.
+
+## Infrastructure: Zulip Ansible role
+
+Created complete Zulip deployment role in iar-infrastructure:
+- roles/zulip/: defaults, handlers, tasks, templates (compose.yml, compose.override.yml, systemd service)
+- playbooks/zulip.yml: standalone playbook
+- playbooks/site.yml: added zulip role
+- host_vars/sophon.yml: zulip_enabled, port 8090, dirs
+- host_vars/rammstein.yml: agora.randazzo.ar Caddy proxy
+- vault.yml.template: zulip secret entries
+- docs/ARCHITECTURE.md: updated topology + Zulip section
+- personalization/docs/infra/: updated overview + _overview
+
+Port 8090 (not 8080, which conflicts with Keycloak).
+Committed to both iar-infrastructure and personalization repos.
+
+## Pending: Vault secrets + DNS + deploy
+
+Before running the playbook:
+1. Add Zulip secrets to vault.yml (zulip_postgres_password, zulip_memcached_password,
+   zulip_rabbitmq_password, zulip_redis_password, zulip_secret_key)
+2. Add DNS A record for agora.randazzo.ar -> rammstein public IP
+3. Run: ansible-playbook playbooks/zulip.yml --ask-vault-pass
+[2026-08-26 23:55:00] mirror: Created Agora project (docs, project file, roadmap)
+
+New project "agora" created in personalization:
+- docs/agora/_overview.md: vision, origin, architecture, design principles
+- docs/agora/architecture.md: system diagram, components, context management
+- projects/agora.org: project file with agora/ + infra/ knowledge, tools, mounts
+- tasks/iar/agora/ROADMAP.org: 10-step roadmap across 4 phases
+
+Roadmap summary:
+  Phase 0: Zulip deploy (DONE)
+  Phase 1: Foundation (bot hello world, LangGraph+Ollama, integration, MCP server, KB structure)
+  Phase 2: Multi-agent (second personality, engagement model, sub-thread delegation)
+  Phase 3: Research (first research session, context management)
+
+Also fixed multiple Zulip deployment issues:
+- rammstein host_vars: Zulip Caddy entry was outside caddy_sites list (YAML parse error)
+- auth.i.ar port was accidentally changed from 8080 to 8090 by sed
+- compose.yml: removed unsupported 'app_protocol' and 'name' in ports (docker-compose v2.5.1)
+- compose.yml: removed unsupported 'attach' property from all services
+- compose.override.yml: switched from environment-based to file-based secrets
+- tasks/main.yml: write individual secret files instead of single .env

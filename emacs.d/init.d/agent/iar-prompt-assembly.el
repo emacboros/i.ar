@@ -13,13 +13,13 @@
 ;; 3. Personality content
 ;; 4. Project objective
 ;; 5. Auto-loaded knowledge (from project #+KNOWLEDGE)
-;; 6. Memory injection (mode-based: LOGS.md or STATE.org)
+;; 6. Memory injection (mode-based: LOGS.md + JOURNAL.org or STATE.org)
 ;; 7. Mount info
 ;; 8. Available containers (from project #+CONTAINERS)
 ;; 9. MCP servers (from project #+MCP)
 ;;
 ;; Memory injection is determined by the archetype's #+MODE: metadata:
-;; - interactive -> inject LOGS.md (last N lines)
+;; - interactive -> inject LOGS.md (last N lines) + JOURNAL.org (last N lines)
 ;; - autonomous -> inject STATE.org (full)
 ;; - continuous -> inject STATE.org (full)
 ;; - delegated -> no memory injection
@@ -114,16 +114,6 @@ Signals an error if the file is not found."
     (or (iar--read-file-string path)
         (error "Archetype '%s' not found at %s" name path))))
 
-(defun iar--parse-mode (archetype-content)
-  "Extract #+MODE: metadata from ARCHETYPE-CONTENT.
-Returns the mode as a lowercase symbol (interactive, autonomous,
-continuous, delegated, one-shot). Returns 'interactive if not found."
-  (if (string-match "^#\\+MODE:\\s-*\\(.+\\)$" archetype-content)
-      (intern (downcase (string-trim (match-string 1 archetype-content))))
-    'interactive))
-
-;;; --- Personality reading ---
-
 (defun iar--personalities-dir ()
   "Return the absolute path to the personalities directory."
   (expand-file-name iar-personalities-path user-emacs-directory))
@@ -149,7 +139,7 @@ not expanded -- base_context.org is a leaf file with no includes."
 
 (defun iar--read-memory-file (personality-name filename)
   "Read a memory file for PERSONALITY-NAME from the audit mount.
-FILENAME is the base name (e.g., \"LOGS.md\", \"STATE.org\").
+FILENAME is the base name (e.g., \"LOGS.md\", \"JOURNAL.org\", \"STATE.org\").
 Returns the file content string, or empty string if not found.
 Truncates to last N lines if iar-personal-file-max-lines is set."
   (let* ((audit-base (expand-file-name iar-audit-path iar-personalization-path))
@@ -170,17 +160,26 @@ Truncates to last N lines if iar-personal-file-max-lines is set."
 (defun iar--inject-memory (mode personality-name)
   "Inject memory for the given MODE and PERSONALITY-NAME.
 Returns a string to append to the prompt, or empty string.
-- interactive -> inject LOGS.md (last N lines)
+- interactive -> inject LOGS.md (last N lines) + JOURNAL.org (last N lines)
 - autonomous -> inject STATE.org (full)
 - continuous -> inject STATE.org (full)
 - delegated -> no memory injection
 - one-shot -> no memory injection"
   (pcase mode
     ('interactive
-     (let ((logs (iar--read-memory-file personality-name "LOGS.md")))
-       (if (iar--non-blank-p logs)
-           (format "\n\n=== SESSION LOGS [%s] ===\n\n%s\n\n=== END SESSION LOGS ==="
-                   personality-name logs)
+     (let* ((logs (iar--read-memory-file personality-name "LOGS.md"))
+            (journal (iar--read-memory-file personality-name "JOURNAL.org"))
+            (parts nil))
+       (when (iar--non-blank-p logs)
+         (push (format "\n\n=== SESSION LOGS [%s] ===\n\n%s\n\n=== END SESSION LOGS ==="
+                       personality-name logs)
+               parts))
+       (when (iar--non-blank-p journal)
+         (push (format "\n\n=== JOURNAL [%s] ===\n\n%s\n\n=== END JOURNAL ==="
+                       personality-name journal)
+               parts))
+       (if parts
+           (mapconcat #'identity (nreverse parts) "")
          "")))
     ('autonomous
      (let ((state (iar--read-memory-file personality-name "STATE.org")))
@@ -201,8 +200,8 @@ Returns a string to append to the prompt, or empty string.
 (defun iar--auto-load-knowledge (labels)
   "Read and format knowledge from LABELS (a list of doc subdirectory names).
 Returns a cons cell (CONTENT . LOADED-LABELS) where CONTENT is a string
-with delimited knowledge blocks (or empty string) and LOADED-LABELS is
-a list of label strings that were successfully loaded."
+with delimited knowledge blocks (or empty string) and LOADED-LABELS is a
+list of label strings that were successfully loaded."
   (if (or (null labels) (not labels))
       (cons "" nil)
     (let ((docs-dir (expand-file-name iar-docs-path iar-personalization-path))

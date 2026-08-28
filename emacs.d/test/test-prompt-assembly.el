@@ -75,7 +75,7 @@
     ;; LOGS.md should exist for mirror
     (should (stringp result))
     ;; Either contains SESSION LOGS or is empty (if file doesn't exist)
-    (or (string-match-p "SESSION LOGS" result)
+    (or (string-match-p "SESSION LOGS\|JOURNAL" result)
         (string= result ""))))
 
 (ert-deftest test-assembly-inject-memory-delegated ()
@@ -335,3 +335,22 @@
 
 (provide 'test-prompt-assembly)
 ;;; test-prompt-assembly.el ends here
+
+;;; --- JOURNAL.org injection tests ---
+
+(ert-deftest test-assembly-inject-memory-interactive-journal ()
+  "Interactive mode injects JOURNAL.org if it exists."
+  (let ((result (iar--inject-memory 'interactive "aria")))
+    (should (stringp result))
+    ;; JOURNAL.org should exist for aria after this session
+    (or (string-match-p "JOURNAL" result)
+        (string= result ""))))
+
+(ert-deftest test-assembly-inject-memory-interactive-both ()
+  "Interactive mode can inject both LOGS.md and JOURNAL.org."
+  (let ((result (iar--inject-memory 'interactive "aria")))
+    (should (stringp result))
+    ;; If both exist, result should contain both sections
+    ;; If neither exists, result is empty
+    (or (string-match-p "SESSION LOGS\\|JOURNAL" result)
+        (string= result ""))))

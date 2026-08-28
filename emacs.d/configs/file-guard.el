@@ -39,6 +39,9 @@
     ("/LOGS\\.md\\'"
      "LOGS.md files can only be appended to, not overwritten or modified via replace."
      t)
+    ("/JOURNAL\\.org\\'"
+     "JOURNAL.org files can only be appended to, not overwritten or modified via replace."
+     t)
     ("/ROADMAP\\.org\\'"
      "ROADMAP.org files can only be appended to, not overwritten or modified via replace. Use write_roadmap tool to update."
      t))
