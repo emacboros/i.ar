@@ -71,7 +71,7 @@
 
 (ert-deftest test-assembly-inject-memory-interactive ()
   "Interactive mode injects LOGS.md if it exists."
-  (let ((result (iar--inject-memory 'interactive "mirror")))
+  (let ((result (iar--inject-memory 'interactive "iar" "mirror")))
     ;; LOGS.md should exist for mirror
     (should (stringp result))
     ;; Either contains SESSION LOGS or is empty (if file doesn't exist)
@@ -80,11 +80,11 @@
 
 (ert-deftest test-assembly-inject-memory-delegated ()
   "Delegated mode injects no memory."
-  (should (string= (iar--inject-memory 'delegated "mirror") "")))
+  (should (string= (iar--inject-memory 'delegated "iar" "mirror") "")))
 
 (ert-deftest test-assembly-inject-memory-one-shot ()
   "One-shot mode injects no memory."
-  (should (string= (iar--inject-memory 'one-shot "darwin") "")))
+  (should (string= (iar--inject-memory 'one-shot "iar" "darwin") "")))
 
 (ert-deftest test-assembly-filter-tools-all ()
   "Nil tool-names returns all tools unchanged."
@@ -217,6 +217,50 @@
     ;; Only one execute_code_remote
     (should (= (cl-count-if (lambda (t) (equal (gptel-tool-name t) "execute_code_remote")) filtered) 1))))
 
+;;; --- DIGEST.md injection tests ---
+
+(ert-deftest test-assembly-inject-memory-interactive-digest ()
+  "Interactive mode injects DIGEST.md (full, untruncated) if it exists."
+  (let ((result (iar--inject-memory 'interactive "iar" "aria")))
+    (should (stringp result))
+    (or (string-match-p "DIGEST" result)
+        (string= result ""))))
+
+(ert-deftest test-assembly-read-memory-file-full-no-truncation ()
+  "iar--read-memory-file-full returns the entire file regardless of line count."
+  (let* ((test-dir (expand-file-name
+                    "test_project/test_agent"
+                    (expand-file-name iar-audit-path iar-personalization-path)))
+         (test-file (expand-file-name "DIGEST.md" test-dir))
+         (long-content (concat (make-string 500 ?x) "\n")))
+    (unwind-protect
+        (progn
+          (make-directory test-dir t)
+          (with-temp-file test-file
+            (dotimes (_ 300) (insert long-content)))
+          (let ((result (iar--read-memory-file-full "test_project" "test_agent" "DIGEST.md")))
+            ;; 300 lines x 501 chars = 150300 chars -- full content, no truncation
+            (should (= (length result) (* 300 501)))))
+      (when (file-exists-p test-file)
+        (delete-file test-file))
+      (ignore-errors (delete-directory test-dir t)))))
+
+(ert-deftest test-assembly-read-memory-file-project-path ()
+  "iar--read-memory-file reads from audit/<project>/<personality>/."
+  (let* ((test-dir (expand-file-name
+                    "test_project2/test_agent2"
+                    (expand-file-name iar-audit-path iar-personalization-path)))
+         (test-file (expand-file-name "LOGS.md" test-dir)))
+    (unwind-protect
+        (progn
+          (make-directory test-dir t)
+          (with-temp-file test-file (insert "project-scoped memory"))
+          (let ((result (iar--read-memory-file "test_project2" "test_agent2" "LOGS.md")))
+            (should (string= result "project-scoped memory"))))
+      (when (file-exists-p test-file)
+        (delete-file test-file))
+      (ignore-errors (delete-directory test-dir t)))))
+
 (provide 'test-prompt-assembly)
 ;;; test-prompt-assembly.el ends here
 ;;; --- Additional coverage tests ---
@@ -259,19 +303,19 @@
 
 (ert-deftest test-assembly-inject-memory-autonomous ()
   "iar--inject-memory should inject STATE.org for autonomous mode."
-  (let ((result (iar--inject-memory "autonomous" "darwin")))
+  (let ((result (iar--inject-memory "autonomous" "iar" "darwin")))
     (should (stringp result))
     ;; STATE.org may or may not exist, but the function should not error
     ))
 
 (ert-deftest test-assembly-inject-memory-continuous ()
   "iar--inject-memory should inject STATE.org for continuous mode."
-  (let ((result (iar--inject-memory "continuous" "gardener")))
+  (let ((result (iar--inject-memory "continuous" "iar" "gardener")))
     (should (stringp result))))
 
 (ert-deftest test-assembly-read-memory-file-nonexistent ()
   "iar--read-memory-file should return empty string for nonexistent file."
-  (let ((result (iar--read-memory-file "nonexistent_agent" "LOGS.md")))
+  (let ((result (iar--read-memory-file "iar" "nonexistent_agent" "LOGS.md")))
     (should (stringp result))
     (should (string= "" result))))
 
@@ -340,7 +384,7 @@
 
 (ert-deftest test-assembly-inject-memory-interactive-journal ()
   "Interactive mode injects JOURNAL.org if it exists."
-  (let ((result (iar--inject-memory 'interactive "aria")))
+  (let ((result (iar--inject-memory 'interactive "iar" "aria")))
     (should (stringp result))
     ;; JOURNAL.org should exist for aria after this session
     (or (string-match-p "JOURNAL" result)
@@ -348,7 +392,7 @@
 
 (ert-deftest test-assembly-inject-memory-interactive-both ()
   "Interactive mode can inject both LOGS.md and JOURNAL.org."
-  (let ((result (iar--inject-memory 'interactive "aria")))
+  (let ((result (iar--inject-memory 'interactive "iar" "aria")))
     (should (stringp result))
     ;; If both exist, result should contain both sections
     ;; If neither exists, result is empty

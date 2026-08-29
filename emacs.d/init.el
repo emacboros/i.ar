@@ -198,7 +198,9 @@
   (add-to-list 'load-path tools-agent-dir)
   (load (expand-file-name "delegate.el" tools-agent-dir))
   (load (expand-file-name "reload_os.el" tools-agent-dir))
-  (load (expand-file-name "reload_agent.el" tools-agent-dir)))
+  (load (expand-file-name "reload_agent.el" tools-agent-dir))
+  ;; read_own_prompt -- self-inspection tool (agent reads own assembled prompt)
+  (load (expand-file-name "read_own_prompt.el" tools-agent-dir)))
 
 (load (expand-file-name "iar-guidelines-checker.el" init-agent-dir))
 

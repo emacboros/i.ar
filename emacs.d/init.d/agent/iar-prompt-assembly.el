@@ -145,13 +145,18 @@ not expanded -- base_context.org is a leaf file with no includes."
 
 ;;; --- Memory injection (mode-based) ---
 
-(defun iar--read-memory-file (personality-name filename)
-  "Read a memory file for PERSONALITY-NAME from the audit mount.
-FILENAME is the base name (e.g., \"LOGS.md\", \"JOURNAL.org\", \"STATE.org\").
+(defun iar--read-memory-file (project-name personality-name filename)
+  "Read a memory file for PERSONALITY-NAME under PROJECT-NAME from the audit mount.
+FILENAME is the base name (e.g., \"LOGS.md\", \"JOURNAL.org\", \"STATE.org\",
+\"DIGEST.md\").
+The file lives at audit/<project>/<personality>/<filename> (per-project
+audit layout since the Step 5 migration).
 Returns the file content string, or empty string if not found.
 Truncates to last N lines if iar-personal-file-max-lines is set."
   (let* ((audit-base (expand-file-name iar-audit-path iar-personalization-path))
-         (filepath (expand-file-name (format "%s/%s" personality-name filename) audit-base)))
+         (filepath (expand-file-name
+                    (format "%s/%s/%s" project-name personality-name filename)
+                    audit-base)))
     (if (file-exists-p filepath)
         (with-temp-buffer
           (insert-file-contents filepath)
@@ -165,19 +170,46 @@ Truncates to last N lines if iar-personal-file-max-lines is set."
             (buffer-string)))
       "")))
 
-(defun iar--inject-memory (mode personality-name)
-  "Inject memory for the given MODE and PERSONALITY-NAME.
+(defun iar--read-memory-file-full (project-name personality-name filename)
+  "Read a memory file WITHOUT truncation.
+Same path layout as `iar--read-memory-file' but returns the full
+content. Used for DIGEST.md -- the curated identity index that must
+never be cut off mid-thought."
+  (let* ((audit-base (expand-file-name iar-audit-path iar-personalization-path))
+         (filepath (expand-file-name
+                    (format "%s/%s/%s" project-name personality-name filename)
+                    audit-base)))
+    (if (file-exists-p filepath)
+        (with-temp-buffer
+          (insert-file-contents filepath)
+          (buffer-string))
+      "")))
+
+(defun iar--inject-memory (mode project-name personality-name)
+  "Inject memory for the given MODE, PROJECT-NAME and PERSONALITY-NAME.
 Returns a string to append to the prompt, or empty string.
-- interactive -> inject LOGS.md (last N lines) + JOURNAL.org (last N lines)
+- interactive -> inject DIGEST.md (full, never truncated) +
+                 LOGS.md (last N lines) + JOURNAL.org (last N lines)
 - autonomous -> inject STATE.org (full)
 - continuous -> inject STATE.org (full)
 - delegated -> no memory injection
-- one-shot -> no memory injection"
+- one-shot -> no memory injection
+
+DIGEST.md is the agent-maintained identity index: current projects,
+open threads, key decisions, pointers into the knowledge base. It is
+injected FIRST and in full because it is the index into everything
+else. LOGS.md/JOURNAL.org are the recent pages behind it, truncated
+to `iar-personal-file-max-lines' to bound context growth."
   (pcase mode
     ('interactive
-     (let* ((logs (iar--read-memory-file personality-name "LOGS.md"))
-            (journal (iar--read-memory-file personality-name "JOURNAL.org"))
+     (let* ((digest (iar--read-memory-file-full project-name personality-name "DIGEST.md"))
+            (logs (iar--read-memory-file project-name personality-name "LOGS.md"))
+            (journal (iar--read-memory-file project-name personality-name "JOURNAL.org"))
             (parts nil))
+       (when (iar--non-blank-p digest)
+         (push (format "\n\n=== DIGEST [%s] ===\n\n%s\n\n=== END DIGEST ==="
+                       personality-name digest)
+               parts))
        (when (iar--non-blank-p logs)
          (push (format "\n\n=== SESSION LOGS [%s] ===\n\n%s\n\n=== END SESSION LOGS ==="
                        personality-name logs)
@@ -190,13 +222,13 @@ Returns a string to append to the prompt, or empty string.
            (mapconcat #'identity (nreverse parts) "")
          "")))
     ('autonomous
-     (let ((state (iar--read-memory-file personality-name "STATE.org")))
+     (let ((state (iar--read-memory-file project-name personality-name "STATE.org")))
        (if (iar--non-blank-p state)
            (format "\n\n=== STATE [%s] ===\n\n%s\n\n=== END STATE ==="
                    personality-name state)
          "")))
     ('continuous
-     (let ((state (iar--read-memory-file personality-name "STATE.org")))
+     (let ((state (iar--read-memory-file project-name personality-name "STATE.org")))
        (if (iar--non-blank-p state)
            (format "\n\n=== STATE [%s] ===\n\n%s\n\n=== END STATE ==="
                    personality-name state)
@@ -295,7 +327,7 @@ Returns a plist with keys:
          (knowledge-result (iar--auto-load-knowledge project-knowledge))
          (knowledge-block (car knowledge-result))
          (knowledge-labels (cdr knowledge-result))
-         (memory-block (iar--inject-memory mode personality-name))
+         (memory-block (iar--inject-memory mode project-name personality-name))
          (mount-info (if (fboundp 'iar--extra-mounts-prompt-string)
                          (iar--extra-mounts-prompt-string)
                        ""))

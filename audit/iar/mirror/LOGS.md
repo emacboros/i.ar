@@ -62,3 +62,27 @@ Found the "Agora" project in tasks -- an AI research laboratory with multi-agent
 - Restart session, load Aria personality (C-c a, select "aria")
 - First Aria session: see what she says when you say "Hello"
 - Eventually: fix Zulip memcached bug, resume Agora project
+## 2026-08-29 (night) -- Motorcycle session 3: the toy criterion, used market, and the Calibro surge
+
+**Passion question: RESOLVED.** Córdoba trip today in good weather, loved every second of riding. Winter was the problem, not passion. Also confirmed: prefers highway over off-road, but keeps the Leatherman principle (possessions must work under any condition).
+
+**Framework evolution across three sessions, one direction:**
+1. Session 1: aesthetic veto ("does NOT love ADV aesthetics")
+2. Session 3a: weird-bike recognition test ("can I identify my bike from across the parking lot")
+3. Session 3b: toy criterion, finally named: "a toy that also happens to be my vehicle." Joy is a first-class requirement, not sentimentality. Transalp/Ténéré reclassified as answers to a question he's not asking.
+
+**Decisions and findings:**
+- Svartpilen: NOT selling (market ~3k USD < sentimental value to him). Two-bike strategy intact.
+- Exposure theory ("any bike will grow on me") proposed, then challenged: Svartpilen was love-at-first-sight, never neutral-grown. Theory untested; became moot after the toy criterion.
+- Depreciation stance: part of cost of ownership, informs but does not drive. Spread between finalists (2-4M) smaller than price spread (12.5M); fuel over 5 years costs more than the depreciation difference. Empirical anchors: X-Cape -40%/2yr, Voge 500DS -30%/3yr, Ténéré/Vulcan used at or above new price (big-brand premium confirmed).
+- Used market: deals exist only on unfashionable-old-Japanese (Deauville NT700 2010, 38k km, US$8.3k, Malagueño) or depreciated-Chinese (Benelli 502C US$6.9k in Villa Carlos Paz -- but 48hp fails the power bar). Fashionable bikes used cost more than new Chinese. Used route rejected; buying guide (AR paperwork + mechanical checklist) delivered for future use.
+- Nightshift: fully researched. US$15.9-16.9k new (~24-25M ARS), 73hp, desmo service tax, ~250km range, worst crosswind behavior of finalists, air-cooled (winter-friendly, summer-problematic), Ducati Córdoba dealer exists. Verdict: best motorcycle, worst fit for his use cases, 10M over CU625. Named the premium-name pull explicitly; priced, not disqualified.
+- **Calibro Bagger: became the evidence leader.** Moto Morini Córdoba discovered (first official Morini dealer in Córdoba, predio Autocity, Río Yuspe y Coronel Namuncurá; monthly test-ride events; Calibro 700 ridden Aug 22). Full review corpus pulled (RoadRUNNER, Ultimate Motorcycling, inSella instrumented, moto.it owners, Motoblog AR). Key corrections/data: engine is 693cc PARALLEL twin (CFMoto-built, Kawasaki-derived -- AR press wrongly says V-twin); 171.8 km/h real top speed (130 cruise = 55% of max); 325km range at 120km/h; batwing wind protection confirmed no-buffet at his height; owners 9/10 avg. Cons on record: budget non-adjustable fork, primitive Bosch ABS, dim tach-dominant dash, narrow saddlebags, cold-blooded until warm, limited cornering clearance, peeling tank badges (dealer fixes free).
+
+**Decision state at close:** Calibro Bagger leads every measurable row (price 13.5M, power, warranty 3yr unlimited, luggage, wind protection, dealer now local, review corpus). CU625's remaining case: he loves its specific look + Masera proximity + limiter question still unanswered. Nightshift: the heart's option, now with the price of the heart made explicit. Transalp: off the table (fails toy criterion, budget, financing arbitrage).
+
+**Next session openers:**
+- Did he sit on the Calibro at Autocity? Batwing in person? Does it pass the garage test?
+- Masera: CU625 limiter question ("¿está limitada electrónicamente a 130 o es solo la declaración?")
+- Spring riding continuing -- passion further confirmed?
+- Financing: total-installments vs cash price in writing from both dealers (0% arbitrage valid only on peso-denominated fixed installments).

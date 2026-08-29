@@ -6,9 +6,11 @@
 ;; Personal File Injection Parameters
 ;; =============================================================================
 
-(defcustom iar-personal-file-max-lines 100
-  "Maximum number of lines to inject from memory files (LOGS.md for interactive,
-STATE.org for autonomous/continuous) into an agent's system prompt.
+(defcustom iar-personal-file-max-lines 200
+  "Maximum number of lines to inject from memory files (LOGS.md and
+JOURNAL.org for interactive, STATE.org for autonomous/continuous) into
+an agent's system prompt. DIGEST.md is exempt -- it is always injected
+in full because it is the curated identity index.
 When a personal file exceeds this many lines, only the last N lines are
 injected (most recent content), with a truncation notice prepended.
 The full file remains on disk for reference -- this only affects what
