@@ -42,6 +42,26 @@ Set to nil to disable truncation (pass full result regardless of size)."
   :group 'iar)
 
 ;; =============================================================================
+;; Tool Result Timestamps
+;; =============================================================================
+
+(defcustom iar-tool-result-timestamps t
+  "When non-nil, prepend a wall-clock timestamp to every tool result.
+Format: [HH:MM:SS] prepended to the result text. Gives agents a sense
+of elapsed time between tool calls -- the difference between operating
+blind in time and knowing that 40 minutes passed between two actions.
+
+Timestamps are added before truncation, so they survive even in
+truncated results. Already-timestamped results are not re-stamped
+(idempotent).
+
+Set to nil to disable timestamps (bare results)."
+  :type '(choice (const :tag "Enable timestamps" t)
+                 (const :tag "Disable timestamps" nil))
+  :safe #'booleanp
+  :group 'iar)
+
+;; =============================================================================
 ;; Audit Log Parameters
 ;; =============================================================================
 
@@ -59,4 +79,4 @@ retention, configure external log rotation (e.g., logrotate) instead."
   :safe #'iar--positive-integer-or-nil-p
   :group 'iar)
 
-(provide 'iar-config-debug)
+(provide 'iar-config-tool-limits)

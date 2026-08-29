@@ -48,7 +48,7 @@
   (load (expand-file-name "loop-guard.el" configs-dir))
   (load (expand-file-name "memory.el" configs-dir))
   (load (expand-file-name "file-guard.el" configs-dir))
-  (load (expand-file-name "debug.el" configs-dir))
+  (load (expand-file-name "tool-limits.el" configs-dir))
   (load (expand-file-name "tasks.el" configs-dir))
   (load (expand-file-name "mcp.el" configs-dir)))
 
@@ -100,6 +100,11 @@
 ;; All i.ar modules hook into this, not gptel internals directly.
 ;; Owns: tool registration, hooks, truncation, audit logging, token parsing.
 (load (expand-file-name "iar-tool-call.el" init-tool-call-dir))
+
+;; Tool result timestamping -- prepend wall-clock time to every tool
+;; result. Gives agents a sense of elapsed time between actions.
+;; Advice chain: timestamp (outer) -> truncation -> gptel original.
+(load (expand-file-name "iar-tool-result-timestamp.el" init-tool-call-dir))
 
 ;; Prompt loader -- load prompt templates from common/ directory.
 ;; Must load before mount-awareness, delegate, memory-tools, and loop-guard

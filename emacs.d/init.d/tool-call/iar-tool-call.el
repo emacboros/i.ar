@@ -43,11 +43,11 @@
 (defvar iar-audit-path nil
   "Relative path to the audit log directory.")
 
-;; Forward-declared: owned by configs/debug.el.
+;; Forward-declared: owned by configs/tool-limits.el.
 ;; Declared here so truncation can reference it before configs load.
 (defvar iar-tool-result-max-chars nil
   "Maximum characters of tool result output before truncation.
-Owned by configs/debug.el.")
+Owned by configs/tool-limits.el.")
 
 ;;; ---------------------------------------------------------
 ;;; i.ar Tool Registration
