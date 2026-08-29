@@ -79,9 +79,9 @@
 (ert-deftest test-one-shot-tool-call-tracker-increments ()
   "Should increment tool-call-count in the current one-shot state."
   (let ((iar--one-shot-state (iar--one-shot-make-state "test" nil 40)))
-    (iar--one-shot-tool-call-tracker nil)
+    (iar--one-shot-tool-call-tracker nil nil)
     (should (= 1 (plist-get iar--one-shot-state :tool-call-count)))
-    (iar--one-shot-tool-call-tracker nil)
+    (iar--one-shot-tool-call-tracker nil nil)
     (should (= 2 (plist-get iar--one-shot-state :tool-call-count)))))
 
 ;;; --- Delimiter config tests ---
@@ -117,7 +117,7 @@
         (with-current-buffer buf
           (insert "=== BEGIN FINAL RESPONSE ===\nTest response\n=== END FINAL RESPONSE ===\n")
           (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
-            (iar--one-shot-post-response-handler)
+            (iar--one-shot-post-response-handler nil nil)
             (should (plist-get iar--one-shot-state :completed))
             (should (string= "Test response" (plist-get iar--one-shot-state :final-response)))))
       (kill-buffer buf))))
@@ -129,7 +129,7 @@
         (with-current-buffer buf
           (insert "response without delimiters\n")
           (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
-            (iar--one-shot-post-response-handler)
+            (iar--one-shot-post-response-handler nil nil)
             (should-not (plist-get iar--one-shot-state :completed))))
       (kill-buffer buf))))
 
@@ -140,8 +140,8 @@
         (with-current-buffer buf
           (insert "response\n")
           (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 2)))
-            (iar--one-shot-post-response-handler)
-            (iar--one-shot-post-response-handler)
+            (iar--one-shot-post-response-handler nil nil)
+            (iar--one-shot-post-response-handler nil nil)
             (should (plist-get iar--one-shot-state :completed))))
       (kill-buffer buf))))
 

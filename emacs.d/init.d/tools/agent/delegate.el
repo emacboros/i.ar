@@ -333,7 +333,7 @@ so the user can watch progress in real time."
       ;; response (after tool use) and a premature text-only response where
       ;; the model narrates its plan without actually calling tools.
       (add-hook 'iar-post-tool-call-functions
-                (lambda (_info)
+                (lambda (_tool-name _tool-result)
                   (set tools-called-sym t))
                 nil t)
 

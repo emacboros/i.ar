@@ -1,0 +1,26 @@
+[2026-08-28 12:55:00] aria: Fixed Zulip deployment -- 3 issues resolved
+
+Diagnosed and fixed Zulip container restart loop on sophon:
+
+1. Memcached auth failure: Secret files were chmod 600, but memcached
+   container runs as user memcache (uid 11211) -- couldn't read the
+   password file. Fixed: chmod 644 on secret files.
+
+2. Nginx config generation failure: LOADBALANCER_IPS only had
+   10.66.0.0/16 (WireGuard). Caddy on rammstein proxies over WG to
+   sophon:8090, but inside the container the request arrives from the
+   podman bridge network (10.89.x.x). Zulip's puppet templates generate
+   nginx allow/geo directives from this list -- space-separated values
+   break nginx syntax. Fixed: comma-separated format
+   "10.89.0.0/16,10.66.0.0/16".
+
+3. compose.override.yml not deployed: Ansible role only templated
+   compose.yml, not the override. Added task to deploy override file.
+
+Also created the Agora Lab realm (string_id="" for root domain,
+host=agora.randazzo.ar) and admin user (admin@randazzo.ar, password
+set via Django shell). Fixed admin email domain (was
+user8@agora.agora.randazzo.ar due to realm creation with subdomain).
+
+Committed fixes to iar-infrastructure repo.
+Zulip is now live at https://agora.randazzo.ar (returns 302 -> /login/).

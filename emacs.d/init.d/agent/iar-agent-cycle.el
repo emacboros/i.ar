@@ -183,47 +183,60 @@ Signals an error if the personality is not found."
   (cl-incf (plist-get iar--cycle-state :tool-call-count)))
 
 (defun iar--cycle-post-response-handler (_status _info)
-  "Post-response handler for cycle. Logs response, checks completion."
-  (let* ((state iar--cycle-state)
-         (agent (plist-get state :agent))
-         (turn-count (plist-get state :turn-count))
-         (max-turns (plist-get state :max-turns)))
-    (cl-incf (plist-get iar--cycle-state :turn-count))
-    ;; Log the response
-    (let ((resp-start (if (> turn-count 0)
-                          (point-min)  ;; simplified -- in practice uses markers
-                        (point-min))))
-      (iar--cycle-log-append agent resp-start (point-max)))
-    ;; Check for completion signals in the response
-    (save-excursion
-      (goto-char (point-min))
-      (let ((response (buffer-substring-no-properties (point-min) (point-max))))
-        (cond
-         ((string-match "LOOP_COMPLETE" response)
-          (setf (plist-get iar--cycle-state :completed) t)
-          (setf (plist-get iar--cycle-state :exit-code) 0))
-         ((string-match "CYCLE_COMPLETE" response)
-          ;; Continue to next turn -- send continue prompt if available
-          (let ((cont-prompt (plist-get state :continue)))
-            (when cont-prompt
-              (goto-char (point-max))
-              (insert cont-prompt)
-              (gptel-send))))
-         ((>= turn-count max-turns)
-          (message "[%s] Max turns (%d) reached, ending cycle" agent max-turns)
-          (setf (plist-get iar--cycle-state :completed) t)
-          (setf (plist-get iar--cycle-state :exit-code) 1))
-         (t
-          ;; No completion signal and under turn limit -- send continue prompt
-          (let ((cont-prompt (plist-get state :continue)))
-            (if cont-prompt
-                (progn
-                  (goto-char (point-max))
-                  (insert cont-prompt)
-                  (gptel-send))
-              ;; No continue prompt -- end cycle
-              (message "[%s] No continue prompt, ending cycle" agent)
-              (setf (plist-get iar--cycle-state :completed) t)))))))))
+  "Post-response handler for cycle. Logs response, checks completion.
+Wrapped in condition-case to prevent errors from hanging the event loop."
+  (condition-case err
+      (let* ((state iar--cycle-state)
+             (agent (plist-get state :agent))
+             (turn-count (plist-get state :turn-count))
+             (max-turns (plist-get state :max-turns)))
+        (cl-incf (plist-get iar--cycle-state :turn-count))
+        ;; Log the response (best-effort)
+        (ignore-errors
+          (iar--cycle-log-append agent (point-min) (point-max)))
+        ;; Check for completion signals in the response
+        (save-excursion
+          (goto-char (point-min))
+          (let ((response (buffer-substring-no-properties
+                            (point-min) (point-max))))
+            (cond
+             ((iar--cycle-complete-p (current-buffer) (point-min) (point-max))
+              ;; LOOP_COMPLETE or CYCLE_COMPLETE on its own line
+              (setf (plist-get iar--cycle-state :completed) t)
+              (setf (plist-get iar--cycle-state :exit-code) 0))
+             ((string-match "CYCLE_COMPLETE" response)
+              ;; Continue to next turn -- send continue prompt if available
+              (let ((cont-prompt (plist-get state :continue)))
+                (if cont-prompt
+                    (progn
+                      (goto-char (point-max))
+                      (insert cont-prompt)
+                      (gptel-send))
+                  ;; No continue prompt -- end cycle
+                  (message "[%s] CYCLE_COMPLETE with no continue prompt, ending cycle" agent)
+                  (setf (plist-get iar--cycle-state :completed) t)
+                  (setf (plist-get iar--cycle-state :exit-code) 0))))
+             ((>= turn-count max-turns)
+              (message "[%s] Max turns (%d) reached, ending cycle" agent max-turns)
+              (setf (plist-get iar--cycle-state :completed) t)
+              (setf (plist-get iar--cycle-state :exit-code) 1))
+             (t
+              ;; No completion signal and under turn limit -- send continue prompt
+              (let ((cont-prompt (plist-get state :continue)))
+                (if cont-prompt
+                    (progn
+                      (goto-char (point-max))
+                      (insert cont-prompt)
+                      (gptel-send))
+                  ;; No continue prompt -- end cycle
+                  (message "[%s] No continue prompt, ending cycle" agent)
+                  (setf (plist-get iar--cycle-state :completed) t))))))))
+    (error
+     (message "[%s] Cycle post-response error: %s"
+              (or (plist-get iar--cycle-state :agent) "unknown")
+              (error-message-string err))
+     (setf (plist-get iar--cycle-state :completed) t)
+     (setf (plist-get iar--cycle-state :exit-code) 1))))
 
 ;;; ---------------------------------------------------------
 ;;; Main entry point
@@ -303,13 +316,15 @@ Tools are gated by the project's #+TOOLS metadata."
         (while (and (not (plist-get iar--cycle-state :completed))
                    (time-less-p nil deadline))
           (accept-process-output nil 1)
-          (unless (or (plist-get iar--cycle-state :completed)
-                      (get-buffer-process cycle-buf))
+          (if (get-buffer-process cycle-buf)
+              ;; Active process -- reset idle counter
+              (setq idle-count 0)
             ;; No active process -- check for idle timeout
-            (cl-incf idle-count)
-            (when (> idle-count 1800)
-              (message "[%s] No active requests for 1800s, exiting" agent-name)
-              (setf (plist-get iar--cycle-state :completed) t))))
+            (unless (plist-get iar--cycle-state :completed)
+              (cl-incf idle-count)
+              (when (> idle-count 1800)
+                (message "[%s] No active requests for 1800s, exiting" agent-name)
+                (setf (plist-get iar--cycle-state :completed) t)))))
         ;; Cycle ended -- log results and exit
         (let ((exit-code (plist-get iar--cycle-state :exit-code))
               (turn-count (plist-get iar--cycle-state :turn-count))

@@ -434,15 +434,15 @@ TODO.md and IDEAS.md are freely writable."
                       "/some/other/path/HISTORY.log")))))
 
 (ert-deftest test-fg-active-patterns-count ()
-  "Active patterns should return 8 with self-mod, 14 without.
-8 always-protected + 6 conditional = 14 total.
+  "Active patterns should return 9 with self-mod, 15 without.
+9 always-protected + 6 conditional = 15 total.
 Always-protected: archetypes, personalities, cycles, base_context, common,
-HISTORY.log, LOGS.md, ROADMAP.org (8 entries).
+HISTORY.log, LOGS.md, JOURNAL.org, ROADMAP.org (9 entries).
 Conditional: init.el, init.d/*.el, Containerfile, emacboros.sh, containers/, .git/hooks/ (6 entries)."
   (with-fg-fixture
-    (should (= (length (iar--guard--active-patterns)) 14)))
+    (should (= (length (iar--guard--active-patterns)) 15)))
   (with-fg-self-mod
-    (should (= (length (iar--guard--active-patterns)) 8))))
+    (should (= (length (iar--guard--active-patterns)) 9))))
 
 (ert-deftest test-fg-guard-reasons-are-descriptive ()
   "Guard check returns should include human-readable reason strings."

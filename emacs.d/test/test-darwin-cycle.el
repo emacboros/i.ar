@@ -301,7 +301,7 @@
   (let ((buf (get-buffer-create "*test-cycle-tracker*")))
     (unwind-protect
         (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
-          (iar--cycle-tool-call-tracker nil)
+          (iar--cycle-tool-call-tracker nil nil)
           (should (= 1 (plist-get iar--cycle-state :tool-call-count))))
       (kill-buffer buf))))
 
@@ -338,7 +338,7 @@
         (with-current-buffer buf
           (insert "some response\nLOOP_COMPLETE\n")
           (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
-            (iar--cycle-post-response-handler)
+            (iar--cycle-post-response-handler nil nil)
             (should (plist-get iar--cycle-state :completed))
             (should (= 0 (plist-get iar--cycle-state :exit-code)))))
       (kill-buffer buf))))
@@ -350,11 +350,12 @@
         (with-current-buffer buf
           (insert "some response\nCYCLE_COMPLETE\n")
           (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
-            (iar--cycle-post-response-handler)
-            ;; CYCLE_COMPLETE does NOT complete -- it sends continue prompt
-            ;; But with nil continue prompt, it should not send
-            (should-not (plist-get iar--cycle-state :completed))))
+            (iar--cycle-post-response-handler nil nil)
+            ;; CYCLE_COMPLETE with nil continue prompt ends cycle cleanly
+            (should (plist-get iar--cycle-state :completed))
+            (should (= 0 (plist-get iar--cycle-state :exit-code)))))
       (kill-buffer buf))))
+
 
 (ert-deftest test-cycle-post-response-max-turns ()
   "iar--cycle-post-response-handler should end cycle at max turns."
@@ -364,8 +365,8 @@
           (insert "response without sentinel\n")
           (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 2)))
             ;; Simulate 2 turns (max-turns)
-            (iar--cycle-post-response-handler)
-            (iar--cycle-post-response-handler)
+            (iar--cycle-post-response-handler nil nil)
+            (iar--cycle-post-response-handler nil nil)
             (should (plist-get iar--cycle-state :completed))))
       (kill-buffer buf))))
 
