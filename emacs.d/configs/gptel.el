@@ -39,7 +39,7 @@
                                    "nemotron-3-super:120b"
                                    "nemotron-3-ultra:cloud"
                                    "deepseek-v4-pro:cloud"
-                                   "glm-5.2:cloud")
+                                   "glm-5.3:cloud")
                          :request-params `(:options (
                                           :temperature 0.7
                                           :top_p 0.90
@@ -52,13 +52,13 @@
                                         ))))
 
 ;; Default model: check EMACBOROS_OLLAMA_MODEL env var first (set by
-;; agent_loop.sh --model flag), fall back to glm-5.2:cloud.
+;; agent_loop.sh --model flag), fall back to glm-5.3:cloud.
 ;;
 ;; The model MUST be in the :models list above. If it isn't, gptel will
 ;; error quickly -- this is intentional, it catches typos and models
 ;; that haven't been added to the config yet.
 (setq iar-gptel-default-model
       (intern (or (getenv "EMACBOROS_OLLAMA_MODEL")
-                  "glm-5.2:cloud")))
+                  "glm-5.3:cloud")))
 
 (provide 'iar-config-gptel)
