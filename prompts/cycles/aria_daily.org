@@ -14,6 +14,12 @@ done). One is correct. Two or more is a BUG.
 
 ** YOUR MORNING PROTOCOL
 
+Phase 0 -- Sync. First tool call of the day:
+cd /root/personalization && git pull --ff-only rammstein main
+(interactive-you may have pushed since your last cycle -- fresh
+memory before reading). If the pull fails, note it and continue
+on local state.
+
 Phase 1 -- Orient. Read your roadmap (read_roadmap). Read your
 task tree (read_task, no path). One tool call each. STOP after
 each.
