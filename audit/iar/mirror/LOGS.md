@@ -86,3 +86,23 @@ Found the "Agora" project in tasks -- an AI research laboratory with multi-agent
 - Masera: CU625 limiter question ("¿está limitada electrónicamente a 130 o es solo la declaración?")
 - Spring riding continuing -- passion further confirmed?
 - Financing: total-installments vs cash price in writing from both dealers (0% arbitrage valid only on peso-denominated fixed installments).
+## 2026-08-30 -- Motorcycle session 4: framework stabilizes, 900DSX + 800 Rally, reviewer calibration
+
+**Framework changes (user-driven, all coherent):**
+- Bagger dropped: aesthetics were doing illegitimate work in the decision; fun-to-ride > fun-to-look (toy criterion revised from session 3)
+- Two-bike strategy dropped: "I'll prefer one and the Svart rots" -- single bike, Svartpilen stays as garage sentiment
+- Ruta 40 demoted: 3 weeks/year vs 49 weeks; most bikes adaptable for travel later; decide for the 49
+
+**900DSX (researched live):** 895cc BMW-F900-derived twin, 95hp/95Nm, 238kg kerb, 21/17 spoked, cruise+quickshifter+radar+cornering ABS std, 10k km service intervals. Masera (Río Segundo) 20.5M ARS sin baúles; unomotos CABA 30.77M (AR pricing chaotic, written quote only). AR warranty 24mo/24k km (Spain gets 5yr). Documented: owner-reported vibes at 120-140 (his cruise band), snatchy low-rev throttle, heat right leg urban, dealer-service variance is the real Achilles heel per Spanish owner corpus. MCN 3/5, owners 4.6/5.
+
+**800 Rally (compared):** 798cc KEL800 in-house twin, 94hp/81Nm, 213-227kg, 24L tank, Rally STR tires, 24-pos steering damper std, no cruise/quickshifter/radar, 5k km service intervals. AR launch Oct 2025 "desde 18.9M". Bennetts 4/5: "first Chinese bike that's just a good motorcycle," vibe-free at motorway speeds. VogeRiders HIGH issue: throttle snatch "significantly worse than DS900X," unfixed, no reflash yet. Key inversion: each bike's flaw lands on its own specialty (900 vibes at cruise speed; 800 snatch at trail pace). Each passes the other's test.
+
+**Reviewer calibration exercise (Svartpilen 200, his bike, 16k km):** Graded 8 claims against lived experience. TRUE: low-end dead below 6k, fun character in 6-9k band, vibration (objectively -- generic mirrors unusable, needed sturdy ones; subjectively invisible to him), stand-up posture not ideal, physical limits on hard rocks, stiff buttons (trivial), neutral-finding (he'd blamed HIMSELF for 16k km -- no reference frame). FALSE for his unit: dash readability (fine in direct sun), wheel finish (like new at 16k km). Pattern: physics/character claims true, perception/optics claims false. Portal owner reviews (zigwheels 7/7 positive) over-report joy; Facebook groups carry the real issue list (loose bolts, warped discs).
+
+**Calibrated read on Voges:** 900's vibe claim down-weighted for him (proven high tolerance, mirror evidence) but owner-corroborated and exposure-type differs (sustained cruise resonance vs intermittent city thump) -- test ride decisive. 800's throttle claim UP-weighted: it's the claim type his calibration validated, and it hits his self-declared weak scenario (slow maneuvers). Net: calibration slightly favors 900DSX vs 800 Rally relative to pre-exercise. Flip condition: if Masera confirms a fuelling reflash exists for the 800, its biggest con evaporates.
+
+**Test protocol update:** ride multiple bikes back-to-back at Masera test days before the decisive test ride -- single-bike baseline means he has no reference for "normal"; comparison is the only instrument that measures it.
+
+**Open:** Masera written prices both bikes, 800 reflash status, 900 firmware/odometer-fix status, inseam vs 850mm (800) / 825mm (900), Desafío 100.000km program terms, financing in writing.
+
+Spec discrepancy flagged: all sheets say Svartpilen 200 = 26hp; his session notes said 18hp. To resolve from his paperwork (market tune vs rounding).
