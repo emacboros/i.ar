@@ -129,3 +129,45 @@ Set to nil for raw gptel behavior (not recommended)."
   :type 'boolean
   :safe #'booleanp
   :group 'iar)
+
+;; =============================================================================
+;; Request Log Parameters (Track A4 -- the witness)
+;; =============================================================================
+
+(defcustom iar-request-log-enabled t
+  "When non-nil, log gptel request lifecycles to REQUESTS.log.
+START (payload tail), RESPONSE (raw body tail), PARSE (extracted
+tool specs), FILTER-ERROR (the offending chunk), ABORT (partial
+response). This is the agent-visible record of its own emissions
+-- the instrument for post-hoc forensics of malformed calls and
+silent parse failures.
+Set to nil to disable."
+  :type 'boolean
+  :safe #'booleanp
+  :group 'iar)
+
+(defcustom iar-request-log-tail-chars 4000
+  "Maximum characters of serialized payload tail per START entry.
+The tail is the last two messages (agent's most recent emission +
+the tool result that follows it). nil disables the cap."
+  :type '(choice (integer :tag "Chars")
+                 (const :tag "Disabled" nil))
+  :safe #'iar--positive-integer-or-nil-p
+  :group 'iar)
+
+(defcustom iar-request-log-body-chars 4000
+  "Maximum characters of raw response body tail per RESPONSE entry.
+nil disables the cap."
+  :type '(choice (integer :tag "Chars")
+                 (const :tag "Disabled" nil))
+  :safe #'iar--positive-integer-or-nil-p
+  :group 'iar)
+
+(defcustom iar-request-log-max-size (* 10 1024 1024)
+  "Maximum REQUESTS.log size in bytes before rotation to .1.
+Same rotation policy as the audit log (one generation retained).
+nil disables rotation."
+  :type '(choice (integer :tag "Bytes")
+                 (const :tag "Disabled" nil))
+  :safe #'iar--positive-integer-or-nil-p
+  :group 'iar)

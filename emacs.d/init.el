@@ -111,6 +111,12 @@
 ;; Advice chain: timestamp (outer) -> truncation -> gptel original.
 (load (expand-file-name "iar-tool-result-timestamp.el" init-tool-call-dir))
 
+;; Request log (Track A4) -- the witness. Logs every request lifecycle
+;; (payload tail, raw response, parse result, filter errors, aborts)
+;; to REQUESTS.log so agents can see their own emissions after the
+;; fact. Loads after the watchdog (shares the curl advice pattern).
+(load (expand-file-name "iar-request-log.el" init-tool-call-dir))
+
 ;; Request watchdog (Track A1) -- abort stalled gptel requests.
 ;; No request-level timeout existed in the stack; a dead stream hung
 ;; the session silently. Watchdog makes the invisible failure visible.
