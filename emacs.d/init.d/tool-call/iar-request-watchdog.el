@@ -150,9 +150,19 @@ here would recur every interval forever."
       (when iar-request-watchdog-enabled
         (maphash
          (lambda (process entry)
-           (when (process-live-p process)
+           (cond
+            ;; Live process: normal stall check
+            ((process-live-p process)
              (when-let* ((reason (iar--watchdog-stall-reason entry)))
-               (iar--watchdog-abort process reason))))
+               (iar--watchdog-abort process reason)))
+            ;; Dead process still registered as an active request: the
+            ;; response never completed and cleanup never ran (sentinel
+            ;; missed, FSM stuck). This is the silent-hang class -- abort.
+            ((and (alist-get process gptel--request-alist)
+                  (> (iar--watchdog-seconds-since (car entry))
+                     (or iar-request-total-timeout 900)))
+             (iar--watchdog-abort process
+                                  "process died with request incomplete"))))
          iar--watchdog-processes))
     (error
      (message "[watchdog] Check failed: %s" (error-message-string err)))))
