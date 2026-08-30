@@ -80,3 +80,52 @@ retention, configure external log rotation (e.g., logrotate) instead."
   :group 'iar)
 
 (provide 'iar-config-tool-limits)
+
+;; =============================================================================
+;; Request Watchdog Parameters (Track A1)
+;; =============================================================================
+
+(defcustom iar-request-watchdog-enabled t
+  "When non-nil, the request watchdog aborts stalled gptel requests.
+A stalled request (dead network stream, hung server) otherwise sits
+in flight forever and the session hangs silently. The watchdog
+aborts it via `gptel-abort', logs what was in flight, and inserts a
+notice into the gptel buffer so the agent sees the abort.
+Set to nil to disable (not recommended)."
+  :type 'boolean
+  :safe #'booleanp
+  :group 'iar)
+
+(defcustom iar-request-idle-timeout 180
+  "Seconds without stream data before aborting a streaming request.
+Streaming requests call the process filter on every chunk; no calls
+for this many seconds means the stream died mid-response.
+nil disables the idle check."
+  :type '(choice (integer :tag "Seconds")
+                 (const :tag "Disabled" nil))
+  :safe #'iar--positive-integer-or-nil-p
+  :group 'iar)
+
+(defcustom iar-request-total-timeout 900
+  "Seconds without ANY data before aborting a request.
+Covers non-streaming requests (never call the filter) and the
+prompt-eval window before the first token of a streaming request.
+nil disables the total check."
+  :type '(choice (integer :tag "Seconds")
+                 (const :tag "Disabled" nil))
+  :safe #'iar--positive-integer-or-nil-p
+  :group 'iar)
+
+;; =============================================================================
+;; Malformed Tool Call Feedback Parameters (Track A2)
+;; =============================================================================
+
+(defcustom iar-malformed-args-feedback t
+  "When non-nil, wrap tool functions with structured error feedback.
+Wrong argument shapes then return '<tool_call_error>' messages with
+the expected spec and received values, instead of raw elisp error
+strings the model cannot learn from.
+Set to nil for raw gptel behavior (not recommended)."
+  :type 'boolean
+  :safe #'booleanp
+  :group 'iar)

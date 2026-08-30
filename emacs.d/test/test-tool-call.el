@@ -12,21 +12,26 @@
 ;;; --- Tool registration tests ---
 
 (ert-deftest test-tool-call-register-adds-to-gptel-tools ()
-  "iar-tool-register should add a tool to gptel-tools."
+  "iar-tool-register should add a tool to gptel-tools.
+A2 wraps the function (a copy is registered, not the original object),
+so assert by NAME, not identity."
   (let ((gptel-tools nil)
         (tool (gptel-make-tool :name "test-tool-1"
                                 :description "Test"
                                 :args (list)
                                 :function #'identity)))
     (iar-tool-register tool)
-    (should (member tool gptel-tools))))
+    (should (cl-find "test-tool-1" gptel-tools
+                     :key #'gptel-tool-name :test #'string=))))
 
 (ert-deftest test-tool-call-make-creates-and-registers ()
-  "iar-tool-make should create a tool and register it."
+  "iar-tool-make should create a tool and register it.
+A2 wrapping: assert by NAME (the registered object is a wrapped copy)."
   (let ((gptel-tools nil))
     (let ((tool (iar-tool-make "test-tool-2" "Test" (list) #'identity)))
       (should tool)
-      (should (member tool gptel-tools))
+      (should (cl-find "test-tool-2" gptel-tools
+                       :key #'gptel-tool-name :test #'string=))
       (should (string= "test-tool-2" (gptel-tool-name tool))))))
 
 ;;; --- Truncation tests ---

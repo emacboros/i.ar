@@ -123,26 +123,33 @@
       (kill-buffer buf))))
 
 (ert-deftest test-one-shot-post-response-handler-no-delimiters ()
-  "iar--one-shot-post-response-handler should not complete without delimiters."
+  "iar--one-shot-post-response-handler should not complete without delimiters.
+MUST mock gptel-send: the nudge path fires a real request whose async
+response arrives during a LATER test (stray process filter on a dead
+buffer -> the documented suite heisenbug). This was the root cause."
   (let ((buf (get-buffer-create "*test-oneshot-pr2*")))
     (unwind-protect
         (with-current-buffer buf
           (insert "response without delimiters\n")
           (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
-            (iar--one-shot-post-response-handler nil nil)
-            (should-not (plist-get iar--one-shot-state :completed))))
+            (cl-letf (((symbol-function 'gptel-send) (lambda () nil)))
+              (iar--one-shot-post-response-handler nil nil)
+              (should-not (plist-get iar--one-shot-state :completed)))))
       (kill-buffer buf))))
 
 (ert-deftest test-one-shot-post-response-handler-max-turns ()
-  "iar--one-shot-post-response-handler should end at max turns."
+  "iar--one-shot-post-response-handler should end at max turns.
+MUST mock gptel-send: turn 1 hits the nudge path (real request -> stray
+async response -> suite heisenbug)."
   (let ((buf (get-buffer-create "*test-oneshot-pr3*")))
     (unwind-protect
         (with-current-buffer buf
           (insert "response\n")
           (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 2)))
-            (iar--one-shot-post-response-handler nil nil)
-            (iar--one-shot-post-response-handler nil nil)
-            (should (plist-get iar--one-shot-state :completed))))
+            (cl-letf (((symbol-function 'gptel-send) (lambda () nil)))
+              (iar--one-shot-post-response-handler nil nil)
+              (iar--one-shot-post-response-handler nil nil)
+              (should (plist-get iar--one-shot-state :completed)))))
       (kill-buffer buf))))
 
 (provide 'test-one-shot)

@@ -96,6 +96,11 @@
 ;; Must load after gptel setup (needs gptel-make-tool)
 (load (expand-file-name "iar-mcp-setup.el" init-core-dir))
 
+;; Malformed-args feedback (Track A2) -- MUST load before
+;; iar-tool-call.el: it redefines iar-tool-register/iar-tool-make to
+;; wrap tool functions with structured arg-shape error messages.
+(load (expand-file-name "iar-malformed-args.el" init-tool-call-dir))
+
 ;; Tool call layer -- the single integration point with gptel.
 ;; All i.ar modules hook into this, not gptel internals directly.
 ;; Owns: tool registration, hooks, truncation, audit logging, token parsing.
@@ -105,6 +110,11 @@
 ;; result. Gives agents a sense of elapsed time between actions.
 ;; Advice chain: timestamp (outer) -> truncation -> gptel original.
 (load (expand-file-name "iar-tool-result-timestamp.el" init-tool-call-dir))
+
+;; Request watchdog (Track A1) -- abort stalled gptel requests.
+;; No request-level timeout existed in the stack; a dead stream hung
+;; the session silently. Watchdog makes the invisible failure visible.
+(load (expand-file-name "iar-request-watchdog.el" init-tool-call-dir))
 
 ;; Prompt loader -- load prompt templates from common/ directory.
 ;; Must load before mount-awareness, delegate, memory-tools, and loop-guard

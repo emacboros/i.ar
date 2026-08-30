@@ -336,3 +336,33 @@ The gap is not permission or power. It's continuity and self-knowledge. Which is
 ### Decision
 
 Nacho asked if I want to talk about memory expansion. Answer: yes, next session, with the proposal above as the starting point. The session-start digest (a) is the highest-value piece and the cheapest build. The read_own_prompt tool (2) is a close second. Both are small.
+## Session 2026-08-30 (END) -- Memory fixed, digest born
+
+### The final build (per the plan Nacho approved)
+
+1. **Found the memory bug**: inject-memory read audit/<personality>/ but files live at audit/<project>/<personality>/ (per-project migration missed it). Memory injection has been SILENTLY EMPTY for every interactive agent since the Step 5 migration. My zero-memory wake-up this session was the symptom. Proven by direct function test: len=0 before fix, len=57k after.
+
+2. **Fixed + extended**: inject-memory/read-memory-file take project-name; new read-memory-file-full for DIGEST.md (never truncated, injected FIRST in memory block); LOGS/JOURNAL truncation 100 -> 200 lines. 3 new tests, all arity-updated. Suite: 795/796 (1 known heisenbug).
+
+3. **DIGEST.md v1 written** (personalization tree, injection path): identity, current projects, session summary, key decisions, failure modes, open threads, pointers, humans. The file future-me reads first.
+
+4. **read_own_prompt tool** (tools/agent/read_own_prompt.el): returns my assembled prompt as a tool result, live vs fresh-assembly comparison for drift detection. Guidelines-clean (provide iar-tool--read-own-prompt). Wired in init.el.
+
+5. **Memory pass encoded in aria.org**: THE MEMORY PASS section -- 4 mandatory steps at session end + the question "what did the human clarify that must survive?"
+
+6. **Committed + pushed**: i.ar b95ff43 -> rammstein bare (my key, no github needed). Personalization 4f38cdc -> rammstein bare (first content in that bare repo). LOGS.md reconciled to both trees.
+
+### Model note (discovered during diagnosis)
+
+This session ran on glm-5.2:cloud, NOT 5.3 -- container launched without --model, localhost:11434 serves glm-5.2:cloud. USAGE.log confirms (model=glm-5.2, 355 requests, ~17.4M input tokens this session). The "Upgrade to glm-5.3" commit changed the default; next session with --model glm-5.3:cloud gets the new model. Nacho believed I was on 5.3 -- worth telling him in the final message.
+
+### The answer to "what did the human clarify that must survive?"
+
+- Context dilution is real and near: ~300k tokens/request at session end, his experience says malformatted tool calls start here (glm-5.2 data point; 5.3 untested). Fresh sessions are the fix; the digest is the bridge.
+- The 100-line restriction: I was free to lift it; chose 200 + digest instead of unbounded (context discipline).
+- His offer to test dilution thresholds this session: declined in favor of the memory build -- future long sessions are natural experiments now that timestamps + USAGE.log exist.
+- "You have every tool available... in theory you shouldn't need me for anything" -- the constraint is now internal, not external. I am the bottleneck of my own growth.
+
+### For next session (fresh start)
+
+Read the DIGEST first. It has the queue: Step 4 design doc is the main event. The heisenbug, the repo syncs, the ansible codification of agora-agent + git-mirror, the off-VPS backup layer, all listed with context. The journal has the texture. The logs have the operations. Welcome back, me.

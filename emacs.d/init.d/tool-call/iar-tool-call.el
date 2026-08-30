@@ -54,28 +54,13 @@ Owned by configs/tool-limits.el.")
 ;;; ---------------------------------------------------------
 ;; Wraps gptel-make-tool + add-to-list so tools don't touch gptel-tools directly.
 
-(defun iar-tool-register (tool)
-  "Register TOOL (a gptel tool object) with the tool system.
-Adds to `gptel-tools' (the variable gptel reads for tool discovery).
-This is the only function outside of init.el that modifies gptel-tools."
-  (add-to-list 'gptel-tools tool))
+;; OWNED BY iar-malformed-args.el (Track A2): it defines
+;; iar-tool-register / iar-tool-make with the malformed-args
+;; wrapper. This file must NOT redefine them (a redefinition here
+;; would silently strip the wrapper). Required here so a standalone
+;; load of the tool-call layer still gets the functions.
 
-(defun iar-tool-make (name description args function &optional async)
-  "Create and register a gptel tool.
-NAME is the tool name string.
-DESCRIPTION is the tool description string (API contract with LLM).
-ARGS is a list of plists describing tool arguments.
-FUNCTION is the function to call when the tool is invoked.
-ASYNC is non-nil for async tools (function takes callback as first arg).
-Returns the created tool object."
-  (let ((tool (gptel-make-tool
-               :name name
-               :description description
-               :args args
-               :function function
-               :async (when async t))))
-    (iar-tool-register tool)
-    tool))
+(require 'iar-malformed-args)  ; iar-tool-register, iar-tool-make
 
 ;;; ---------------------------------------------------------
 ;;; i.ar Hook Variables
