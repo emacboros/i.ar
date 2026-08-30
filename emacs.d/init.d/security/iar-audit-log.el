@@ -78,8 +78,12 @@ and rotates it if so.  This prevents unbounded growth of the audit log."
         (let ((log-dir (file-name-directory iar--audit-log-path)))
           (unless (file-exists-p log-dir)
             (make-directory log-dir t)))
-        (write-region (format "[%s] %s | %s | %s\n" timestamp agent tool safe-detail)
-                      nil iar--audit-log-path t 'silent))
+        ;; Bind coding-system-for-write: same defense as the request
+        ;; log -- select-safe-coding-system prompts read stdin (EOF in
+        ;; batch), silently losing the entry (2026-08-30).
+        (let ((coding-system-for-write 'utf-8-unix))
+          (write-region (format "[%s] %s | %s | %s\n" timestamp agent tool safe-detail)
+                        nil iar--audit-log-path t 'silent)))
         ;; write-region accepts a string directly -- no temp buffer needed.
     (error
      (message "Warning: audit log write failed: %s"

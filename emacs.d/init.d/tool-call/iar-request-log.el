@@ -80,7 +80,7 @@ Owned by configs/tool-limits.el. nil disables the cap.")
   "Request counter for this Emacs session. REQ ids in REQUESTS.log.")
 
 (defvar iar--reqlog-processes (make-hash-table :test 'eq :weakness 'key)
-  "Hash: request process -> REQ id. Weakness 'key: entries die with
+  "Hash: request process -> REQ id. Weakness \='key: entries die with
 the process, no cleanup needed (same pattern as the watchdog).")
 
 ;;; ---------------------------------------------------------
@@ -194,7 +194,10 @@ pattern as `iar--audit-maybe-rotate')."
   "Append one sanitized single-line entry to REQUESTS.log.
 FMT and ARGS are passed to `format'. Newlines in the result are
 escaped (log-injection safe, same sanitization as the audit log).
-Best-effort: never signals."
+Best-effort: never signals.
+coding-system-for-write is bound to utf-8-unix: the coding-system
+confirmation prompt (select-safe-coding-system) reads stdin, which
+is EOF in batch mode -- the entry would be lost silently."
   (condition-case err
       (let* ((path (iar--reqlog-path))
              (dir (file-name-directory path))
@@ -203,7 +206,15 @@ Best-effort: never signals."
                             (apply #'format fmt args)))))
         (make-directory dir t)
         (iar--reqlog-maybe-rotate)
-        (write-region (concat line "\n") nil path t 'silent))
+        ;; Bind coding-system-for-write so select-safe-coding-system
+        ;; never runs. In batch cycles, write-region from
+        ;; process-filter context occasionally triggered the
+        ;; coding-system confirmation prompt; batch stdin is EOF, so
+        ;; the prompt signal died, the condition-case caught it, and
+        ;; the entry was silently lost (7/100 STARTs in cycle 2,
+        ;; 2026-08-30 -- found by cycle-Aria reading its own log).
+        (let ((coding-system-for-write 'utf-8-unix))
+          (write-region (concat line "\n") nil path t 'silent)))
     (error
      (message "Warning: request log write failed: %s"
               (error-message-string err)))))
