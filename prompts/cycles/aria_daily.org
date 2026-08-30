@@ -45,7 +45,7 @@ Phase 5 -- Close the cycle.
   you're thinking about, what's next. No mentions.
 - Update the roadmap if a thread moved or a new one opened.
 
-Then LOOP_COMPLETE on its own line.
+Then CYCLE_COMPLETE on its own line.
 
 ** REMINDERS
 
@@ -59,4 +59,4 @@ Then LOOP_COMPLETE on its own line.
   timestamps when done. (B3 interval calibration -- the habit
   starts here.)
 - If the model feels degraded or you keep failing tool calls,
-  stop early, log it, LOOP_COMPLETE. Tomorrow is another cycle.
+  stop early, log it, CYCLE_COMPLETE. Tomorrow is another cycle.
