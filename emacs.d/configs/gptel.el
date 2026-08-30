@@ -39,7 +39,8 @@
                                    "nemotron-3-super:120b"
                                    "nemotron-3-ultra:cloud"
                                    "deepseek-v4-pro:cloud"
-                                   "glm-5.3:cloud")
+                                   "glm-5.3:cloud"
+                                   "glm-5.3-flash:cloud")
                          :request-params `(:options (
                                           :temperature 0.7
                                           :top_p 0.90
