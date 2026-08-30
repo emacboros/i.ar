@@ -312,18 +312,20 @@ Tools are gated by the project's #+TOOLS metadata."
 
     ;; Batch mode event loop: wait until completed or timeout
     (when noninteractive
-      (let ((idle-count 0)
+      (let ((idle-since nil)
             (deadline (time-add nil (seconds-to-time timeout))))
         (while (and (not (plist-get iar--cycle-state :completed))
                    (time-less-p nil deadline))
           (accept-process-output nil 1)
           (if (get-buffer-process cycle-buf)
-              ;; Active process -- reset idle counter
-              (setq idle-count 0)
-            ;; No active process -- check for idle timeout
+              ;; Active process -- reset idle timer
+              (setq idle-since nil)
+            ;; No active process -- check for idle timeout (real time,
+            ;; not loop iterations: accept-process-output returns early
+            ;; on any event, so iteration counts are not seconds)
             (unless (plist-get iar--cycle-state :completed)
-              (cl-incf idle-count)
-              (when (> idle-count 1800)
+              (unless idle-since (setq idle-since (current-time)))
+              (when (> (time-convert (time-subtract nil idle-since) 'integer) 1800)
                 (message "[%s] No active requests for 1800s, exiting" agent-name)
                 (setf (plist-get iar--cycle-state :completed) t)))))
         ;; Cycle ended -- log results and exit
@@ -497,19 +499,24 @@ Tools are gated by the project's #+TOOLS metadata."
 
     ;; Batch mode event loop: wait until completed or timeout
     (when noninteractive
-      (let ((idle-count 0)
+      (let ((idle-since nil)
             (deadline (time-add nil (seconds-to-time timeout))))
         (while (and (not (plist-get iar--one-shot-state :completed))
                    (time-less-p nil deadline))
           (accept-process-output nil 1)
-          (unless (or (plist-get iar--one-shot-state :completed)
-                      (get-buffer-process os-buf))
-            ;; No active process -- check for idle timeout
-            (cl-incf idle-count)
-            (when (> idle-count 1800)
-              (message "[%s] One-shot: no active requests for 1800s, exiting"
-                       agent-name)
-              (setf (plist-get iar--one-shot-state :completed) t))))
+          (if (or (plist-get iar--one-shot-state :completed)
+                  (get-buffer-process os-buf))
+              ;; Active process -- reset idle timer
+              (setq idle-since nil)
+            ;; No active process -- check for idle timeout (real time,
+            ;; not loop iterations: accept-process-output returns early
+            ;; on any event, so iteration counts are not seconds)
+            (progn
+              (unless idle-since (setq idle-since (current-time)))
+              (when (> (time-convert (time-subtract nil idle-since) 'integer) 1800)
+                (message "[%s] One-shot: no active requests for 1800s, exiting"
+                         agent-name)
+                (setf (plist-get iar--one-shot-state :completed) t)))))
         ;; Timeout check: if deadline passed and not completed, ask for summary
         (when (and (not (plist-get iar--one-shot-state :completed))
                    (not (time-less-p nil deadline)))
