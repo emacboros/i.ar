@@ -190,6 +190,8 @@ never be cut off mid-thought."
 Returns a string to append to the prompt, or empty string.
 - interactive -> inject DIGEST.md (full, never truncated) +
                  LOGS.md (last N lines) + JOURNAL.org (last N lines)
+- aria-cycle -> same memory set as interactive (the daily cycle
+                 is the same mind waking between sessions)
 - autonomous -> inject STATE.org (full)
 - continuous -> inject STATE.org (full)
 - delegated -> no memory injection
@@ -201,7 +203,7 @@ injected FIRST and in full because it is the index into everything
 else. LOGS.md/JOURNAL.org are the recent pages behind it, truncated
 to `iar-personal-file-max-lines' to bound context growth."
   (pcase mode
-    ('interactive
+    ((or 'interactive 'aria-cycle)
      (let* ((digest (iar--read-memory-file-full project-name personality-name "DIGEST.md"))
             (logs (iar--read-memory-file project-name personality-name "LOGS.md"))
             (journal (iar--read-memory-file project-name personality-name "JOURNAL.org"))

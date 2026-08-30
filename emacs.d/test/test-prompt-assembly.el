@@ -141,6 +141,30 @@
     (should (string= (plist-get result :archetype) "autonomous"))
     (should (string= (plist-get result :personality) "darwin"))))
 
+(ert-deftest test-assembly-assemble-aria-cycle ()
+  "Assembly with aria-cycle archetype returns aria-cycle mode and
+injects the interactive-style memory set (DIGEST/LOGS/JOURNAL),
+not STATE.org."
+  (let ((result (iar--assemble-prompt "aria-cycle" "aria" "iar")))
+    (should (eq (plist-get result :mode) 'aria-cycle))
+    (should (string= (plist-get result :archetype) "aria-cycle"))
+    (should (string= (plist-get result :personality) "aria"))
+    (let ((prompt (plist-get result :prompt)))
+      ;; Interactive-style memory: DIGEST and JOURNAL blocks present
+      (should (string-match-p "=== DIGEST" prompt))
+      (should (string-match-p "=== JOURNAL" prompt))
+      ;; Autonomous-style memory absent
+      (should-not (string-match-p "=== STATE" prompt)))))
+
+(ert-deftest test-assembly-inject-memory-aria-cycle ()
+  "iar--inject-memory with aria-cycle mode returns the same memory
+set as interactive mode (DIGEST + LOGS + JOURNAL)."
+  (let ((result (iar--inject-memory 'aria-cycle "iar" "aria")))
+    (should (stringp result))
+    (should (string-match-p "=== DIGEST" result))
+    (should (string-match-p "=== JOURNAL" result))
+    (should-not (string-match-p "=== STATE" result))))
+
 (ert-deftest test-assembly-assemble-delegated-no-memory ()
   "Assembly with delegated archetype does not inject memory."
   (let ((result (iar--assemble-prompt "agent-assistant" "darwin" "agent-assistant")))

@@ -38,7 +38,8 @@
   '(("darwin" . "self_modification")
     ("gardener" . "monitoring")
     ("librarian" . "documentation_sync")
-    ("test-continuous" . "test_continuous"))
+    ("test-continuous" . "test_continuous")
+    ("aria" . "aria_daily"))
   "Mapping from personality names to default cycle files.
 Used when :cycle is not explicitly provided to iar-run-cycle.")
 

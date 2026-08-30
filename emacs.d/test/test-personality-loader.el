@@ -133,7 +133,10 @@
   "iar--archetype-for-personality should return correct archetype."
   (should (string= "interactive" (iar--archetype-for-personality "mirror")))
   (should (string= "autonomous" (iar--archetype-for-personality "darwin")))
-  (should (string= "continuous" (iar--archetype-for-personality "gardener"))))
+  (should (string= "continuous" (iar--archetype-for-personality "gardener")))
+  ;; aria maps to aria-cycle for the cycle runner; interactive
+  ;; sessions hardcode "interactive" (C-c a) and are unaffected.
+  (should (string= "aria-cycle" (iar--archetype-for-personality "aria"))))
 
 (ert-deftest test-pers-project-for-personality ()
   "iar--project-for-personality should return correct project."

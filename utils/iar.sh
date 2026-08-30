@@ -766,7 +766,7 @@ fi
 # =============================================================================
 CYCLE_PROMPT_EVAL=""
 if [[ -n "${CYCLE_PROMPT}" ]]; then
-    CYCLE_PROMPT_EVAL=":cycle-prompt \"${CYCLE_PROMPT}\""
+    CYCLE_PROMPT_EVAL=":cycle \"${CYCLE_PROMPT}\""
 fi
 # =============================================================================
 # Gptel fork mount

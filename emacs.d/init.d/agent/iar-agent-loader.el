@@ -77,7 +77,7 @@ Set buffer-local by `iar-load-agent'. Kept for backward compat.")
 
 (defconst iar-personality-archetype-map
   '(("mirror" . "interactive")
-    ("aria" . "interactive")
+    ("aria" . "aria-cycle") ; cycle runner only; interactive sessions hardcode interactive (C-c a)
     ("darwin" . "autonomous")
     ("gardener" . "continuous")
     ("librarian" . "continuous")
