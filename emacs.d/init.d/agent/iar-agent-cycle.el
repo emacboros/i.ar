@@ -317,10 +317,15 @@ Tools are gated by the project's #+TOOLS metadata."
         (while (and (not (plist-get iar--cycle-state :completed))
                    (time-less-p nil deadline))
           (accept-process-output nil 1)
-          (if (get-buffer-process cycle-buf)
-              ;; Active process -- reset idle timer
+          (if (or (get-buffer-process cycle-buf)
+                  ;; gptel curl processes live in their own proc
+                  ;; buffers, not the gptel buffer -- check the
+                  ;; request alist for active requests instead.
+                  (and (boundp 'gptel--request-alist)
+                       gptel--request-alist))
+              ;; Active request -- reset idle timer
               (setq idle-since nil)
-            ;; No active process -- check for idle timeout (real time,
+            ;; No active request -- check for idle timeout (real time,
             ;; not loop iterations: accept-process-output returns early
             ;; on any event, so iteration counts are not seconds)
             (unless (plist-get iar--cycle-state :completed)
@@ -505,8 +510,10 @@ Tools are gated by the project's #+TOOLS metadata."
                    (time-less-p nil deadline))
           (accept-process-output nil 1)
           (if (or (plist-get iar--one-shot-state :completed)
-                  (get-buffer-process os-buf))
-              ;; Active process -- reset idle timer
+                  (get-buffer-process os-buf)
+                  (and (boundp 'gptel--request-alist)
+                       gptel--request-alist))
+              ;; Active request -- reset idle timer
               (setq idle-since nil)
             ;; No active process -- check for idle timeout (real time,
             ;; not loop iterations: accept-process-output returns early
