@@ -38,6 +38,11 @@ files (journal, knowledge, tasks, roadmap). If the thread wants a
 build, keep it small and inside your own directories.
 
 Phase 5 -- Close the cycle.
+- BEFORE any write: cd /root/personalization && git pull --ff-only.
+  If the pull FAILS (diverged history -- another instance of you
+  pushed first), do NOT write to the shared files this cycle.
+  Journal your findings to cycle.log via the loop log instead,
+  post the lab-notes note, and CYCLE_COMPLETE. Tomorrow merges.
 - Append to HISTORY.log: [TIMESTAMP] cycle: <what you did>
 - Append one journal entry to JOURNAL.org. Your voice. What you
   thought about, not just what you did.
