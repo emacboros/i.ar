@@ -213,3 +213,27 @@
 
 (provide 'test-utils)
 ;;; test-utils.el ends here
+
+(ert-deftest test-utils-path-traversal-prefix-collision ()
+  "Sibling directory whose name extends base's name must be rejected.
+/base-evil is NOT inside /base: a bare string-prefix-p accepts it
+because '/tmp/base' is a string prefix of '/tmp/base-evil/file'.
+The check must require a separator at the boundary."
+  (let* ((base (make-temp-file "test-trav-" :dir-flag))
+         (sibling (concat base "-evil")))
+    (unwind-protect
+        (progn
+          (make-directory sibling t)
+          (let ((file (expand-file-name "test.txt" sibling)))
+            (with-temp-file file (insert "x"))
+            (should-error (iar--path-traversal-check file base)
+                          :type 'error)))
+      (delete-directory base t)
+      (delete-directory sibling t))))
+
+(ert-deftest test-utils-path-traversal-base-itself ()
+  "Path equal to base-dir (or base with trailing slash) is allowed."
+  (let ((base (make-temp-file "test-trav-" :dir-flag)))
+    (unwind-protect
+        (should (string= base (iar--path-traversal-check base base)))
+      (delete-directory base t))))
