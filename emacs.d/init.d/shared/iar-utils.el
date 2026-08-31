@@ -77,7 +77,12 @@ to the expanded path and checks against the truename of BASE-DIR."
          (path-real (condition-case nil
                         (file-truename path)
                       (error path))))
-    (if (string-prefix-p base-real path-real)
+    ;; Separator-aware prefix check: require base to match up to a path
+    ;; separator. A bare string-prefix-p would accept /base-evil as inside
+    ;; /base (prefix collision between sibling directories). Appending "/"
+    ;; to both sides makes the boundary exact and still accepts the
+    ;; path == base case.
+    (if (string-prefix-p (concat base-real "/") (concat path-real "/"))
         path
       (error "Path traversal attempt blocked: '%s' escapes '%s'" path base-dir))))
 
