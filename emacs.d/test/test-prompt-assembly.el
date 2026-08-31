@@ -429,10 +429,25 @@ set as interactive mode (DIGEST + LOGS + JOURNAL)."
 Contract for iar.sh --knowledge -> iar-run-cycle :knowledge
 (silently ignored before 2026-08-31).  Uses the \"iar\" label,
 which exists in the test environment's docs tree."
-  (let ((result (iar--assemble-prompt "aria-cycle" "aria" "iar" '("iar"))))
-    (should (string-match-p "=== INJECTED KNOWLEDGE \\[iar\\] ==="
+  (let ((result (iar--assemble-prompt "aria-cycle" "aria" "iar" '("agora"))))
+    (should (string-match-p "=== INJECTED KNOWLEDGE \\[agora\\] ==="
                             (plist-get result :prompt)))
-    (should (member "iar" (plist-get result :knowledge-labels)))
+    (should (member "agora" (plist-get result :knowledge-labels)))
     ;; project's own labels still load (they carry trailing slashes
     ;; from iar.org's #+KNOWLEDGE line -- pre-existing quirk)
     (should (member "iar-prod/" (plist-get result :knowledge-labels)))))
+
+
+(ert-deftest test-assembly-extra-knowledge-dedupe ()
+  "Extra label equivalent to a project label (trailing-slash or
+whitespace difference) must not produce a second knowledge block.
+Reviewer finding: iar.org has iar/ in #+KNOWLEDGE; --knowledge iar
+would inject the same directory twice."
+  (let* ((result (iar--assemble-prompt "aria-cycle" "aria" "iar" '("iar")))
+         (prompt (plist-get result :prompt))
+         (count 0)
+         (pos 0))
+    (while (string-match "=== INJECTED KNOWLEDGE \\[iar/?\\] ===" prompt pos)
+      (setq count (1+ count) pos (match-end 0)))
+    (should (= count 1))
+    (should-not (member "iar" (plist-get result :knowledge-labels)))))

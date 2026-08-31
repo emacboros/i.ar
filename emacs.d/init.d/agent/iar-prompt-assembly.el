@@ -300,6 +300,18 @@ execute_code_remote -- the tool is gated by #+CONTAINERS, not #+TOOLS."
 
 ;;; --- Main assembly function ---
 
+(defun iar--dedupe-knowledge-labels (project-labels extra-labels)
+  "Return EXTRA-LABELS with entries already covered by PROJECT-LABELS removed.
+Comparison ignores surrounding whitespace and trailing slashes, so
+iar.sh --knowledge iar does not double-load a project's iar/ label
+(two blocks for one directory: [iar/] from #+KNOWLEDGE, [iar] from
+the flag). Review finding, 2026-08-31."
+  (when extra-labels
+    (let ((norm (lambda (l) (string-trim-right (string-trim l) "/"))))
+      (cl-remove-if
+       (lambda (l) (member (funcall norm l) (mapcar norm project-labels)))
+       extra-labels))))
+
 (defun iar--assemble-prompt (archetype-name personality-name project-name &optional extra-knowledge-labels)
   "Assemble a complete system prompt from three primitives.
 ARCHETYPE-NAME is the behavioral archetype (e.g., \"interactive\").
@@ -329,7 +341,9 @@ Returns a plist with keys:
          (project-mcp (plist-get project :mcp))
          (base-context (iar--read-base-context))
          (knowledge-result (iar--auto-load-knowledge
-                             (append project-knowledge extra-knowledge-labels)))
+                             (append project-knowledge
+                                     (iar--dedupe-knowledge-labels
+                                      project-knowledge extra-knowledge-labels))))
          (knowledge-block (car knowledge-result))
          (knowledge-labels (cdr knowledge-result))
          (memory-block (iar--inject-memory mode project-name personality-name))
