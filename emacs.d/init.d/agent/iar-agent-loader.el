@@ -149,14 +149,18 @@ Returns the assembled plist."
     (when (fboundp 'iar-mcp-setup-session)
       (iar-mcp-setup-session (plist-get result :mcp)))
     ;; Backward compat: agent-name = personality name
+    ;; setq-default, NOT setq: after setq-local, a bare setq rebinds the
+    ;; BUFFER-LOCAL value and the global default stays nil -- async tool
+    ;; sentinels and kill-emacs then resolve agent=nil (4238 audit lines
+    ;; said nil/unknown, 2026-08-31).
     (setq-local iar--current-agent-name personality)
-    (setq iar--current-agent-name personality)
+    (setq-default iar--current-agent-name personality)
     ;; Backward compat: agent-file = personality file path
     (let ((pers-path (expand-file-name
                       (format "%s.org" personality)
                       (expand-file-name iar-personalities-path user-emacs-directory))))
       (setq-local iar--current-agent-file pers-path)
-      (setq iar--current-agent-file pers-path))
+      (setq-default iar--current-agent-file pers-path))
     ;; Reset knowledge state (manual C-c k loads stack on top)
     ;; Set loaded labels from auto-loaded knowledge so C-c i can report them
     (setq-local iar--knowledge-base-prompt nil)

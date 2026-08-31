@@ -145,3 +145,61 @@
 
 (provide 'test-personality-loader)
 ;;; test-personality-loader.el ends here
+;;; --- Global-default agent-name contract (cycle 42) ---
+
+;; THE CONTRACT: after iar--setup-assembled-buffer (or the delegate
+;; buffer setup), the GLOBAL default of iar--current-agent-name must
+;; equal the personality name. Async tool sentinels and kill-emacs
+;; resolve the agent via the global default -- they run outside the
+;; conversation buffer. The pre-fix code did (setq-local ...) then
+;; (setq ...), which rebinds the BUFFER-LOCAL value and leaves the
+;; global default nil -- 4238+ audit lines said nil/unknown (2026-08-31).
+
+(ert-deftest test-pers-setup-sets-global-default-agent-name ()
+  "iar--setup-assembled-buffer must set the GLOBAL default agent name.
+Async sentinels and kill-emacs resolve via default-value; a
+buffer-local-only set leaves them nil."
+  (let ((old-default (default-value 'iar--current-agent-name)))
+    (unwind-protect
+        (with-temp-buffer
+          (text-mode)
+          (iar--setup-assembled-buffer "interactive" "mirror" "iar")
+          (should (string= "mirror"
+                           (default-value 'iar--current-agent-name)))
+          ;; And the buffer-local value agrees.
+          (should (string= "mirror" iar--current-agent-name)))
+      ;; Restore whatever the suite had before (tests may rely on it).
+      (setq-default iar--current-agent-name old-default))))
+
+(ert-deftest test-pers-setup-sets-global-default-agent-file ()
+  "iar--setup-assembled-buffer must set the GLOBAL default agent file."
+  (let ((old-default (default-value 'iar--current-agent-file)))
+    (unwind-protect
+        (with-temp-buffer
+          (text-mode)
+          (iar--setup-assembled-buffer "interactive" "mirror" "iar")
+          (should (stringp (default-value 'iar--current-agent-file)))
+          (should (string-match-p "mirror.org$"
+                                  (default-value 'iar--current-agent-file))))
+      (setq-default iar--current-agent-file old-default))))
+
+(ert-deftest test-pers-setup-global-default-survives-buffer-switch ()
+  "The resolver must return the agent name from a FOREIGN buffer
+after setup -- the async-sentinel context."
+  (let ((old-default (default-value 'iar--current-agent-name)))
+    (unwind-protect
+        (progn
+          (with-temp-buffer
+            (text-mode)
+            (iar--setup-assembled-buffer "interactive" "mirror" "iar"))
+          ;; Simulate the async sentinel: resolve from a fresh buffer
+          ;; with no buffer-local value.
+          (with-temp-buffer
+            (should (string= "mirror" (iar--get-agent-name)))))
+      (setq-default iar--current-agent-name old-default))))
+
+(ert-deftest test-pers-usage-start-time-defvar-exists ()
+  "iar--usage-start-time must be a defined variable (cycle 41's
+wholesale rewrite dropped the defvar; kill-emacs usage logging
+referenced it void in processes that never called usage-reset)."
+  (should (boundp 'iar--usage-start-time)))

@@ -74,7 +74,10 @@
 Empty string fails the \\S- check and falls through to current-agent
 fallback. Uses with-temp-buffer to ensure no agent is loaded."
   (with-temp-buffer
-    (let ((result (iar--tool-reload-agent "")))
+    (let* ((iar--current-personality nil)
+           (iar--current-agent-name nil)
+           (iar--current-agent-file nil)
+           (result (iar--tool-reload-agent "")))
       (should (stringp result))
       (should (string-match-p "Error" result)))))
 
@@ -84,7 +87,10 @@ Whitespace-only string fails the \\S- check and falls through to
 current-agent fallback. Uses with-temp-buffer to ensure no agent
 is loaded."
   (with-temp-buffer
-    (let ((result (iar--tool-reload-agent "   ")))
+    (let* ((iar--current-personality nil)
+           (iar--current-agent-name nil)
+           (iar--current-agent-file nil)
+           (result (iar--tool-reload-agent "   ")))
       (should (stringp result))
       (should (string-match-p "Error" result)))))
 
@@ -93,7 +99,10 @@ is loaded."
 In a temp buffer with no agent loaded, nil falls through to the
 current-agent check which errors with 'No agent'."
   (with-temp-buffer
-    (let ((result (iar--tool-reload-agent nil)))
+    (let* ((iar--current-personality nil)
+           (iar--current-agent-name nil)
+           (iar--current-agent-file nil)
+           (result (iar--tool-reload-agent nil)))
       (should (stringp result))
       (should (string-match-p "Error" result))
       (should (stringp result)))))
@@ -104,7 +113,10 @@ A non-string (e.g., integer) fails the stringp check and falls through
 to the current-agent fallback. Uses with-temp-buffer to ensure no agent
 is loaded."
   (with-temp-buffer
-    (let ((result (iar--tool-reload-agent 123)))
+    (let* ((iar--current-personality nil)
+           (iar--current-agent-name nil)
+           (iar--current-agent-file nil)
+           (result (iar--tool-reload-agent 123)))
       (should (stringp result))
       (should (string-match-p "Error" result)))))
 

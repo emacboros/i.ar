@@ -174,6 +174,8 @@ Also runs post-tool-call audit logging after the original function."
   "Input tokens of the most recent request.")
 (defvar iar--usage-last-output 0
   "Output tokens of the most recent request.")
+(defvar iar--usage-start-time nil
+  "Start time of the current usage window (set by `iar--usage-reset').")
 (defvar iar--usage-model nil
   "Model name from the most recent response.")
 

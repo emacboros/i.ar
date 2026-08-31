@@ -84,6 +84,7 @@
 (ert-deftest test-status-mode-format-no-agent ()
   "Status string should show 'none' when agent is nil."
   (let ((iar--current-agent-name nil)
+        (iar--current-agent-file nil)
         (gptel-system-prompt "test")
         (iar--usage-last-input 0)
         (iar--usage-last-output 0)

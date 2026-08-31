@@ -311,11 +311,12 @@ so the user can watch progress in real time."
       (setq-local gptel-system-prompt profile)
       ;; Set agent name for audit logging and status mode.
       (setq-local iar--current-agent-name agent)
-      (setq iar--current-agent-name agent)
+      ;; setq-default: same async-sentinel fix as iar--setup-assembled-buffer.
+      (setq-default iar--current-agent-name agent)
       (setq-local iar--current-agent-file
                   (expand-file-name (format "%s.org" agent)
                                     (expand-file-name iar-personalities-path user-emacs-directory)))
-      (setq iar--current-agent-file
+      (setq-default iar--current-agent-file
             (expand-file-name (format "%s.org" agent)
                               (expand-file-name iar-personalities-path user-emacs-directory)))
       (setq-local iar--delegate-depth (1+ parent-depth))

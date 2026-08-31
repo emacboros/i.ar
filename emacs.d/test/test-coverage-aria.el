@@ -47,9 +47,11 @@
         (progn
           (set-default 'iar--current-agent-name nil)
           (set-default 'iar--current-project nil)
+          (set-default 'iar--current-agent-file nil)
           (setenv "IAR_PROJECT" nil)
           (let ((iar--current-agent-name nil)
-                (iar--current-project nil))
+                (iar--current-project nil)
+                (iar--current-agent-file nil))
             (iar--usage-reset)
             (iar--usage-write-log))
           (should (file-exists-p
