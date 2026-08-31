@@ -181,7 +181,7 @@ This is the primary entry point for interactive sessions (C-c a)."
                           (expand-file-name iar-personalities-path user-emacs-directory))))
          (chosen (completing-read "Select Personality: " names nil t))
          (archetype "interactive")
-         (project "iar"))
+         (project (iar--project-for-personality chosen)))
     (unless (bound-and-true-p gptel-mode)
       (gptel-mode 1))
     (let ((result (iar--setup-assembled-buffer archetype chosen project)))
