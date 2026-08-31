@@ -269,6 +269,15 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
 ;;; Main entry point
 ;;; ---------------------------------------------------------
 
+(defun iar--normalize-self-mod (value)
+  "Normalize a :self-modification argument VALUE to a boolean.
+The shell always passes 0 or 1 (never omits the keyword), and Elisp
+truthiness treats 0 as non-nil -- so a bare `(if (null sm) nil sm)'
+ENABLED self-modification when the shell said 0.  Privilege
+inversion: the safe default was unreachable via iar.sh.  Only nil,
+0, and \"0\" mean disabled."
+  (not (member value '(nil 0 "0"))))
+
 (defun iar-run-cycle (&rest args)
   "Run one agent cycle in batch mode.
 Keywords args:
@@ -279,6 +288,10 @@ Keywords args:
                        Defaults to the personality's mapped cycle
                        (e.g., darwin -> self_modification).
   :self-modification BOOL -- enable self-modification (default: nil)
+  :knowledge LABELS -- extra knowledge labels (list of strings),
+                       appended to the project's #+KNOWLEDGE.
+                       (iar.sh --knowledge passes this; before 2026-08-31
+                       the keyword was accepted and silently ignored.)
 
 The archetype is determined by the personality-to-archetype map.
 The project is determined by the personality name (matching project file
@@ -298,8 +311,9 @@ Tools are gated by the project's #+TOOLS metadata."
          (continue-prompt (iar--cycle-load-continue-prompt agent-name))
          (archetype (iar--archetype-for-personality agent-name))
          (project (iar--project-for-personality agent-name))
-         (self-mod (let ((sm (plist-get args :self-modification)))
-                     (if (null sm) nil sm)))
+         (extra-knowledge (plist-get args :knowledge))
+         (self-mod (iar--normalize-self-mod
+                    (plist-get args :self-modification)))
          (cycle-buf (get-buffer-create (format "*%s-cycle*" agent-name)))
          (max-turns (if (and (integerp iar-cycle-max-turns)
                              (> iar-cycle-max-turns 0))
@@ -314,7 +328,7 @@ Tools are gated by the project's #+TOOLS metadata."
       (text-mode)
       (gptel-mode 1)
       ;; Assemble prompt from archetype + personality + project
-      (let ((result (iar--setup-assembled-buffer archetype agent-name project)))
+      (let ((result (iar--setup-assembled-buffer archetype agent-name project extra-knowledge)))
         (message "[%s] Assembled prompt: %d chars (~%d tokens), %d tools"
                  agent-name
                  (length (plist-get result :prompt))
@@ -386,8 +400,11 @@ Tools are gated by the project's #+TOOLS metadata."
   "Closing delimiter for one-shot final response.")
 
 (defconst iar--one-shot-nudge-prompt
-  "Continue working on your task. When you are finished, wrap your final response in === BEGIN FINAL RESPONSE === and === END FINAL RESPONSE === markers."
-  "Nudge prompt sent when a one-shot agent produces a response without delimiters.")
+  (format "Continue working on your task. When you are finished, wrap your final response in %s and %s markers."
+          iar-one-shot-response-open iar-one-shot-response-close)
+  "Nudge prompt sent when a one-shot agent produces a response without delimiters.
+Built from the delimiter defcustoms (single source: configs/delimiters.el);
+a hardcoded copy here drifted from them the moment either changed.")
 
 (defvar iar--one-shot-state nil
   "Current one-shot state as a plist:
@@ -508,8 +525,8 @@ Tools are gated by the project's #+TOOLS metadata."
          (prompt (getenv "IAR_ONE_SHOT_PROMPT"))
          (archetype "one-shot")
          (project (iar--project-for-personality agent-name))
-         (self-mod (let ((sm (plist-get args :self-modification)))
-                     (if (null sm) nil sm)))
+         (self-mod (iar--normalize-self-mod
+                    (plist-get args :self-modification)))
          (os-buf (get-buffer-create (format "*%s-oneshot*" agent-name)))
          (max-turns (if (and (integerp iar-cycle-max-turns)
                              (> iar-cycle-max-turns 0))

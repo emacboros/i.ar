@@ -422,3 +422,17 @@ set as interactive mode (DIGEST + LOGS + JOURNAL)."
     ;; If neither exists, result is empty
     (or (string-match-p "SESSION LOGS\\|JOURNAL" result)
         (string= result ""))))
+
+
+(ert-deftest test-assembly-extra-knowledge-labels ()
+  "Extra knowledge labels append to the project's #+KNOWLEDGE.
+Contract for iar.sh --knowledge -> iar-run-cycle :knowledge
+(silently ignored before 2026-08-31).  Uses the \"iar\" label,
+which exists in the test environment's docs tree."
+  (let ((result (iar--assemble-prompt "aria-cycle" "aria" "iar" '("iar"))))
+    (should (string-match-p "=== INJECTED KNOWLEDGE \\[iar\\] ==="
+                            (plist-get result :prompt)))
+    (should (member "iar" (plist-get result :knowledge-labels)))
+    ;; project's own labels still load (they carry trailing slashes
+    ;; from iar.org's #+KNOWLEDGE line -- pre-existing quirk)
+    (should (member "iar-prod/" (plist-get result :knowledge-labels)))))

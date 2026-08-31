@@ -127,12 +127,14 @@ Otherwise, use \"default\"."
 
 ;;; --- Assembly and buffer setup ---
 
-(defun iar--setup-assembled-buffer (archetype personality project)
+(defun iar--setup-assembled-buffer (archetype personality project &optional extra-knowledge)
   "Assemble prompt and set up buffer-local state.
 ARCHETYPE, PERSONALITY, PROJECT are name strings.
 Sets gptel-system-prompt, gptel-tools, and all tracking variables.
+EXTRA-KNOWLEDGE (optional list of strings) appends extra knowledge
+labels to the project's #+KNOWLEDGE (see `iar--assemble-prompt').
 Returns the assembled plist."
-  (let ((result (iar--assemble-prompt archetype personality project)))
+  (let ((result (iar--assemble-prompt archetype personality project extra-knowledge)))
     (setq-local gptel-system-prompt (plist-get result :prompt))
     (setq-local gptel-tools (plist-get result :tools))
     (setq-local iar--current-archetype archetype)

@@ -103,3 +103,14 @@ max-turns); it must NOT mark completed."
 
 (provide 'test-cycle-exit-codes)
 ;;; test-cycle-exit-codes.el ends here
+
+(ert-deftest test-cycle-self-mod-normalization ()
+  "Shell passes 0/1; Elisp truthiness would treat 0 as enabled.
+Only nil, 0, and \"0\" mean disabled (privilege-inversion guard,
+2026-08-31: before this, every iar.sh loop agent ran with the
+conditional file-guard protections skipped, flag or no flag)."
+  (should-not (iar--normalize-self-mod nil))
+  (should-not (iar--normalize-self-mod 0))
+  (should-not (iar--normalize-self-mod "0"))
+  (should (iar--normalize-self-mod 1))
+  (should (iar--normalize-self-mod t)))
