@@ -300,11 +300,13 @@ execute_code_remote -- the tool is gated by #+CONTAINERS, not #+TOOLS."
 
 ;;; --- Main assembly function ---
 
-(defun iar--assemble-prompt (archetype-name personality-name project-name)
+(defun iar--assemble-prompt (archetype-name personality-name project-name &optional extra-knowledge-labels)
   "Assemble a complete system prompt from three primitives.
 ARCHETYPE-NAME is the behavioral archetype (e.g., \"interactive\").
 PERSONALITY-NAME is the personality (e.g., \"mirror\").
 PROJECT-NAME is the project (e.g., \"default\").
+EXTRA-KNOWLEDGE-LABELS (optional) is a list of extra knowledge directory
+labels, appended to the project's #+KNOWLEDGE labels.
 
 Returns a plist with keys:
   :prompt -- the assembled system prompt string
@@ -326,7 +328,8 @@ Returns a plist with keys:
          (project-containers (plist-get project :containers))
          (project-mcp (plist-get project :mcp))
          (base-context (iar--read-base-context))
-         (knowledge-result (iar--auto-load-knowledge project-knowledge))
+         (knowledge-result (iar--auto-load-knowledge
+                             (append project-knowledge extra-knowledge-labels)))
          (knowledge-block (car knowledge-result))
          (knowledge-labels (cdr knowledge-result))
          (memory-block (iar--inject-memory mode project-name personality-name))
