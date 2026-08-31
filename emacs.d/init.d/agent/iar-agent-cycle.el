@@ -183,46 +183,64 @@ Signals an error if the personality is not found."
   "Track tool calls in the cycle. Increments tool-call-count."
   (cl-incf (plist-get iar--cycle-state :tool-call-count)))
 
-(defun iar--cycle-post-response-handler (_status _info)
-  "Post-response handler for cycle. Logs response, checks completion.
+(defvar iar--cycle-error-strikes 0
+  "Consecutive failed-request strikes in the current cycle.
+gptel signals a failed request by passing equal start/end positions
+to post-response functions (per gptel.el docs: \"this hook runs even
+if the request fails. In this case the response beginning and end
+positions are both the cursor position at the time of the
+request\"). Three strikes -> abort the cycle. Reset on any
+successful response.")
+
+(defun iar--cycle-post-response-handler (start end)
+  "Post-response handler for cycle. START and END are buffer positions
+delimiting the new response (gptel convention). START == END means the
+request FAILED -- count a strike, never resend blindly (the 2026-08-30
+storm: 2537 retries of a 404ing model, 1GB of log, because errors were
+invisible to this handler and the lenient sentinel match hit the
+prompt's own vocabulary every turn).
 Wrapped in condition-case to prevent errors from hanging the event loop."
   (condition-case err
       (let* ((state iar--cycle-state)
              (agent (plist-get state :agent))
-             (turn-count (plist-get state :turn-count))
-             (max-turns (plist-get state :max-turns)))
-        (cl-incf (plist-get iar--cycle-state :turn-count))
-        ;; Log the response (best-effort)
-        (ignore-errors
-          (iar--cycle-log-append agent (point-min) (point-max)))
-        ;; Check for completion signals in the response
-        (save-excursion
-          (goto-char (point-min))
-          (let ((response (buffer-substring-no-properties
-                            (point-min) (point-max))))
-            (cond
-             ((iar--cycle-complete-p (current-buffer) (point-min) (point-max))
-              ;; LOOP_COMPLETE or CYCLE_COMPLETE on its own line
+             (max-turns (plist-get state :max-turns))
+             (turn-count (plist-get state :turn-count)))
+        (if (and (number-or-marker-p start) (number-or-marker-p end)
+                 (= start end))
+            ;; ---- FAILED REQUEST PATH ----
+            (progn
+              (cl-incf iar--cycle-error-strikes)
+              (message "[%s] Cycle request FAILED (strike %d/3)"
+                       agent iar--cycle-error-strikes)
+              (when (>= iar--cycle-error-strikes 3)
+                (message "[%s] Three failed requests in a row -- ending cycle" agent)
+                (setf (plist-get iar--cycle-state :completed) t)
+                (setf (plist-get iar--cycle-state :exit-code) 1)))
+          ;; ---- SUCCESS PATH ----
+          (setq iar--cycle-error-strikes 0)
+          (cl-incf (plist-get iar--cycle-state :turn-count))
+          ;; Log ONLY the new response region (not the whole buffer --
+          ;; whole-buffer logging grows quadratically with turns)
+          (ignore-errors
+            (iar--cycle-log-append agent start end))
+          ;; Completion signals: search ONLY the new response region
+          ;; (iar--cycle-complete-p takes start/end and clamps them)
+          (cond
+             ((iar--cycle-complete-p (current-buffer) start end)
+              ;; LOOP_COMPLETE or CYCLE_COMPLETE on its own line in the
+              ;; NEW response only
               (setf (plist-get iar--cycle-state :completed) t)
               (setf (plist-get iar--cycle-state :exit-code) 0))
-             ((string-match "CYCLE_COMPLETE" response)
-              ;; Continue to next turn -- send continue prompt if available
-              (let ((cont-prompt (plist-get state :continue)))
-                (if cont-prompt
-                    (progn
-                      (goto-char (point-max))
-                      (insert cont-prompt)
-                      (gptel-send))
-                  ;; No continue prompt -- end cycle
-                  (message "[%s] CYCLE_COMPLETE with no continue prompt, ending cycle" agent)
-                  (setf (plist-get iar--cycle-state :completed) t)
-                  (setf (plist-get iar--cycle-state :exit-code) 0))))
              ((>= turn-count max-turns)
+              ;; Max turns checked BEFORE any lenient match -- the old
+              ;; lenient string-match against the whole buffer matched
+              ;; the prompt's own CYCLE_COMPLETE vocabulary every turn,
+              ;; making this branch dead code (storm root cause #2)
               (message "[%s] Max turns (%d) reached, ending cycle" agent max-turns)
               (setf (plist-get iar--cycle-state :completed) t)
               (setf (plist-get iar--cycle-state :exit-code) 1))
              (t
-              ;; No completion signal and under turn limit -- send continue prompt
+              ;; No completion signal, under turn limit -- continue
               (let ((cont-prompt (plist-get state :continue)))
                 (if cont-prompt
                     (progn
@@ -231,7 +249,7 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                       (gptel-send))
                   ;; No continue prompt -- end cycle
                   (message "[%s] No continue prompt, ending cycle" agent)
-                  (setf (plist-get iar--cycle-state :completed) t))))))))
+                  (setf (plist-get iar--cycle-state :completed) t)))))))
     (error
      (message "[%s] Cycle post-response error: %s"
               (or (plist-get iar--cycle-state :agent) "unknown")
@@ -282,7 +300,8 @@ Tools are gated by the project's #+TOOLS metadata."
     (message "[%s] Starting cycle with %ds timeout (archetype: %s, project: %s, cycle: %s)"
              agent-name timeout archetype project cycle-name)
     (iar--usage-reset)
-    (setq iar--cycle-state (iar--cycle-make-state agent-name cycle-buf continue-prompt max-turns))
+    (setq iar--cycle-state (iar--cycle-make-state agent-name cycle-buf continue-prompt max-turns)
+          iar--cycle-error-strikes 0)
     (with-current-buffer cycle-buf
       (text-mode)
       (gptel-mode 1)
@@ -402,39 +421,60 @@ to handle content that mentions the delimiter text."
               (string-trim (buffer-substring-no-properties start end)))))))))
 
 
-(defun iar--one-shot-post-response-handler (_status _info)
-  "Post-response handler for one-shot mode.
-Scans the buffer for one-shot delimiters. If found, extracts the
-final response and marks the one-shot as completed. If not found
+(defvar iar--one-shot-error-strikes 0
+  "Consecutive failed-request strikes in the current one-shot run.
+See `iar--cycle-error-strikes' for the failed-request convention.")
+
+(defun iar--one-shot-post-response-handler (start end)
+  "Post-response handler for one-shot mode. START and END are buffer
+positions delimiting the new response (gptel convention). START == END
+means the request FAILED -- count a strike, three strikes -> abort.
+Scans the NEW RESPONSE for one-shot delimiters. If found, extracts
+the final response and marks the one-shot as completed. If not found
 and under max turns, sends a nudge prompt. If max turns reached,
 marks as completed with exit code 1."
   (let* ((state iar--one-shot-state)
          (agent (plist-get state :agent))
          (turn-count (plist-get state :turn-count))
          (max-turns (plist-get state :max-turns)))
-    (cl-incf (plist-get iar--one-shot-state :turn-count))
-    ;; Log the response to cycle.log for audit
-    (iar--cycle-log-append agent (point-min) (point-max))
-    ;; Check for delimiters in the full buffer
-    (let* ((response (buffer-substring-no-properties (point-min) (point-max)))
-           (extracted (iar--one-shot-extract-response response)))
-      (cond
-       (extracted
-        (setf (plist-get iar--one-shot-state :final-response) extracted)
-        (setf (plist-get iar--one-shot-state :completed) t)
-        (setf (plist-get iar--one-shot-state :exit-code) 0)
-        (message "[%s] One-shot: final response detected (%d chars)"
-                 agent (length extracted)))
-       ((>= turn-count max-turns)
-        (message "[%s] One-shot: max turns (%d) reached without final response"
-                 agent max-turns)
-        (setf (plist-get iar--one-shot-state :completed) t)
-        (setf (plist-get iar--one-shot-state :exit-code) 1))
-       (t
-        ;; No delimiters, under turn limit -- send nudge
-        (goto-char (point-max))
-        (insert iar--one-shot-nudge-prompt)
-        (gptel-send))))))
+    (if (and (number-or-marker-p start) (number-or-marker-p end)
+             (= start end))
+        ;; ---- FAILED REQUEST PATH ----
+        (progn
+          (cl-incf iar--one-shot-error-strikes)
+          (message "[%s] One-shot request FAILED (strike %d/3)"
+                   agent iar--one-shot-error-strikes)
+          (when (>= iar--one-shot-error-strikes 3)
+            (message "[%s] Three failed requests in a row -- ending one-shot" agent)
+            (setf (plist-get iar--one-shot-state :completed) t)
+            (setf (plist-get iar--one-shot-state :exit-code) 1)))
+      ;; ---- SUCCESS PATH ----
+      (setq iar--one-shot-error-strikes 0)
+      (cl-incf (plist-get iar--one-shot-state :turn-count))
+      ;; Log only the new response region
+      (iar--cycle-log-append agent start end)
+      ;; Check for delimiters in the NEW RESPONSE only
+      (let* ((response (buffer-substring-no-properties
+                         (max (point-min) (min start (point-max)))
+                         (max (point-min) (min end (point-max)))))
+             (extracted (iar--one-shot-extract-response response)))
+        (cond
+         (extracted
+          (setf (plist-get iar--one-shot-state :final-response) extracted)
+          (setf (plist-get iar--one-shot-state :completed) t)
+          (setf (plist-get iar--one-shot-state :exit-code) 0)
+          (message "[%s] One-shot: final response detected (%d chars)"
+                   agent (length extracted)))
+         ((>= turn-count max-turns)
+          (message "[%s] One-shot: max turns (%d) reached without final response"
+                   agent max-turns)
+          (setf (plist-get iar--one-shot-state :completed) t)
+          (setf (plist-get iar--one-shot-state :exit-code) 1))
+         (t
+          ;; No delimiters, under turn limit -- send nudge
+          (goto-char (point-max))
+          (insert iar--one-shot-nudge-prompt)
+          (gptel-send)))))))
 
 (defun iar-run-one-shot (&rest args)
   "Run a one-shot agent in batch mode.

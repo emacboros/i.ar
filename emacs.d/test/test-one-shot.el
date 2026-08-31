@@ -117,7 +117,8 @@
         (with-current-buffer buf
           (insert "=== BEGIN FINAL RESPONSE ===\nTest response\n=== END FINAL RESPONSE ===\n")
           (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
-            (iar--one-shot-post-response-handler nil nil)
+            ;; handler signature is (start end): the new response region
+            (iar--one-shot-post-response-handler (point-min) (point-max))
             (should (plist-get iar--one-shot-state :completed))
             (should (string= "Test response" (plist-get iar--one-shot-state :final-response)))))
       (kill-buffer buf))))
@@ -133,7 +134,7 @@ buffer -> the documented suite heisenbug). This was the root cause."
           (insert "response without delimiters\n")
           (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
             (cl-letf (((symbol-function 'gptel-send) (lambda () nil)))
-              (iar--one-shot-post-response-handler nil nil)
+              (iar--one-shot-post-response-handler (point-min) (point-max))
               (should-not (plist-get iar--one-shot-state :completed)))))
       (kill-buffer buf))))
 
@@ -147,8 +148,10 @@ async response -> suite heisenbug)."
           (insert "response\n")
           (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 2)))
             (cl-letf (((symbol-function 'gptel-send) (lambda () nil)))
-              (iar--one-shot-post-response-handler nil nil)
-              (iar--one-shot-post-response-handler nil nil)
+              ;; turn 1: real positions (success path, under limit)
+              (iar--one-shot-post-response-handler (point-min) (point-max))
+              ;; turn 2: real positions again (success path, hits limit)
+              (iar--one-shot-post-response-handler (point-min) (point-max))
               (should (plist-get iar--one-shot-state :completed)))))
       (kill-buffer buf))))
 
