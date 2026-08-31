@@ -106,3 +106,23 @@ Found the "Agora" project in tasks -- an AI research laboratory with multi-agent
 **Open:** Masera written prices both bikes, 800 reflash status, 900 firmware/odometer-fix status, inseam vs 850mm (800) / 825mm (900), Desafío 100.000km program terms, financing in writing.
 
 Spec discrepancy flagged: all sheets say Svartpilen 200 = 26hp; his session notes said 18hp. To resolve from his paperwork (market tune vs rounding).
+## 2026-08-31 -- Bessie build session (motorcycle agent creation)
+
+**Context:** Moto session 5. Two halves: training plan finalized, then bessie created.
+
+**Training plan evolution:** First draft was conservative (floor/ceiling structure built around his sprint pattern). He pushed back: "when I'm motivated, I keep schedules." Ideal plan requested -- riding as his only hobby off the computer, long-term. Doubled the cardio (zone 2 base is dose-gated by time and he has months), kept isometrics (the specific off-road demand: sustained quarter-squat + grip endurance). 3 phases (base/build/specific) + transition + season steady state. Equipment: unused bicycle at home (tune-up week one), running shoes (walk-run ramp at 100kg -- shin splint trap), home gym (dumbbells + machine, 1/3 volume maintenance). Rucking in the sierras as the closest thing to standing on pegs. Key rules: zone 2 feels insultingly easy (correct), never miss twice, deload every 4th week, recomposition not a cut.
+
+**800 Rally lean:** He's leaning 800 over 900DSX. His read: 900 wins electronics, 800 wins mechanics; he plans more off-road now, which favors the 800. Throttle snatch claim not found in his recent reviews -- possibly early-production; still the decisive test-ride item (slow drills, first gear, gravel). Svartpilen 18hp mystery closed: kW/hp units error, it's 26hp.
+
+**Bessie created:** New personality for all moto continuity, named for Bessie Stringfield. Interactive archetype, moto project. Four functions: companion, coach (active check-in, never miss twice), advisor (framework is law), record keeper. Spine built in: sprint-vs-adaptation, GAS challenge, skill inflation safety line, analysis-paralysis cutoff ("You have enough. Go ride."). Web research via execute_code_local + curl (Bing RSS verified working from container; DDG/searx/mojeek blocked). No delegate, no reload tools.
+
+**Built:**
+- prompts/personalities/bessie.org (i.ar repo, commit 7a2ab73)
+- personalization/projects/moto.org + docs/moto/ knowledge base (overview, decision framework, reviewer calibration, 3 bike files, training principles + weekly templates) + tasks/moto/ (training plan 5 phases, purchase-800-rally with dealer checklist + test-ride protocol) + audit/moto/bessie/ seed (DIGEST.md) (personalization repo, commit ff284a8)
+- C-c a fix: project now resolves per personality (bessie -> moto project auto-load), commit e899a62. 845/845 tests pass.
+
+**Design decisions worth remembering:** Character in personality, state in knowledge base (personality never says "he's buying an 800" -- the overview does). Active check-in calibrated between drill sergeant and yes-man. Tools minimal but with web access (his explicit request). Boundary with mirror: moto-joy/philosophy can go either way; identity/standby/deep-life stays with mirror.
+
+**First bessie session pending:** C-c a -> bessie. Her LOGS starts empty; the DIGEST + knowledge seed is her birth memory. First check-in will compare today vs Phase 1 week 1.
+
+**Open:** Masera written prices, 800 reflash status, inseam vs 850mm, off-road course options around Cordoba, boots before trails, bicycle tune-up week one.
