@@ -172,7 +172,8 @@ Signals an error if the personality is not found."
 :turn-count  -- current turn count
 :tool-call-count -- total tool calls made
 :completed   -- t when cycle is done
-:exit-code   -- 0 for LOOP_COMPLETE, 1 for timeout/error")
+:exit-code   -- 0 for CYCLE_COMPLETE, 1 for timeout/error,
+;;               2 for LOOP_COMPLETE (task done, iar.sh stops the loop)")
 
 (defun iar--cycle-make-state (agent buf continue max-turns)
   "Create a fresh cycle state plist."
@@ -227,10 +228,17 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
           ;; (iar--cycle-complete-p takes start/end and clamps them)
           (cond
              ((iar--cycle-complete-p (current-buffer) start end)
-              ;; LOOP_COMPLETE or CYCLE_COMPLETE on its own line in the
-              ;; NEW response only
+              ;; Sentinel on its own line in the NEW response only.
+              ;; LOOP_COMPLETE = task done -> exit 2 (iar.sh stops the
+              ;; loop: "TASK COMPLETE", human review gate).
+              ;; CYCLE_COMPLETE = more work next cycle -> exit 0.
+              ;; afcbc27 (2026-08-05) collapsed both to 0, silently
+              ;; disabling the loop-stop contract; restored 2026-08-31.
               (setf (plist-get iar--cycle-state :completed) t)
-              (setf (plist-get iar--cycle-state :exit-code) 0))
+              (setf (plist-get iar--cycle-state :exit-code)
+                    (if (eq (iar--cycle-complete-p (current-buffer) start end)
+                            'loop)
+                        2 0)))
              ((>= turn-count max-turns)
               ;; Max turns checked BEFORE any lenient match -- the old
               ;; lenient string-match against the whole buffer matched

@@ -332,7 +332,9 @@
     (should t)))
 
 (ert-deftest test-cycle-post-response-loop-complete ()
-  "iar--cycle-post-response-handler should detect LOOP_COMPLETE."
+  "iar--cycle-post-response-handler should detect LOOP_COMPLETE.
+LOOP_COMPLETE = task done = exit 2 (iar.sh stops the loop, human
+reviews). Was exit 0 after afcbc27 collapsed the sentinel semantics."
   (let ((buf (get-buffer-create "*test-cycle-pr*")))
     (unwind-protect
         (with-current-buffer buf
@@ -340,7 +342,7 @@
           (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
             (iar--cycle-post-response-handler nil nil)
             (should (plist-get iar--cycle-state :completed))
-            (should (= 0 (plist-get iar--cycle-state :exit-code)))))
+            (should (= 2 (plist-get iar--cycle-state :exit-code)))))
       (kill-buffer buf))))
 
 (ert-deftest test-cycle-post-response-cycle-complete ()
