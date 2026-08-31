@@ -10,7 +10,7 @@
 ;; - Tool registration (wraps gptel-make-tool + add-to-list)
 ;; - Pre/post-tool-call hooks (i.ar's own, not gptel's)
 ;; - Result truncation (intercepts before buffer insertion)
-;; - Audit logging (every tool call logged with status)
+;; - Audit logging (every tool call logged with status + args detail)
 ;; - Token usage tracking (parses from Ollama responses via curl advice)
 ;;
 ;; What this layer does NOT own:
@@ -24,7 +24,7 @@
 ;;   of gptel-pre-tool-call-functions.
 ;;   Truncation happens via :around advice on gptel--process-tool-call,
 ;;   installed here.
-;;   Audit logging happens in the post-tool-call hook, installed here.
+;;   Audit logging happens in the post-tool-call path, installed here.
 ;;   Token parsing happens via :before advice on gptel-curl--stream-cleanup
 ;;   and gptel-curl--sentinel, installed here.
 ;;
@@ -95,16 +95,24 @@ This is bridged to gptel-post-response-functions by the tool call layer.")
 Returns (:block . message) if any hook function blocks, nil otherwise."
   (run-hook-with-args-until-success 'iar-pre-tool-call-functions info))
 
-(defun iar--bridge-post-tool-call (tool-name tool-result)
-  "Bridge function: run `iar-post-tool-call-functions' for TOOL-NAME and TOOL-RESULT.
-Also logs every tool call to the audit log centrally."
-  (let ((status (if (and (stringp tool-result)
-                         (string-prefix-p "Error:" tool-result))
-                    "error" "success")))
-    (iar--audit-log "tool_call"
-                    (format "name=%s status=%s result_len=%d"
-                            (or tool-name "nil") status
-                            (length (or tool-result "")))))
+(defun iar--bridge-post-tool-call (tool-name tool-result &optional args)
+  "Bridge function: run `iar-post-tool-call-functions' for TOOL-NAME
+and TOOL-RESULT.  Also logs every tool call to the audit log.
+
+ARGS (optional) is the tool call's argument plist, used for the
+audit detail: for effectful tools the arguments ARE the fact being
+audited (which file was written, what command ran). Captured by
+`iar--truncate-tool-result-advice' from the tool-call struct while
+the conversation buffer is current -- async tool sentinels lose
+that context, so it must be taken here, not in the sentinel."
+  ;; Capture the agent name NOW, in the conversation buffer's dynamic
+  ;; context. By the time this runs we are inside gptel--handle-tool-use's
+  ;; with-current-buffer on the conversation buffer, so buffer-locals
+  ;; resolve. Async sentinels (execute_code_local's shell sentinel) run
+  ;; later in a dead context -- that is why 4238+ audit lines said
+  ;; "nil" for agent (2026-08-31 finding).
+  (iar--audit-log-tool-call-with-agent
+   tool-name args tool-result (iar--audit-log-agent-name))
   (run-hook-with-args 'iar-post-tool-call-functions tool-name tool-result))
 
 (defun iar--bridge-post-response (status info)
@@ -138,10 +146,11 @@ Returns RESULT unchanged if under limit or if truncation is disabled."
 Truncates RESULT before it enters the conversation buffer.
 Also runs post-tool-call audit logging after the original function."
   (let* ((tool-name (when tool-spec (gptel-tool-name tool-spec)))
+         (args (when (plistp tool-call) (plist-get tool-call :args)))
          (truncated (iar--truncate-tool-result result))
          (ret (funcall orig-fun fsm tool-spec tool-call truncated)))
-    ;; Post-tool-call: audit log + i.ar hooks
-    (iar--bridge-post-tool-call tool-name truncated)
+    ;; Post-tool-call: audit log (with args detail) + i.ar hooks
+    (iar--bridge-post-tool-call tool-name truncated args)
     ret))
 
 ;;; ---------------------------------------------------------
@@ -158,26 +167,25 @@ Also runs post-tool-call audit logging after the original function."
 (defvar iar--usage-requests 0
   "Total number of LLM requests in the current session.")
 (defvar iar--usage-input-tokens 0
-  "Total input (prompt eval) tokens in the current session.")
+  "Total input tokens in the current session.")
 (defvar iar--usage-output-tokens 0
-  "Total output (eval) tokens in the current session.")
-(defvar iar--usage-model nil
-  "Model used for the current session.")
-(defvar iar--usage-start-time nil
-  "Timestamp when usage tracking started.")
+  "Total output tokens in the current session.")
 (defvar iar--usage-last-input 0
-  "Input tokens from the last request.")
+  "Input tokens of the most recent request.")
 (defvar iar--usage-last-output 0
-  "Output tokens from the last request.")
+  "Output tokens of the most recent request.")
+(defvar iar--usage-model nil
+  "Model name from the most recent response.")
 
 (defun iar--usage-reset ()
-  "Reset all usage counters to zero."
+  "Reset all usage counters (called at cycle start)."
   (setq iar--usage-requests 0
         iar--usage-input-tokens 0
         iar--usage-output-tokens 0
         iar--usage-last-input 0
         iar--usage-last-output 0
-        iar--usage-start-time (current-time)))
+        iar--usage-start-time (current-time)
+        iar--usage-model nil))
 
 (defun iar--usage-totals ()
   "Return a plist with current usage totals."
@@ -195,7 +203,8 @@ Also runs post-tool-call audit logging after the original function."
 
 (defun iar--usage-write-log ()
   "Write usage summary to audit/<agent>/USAGE.log.
-Best-effort: errors are demoted to messages."
+Best-effort: errors are demoted to messages (kill-emacs-hook must
+never fail)."
   (condition-case err
       (let* ((agent (or (iar--get-agent-name) "unknown"))
              (project (or (iar--current-project-name) "nil"))
