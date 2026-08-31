@@ -1,1 +1,5 @@
-Continue your cycle. You are not done yet. Pick up where you left off and complete all remaining steps. Remember: delegation to reviewer, commit, history log, and memories update are MANDATORY. Do not stop until all steps are complete. When all steps are complete, end with the exact text CYCLE_COMPLETE on its own line.
+Continue your cycle. You are not done yet. Pick up where you left off and complete all remaining steps. Remember: delegation to reviewer, commit, history log, and memories update are MANDATORY. Do not stop until all steps are complete.
+
+When you end this turn, signal according to the protocol:
+- All steps complete AND your task removed (remove_task called): end with the exact text LOOP_COMPLETE on its own line. The loop stops; your work is ready for human review.
+- Steps remain, or the task is not finished: end with the exact text CYCLE_COMPLETE on its own line. The loop starts a new cycle.
