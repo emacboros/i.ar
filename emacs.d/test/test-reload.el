@@ -208,7 +208,6 @@ calls set-default 'gptel-tools nil before attempting the load."
             (delete-directory tmp-dir t)))
       (set-default 'gptel-tools old-tools))))
 
-(provide 'test-reload)
 ;;; --- Additional reload_os coverage ---
 
 (ert-deftest test-reload-os-clears-buffer-local-tools ()
@@ -226,5 +225,18 @@ calls set-default 'gptel-tools nil before attempting the load."
             (should-not (local-variable-p 'gptel-tools))))
       (set-default 'gptel-tools old-tools))))
 
-(provide 'test-reload)
 ;;; test-reload.el ends here
+(ert-deftest test-reload-agent-bessie-resolves-moto-project ()
+  "reload_agent with explicit name should resolve project from personality.
+bessie -> moto project via iar-personality-project-map (not the
+stale current-project). Verifies the explicit-name path re-resolves
+archetype + project like delegate / C-c a."
+  :tags '(integration)
+  (with-temp-buffer
+    (let ((result (iar--tool-reload-agent "bessie")))
+      (should (string-match-p "Success" result))
+      (should (string-match-p "project: moto" result))
+      (should (equal iar--current-project "moto"))
+      (should (string-match-p "moto" gptel-system-prompt)))))
+
+(provide 'test-reload)

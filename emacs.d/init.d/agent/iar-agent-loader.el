@@ -114,16 +114,28 @@ the personality is not in the map."
   (or (cdr (assoc personality-name iar-personality-archetype-map))
       "interactive"))
 
+(defconst iar-personality-project-map
+  '(("bessie" . "moto"))
+  "Mapping from personality names to project names.
+Explicit override used by `iar--project-for-personality' when the
+project name differs from the personality name. Checked before the
+personality-name-as-project convention. Personalities not listed
+here resolve by convention: project file matching the personality
+name, else the \"iar\" default project.")
+
 (defun iar--project-for-personality (personality-name)
   "Return the project name for PERSONALITY-NAME.
-If a project file matching the personality name exists, use it.
-Otherwise, use \"default\"."
-  (let ((project-path (expand-file-name
-                       (format "%s.org" personality-name)
-                       (expand-file-name iar-projects-path iar-personalization-path))))
-    (if (file-exists-p project-path)
-        personality-name
-      "iar")))
+Resolution order:
+1. `iar-personality-project-map' -- explicit personality->project override
+2. Project file matching the personality name (convention)
+3. \"iar\" -- default project"
+  (or (cdr (assoc personality-name iar-personality-project-map))
+      (let ((project-path (expand-file-name
+                           (format "%s.org" personality-name)
+                           (expand-file-name iar-projects-path iar-personalization-path))))
+        (if (file-exists-p project-path)
+            personality-name
+          "iar"))))
 
 ;;; --- Assembly and buffer setup ---
 

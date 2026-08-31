@@ -12,6 +12,7 @@
 (require 'iar-agent-loader)
 (require 'iar-prompt-assembly)
 (require 'iar-mount-awareness)
+(require 'iar-agent-loader)  ; iar--archetype-for-personality, iar--project-for-personality
 
 ;; Forward-declared: owned by configs/paths.el.
 (defvar iar-personalities-path nil
@@ -28,8 +29,15 @@ Updates gptel-system-prompt and gptel-tools in the current buffer."
                                 agent-name)
                             (or (iar--current-personality-name)
                                 (error "No personality currently loaded. Pass agent_name to reload a specific one."))))
-             (archetype (or iar--current-archetype "interactive"))
-             (project (iar--current-project-name)))
+             ;; Explicit agent name: re-resolve archetype + project from the
+             ;; personality (same resolution as delegate / C-c a). Omitted:
+             ;; refresh current personality with current archetype + project.
+             (archetype (if (and agent-name (stringp agent-name) (iar--non-blank-p agent-name))
+                            (iar--archetype-for-personality personality)
+                          (or iar--current-archetype "interactive")))
+             (project (if (and agent-name (stringp agent-name) (iar--non-blank-p agent-name))
+                          (iar--project-for-personality personality)
+                        (iar--current-project-name))))
         (let ((result (iar--setup-assembled-buffer archetype personality project)))
           (format "Success: Re-assembled prompt for personality '%s' (archetype: %s, project: %s). System message updated (%d chars)."
                   personality archetype project

@@ -91,8 +91,6 @@
     (iar-load-personality "mirror")
     (should (string= "mirror" (iar-personality-info)))))
 
-(provide 'test-personality-loader)
-
 ;;; --- Additional coverage tests ---
 
 (ert-deftest test-pers-load-personality-interactive ()
@@ -142,9 +140,13 @@
   "iar--project-for-personality should return correct project."
   (should (string= "iar" (iar--project-for-personality "mirror")))
   (should (string= "darwin" (iar--project-for-personality "darwin"))))
+(ert-deftest test-pers-project-for-personality-map-override ()
+  "iar--project-for-personality should honor the explicit map override.
+bessie maps to the moto project via iar-personality-project-map
+(personality name differs from project name)."
+  (should (string= "moto" (iar--project-for-personality "bessie"))))
 
 (provide 'test-personality-loader)
-;;; test-personality-loader.el ends here
 ;;; --- Global-default agent-name contract (cycle 42) ---
 
 ;; THE CONTRACT: after iar--setup-assembled-buffer (or the delegate
@@ -203,3 +205,4 @@ after setup -- the async-sentinel context."
 wholesale rewrite dropped the defvar; kill-emacs usage logging
 referenced it void in processes that never called usage-reset)."
   (should (boundp 'iar--usage-start-time)))
+;;; test-personality-loader.el ends here
