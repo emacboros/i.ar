@@ -69,7 +69,7 @@ Before writing, checks if the log exceeds `iar-audit-log-max-size'
 and rotates it if so.  This prevents unbounded growth of the audit log."
   (condition-case err
       (let ((timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
-            (agent (iar--get-agent-name))
+            (agent (or (iar--get-agent-name) "unknown"))
             (safe-detail (iar--audit-sanitize-detail detail)))
         ;; Rotate the log if it has grown too large.
         (iar--audit-maybe-rotate)
@@ -109,11 +109,70 @@ or -1 if the command was killed due to timeout."
     (iar--audit-log "execute_code_local"
                          (format "exit=%d cmd=%s" exit-code truncated-cmd))))
 
-(provide 'iar-audit-log)
+(defun iar--audit-log-agent-name ()
+  "Best-effort agent-name capture for the tool-call bridge.
+Returns the agent name visible in the CURRENT buffer's dynamic
+context (the bridge runs inside `with-current-buffer' on the
+conversation buffer in gptel--handle-tool-use), or \"unknown\".
+Never signals."
+  (condition-case nil
+      (or (iar--get-agent-name) "unknown")
+    (error "unknown")))
 
-;;; ---------------------------------------------------------
-;;; Setup
-;;; ---------------------------------------------------------
+(defun iar--audit-log-tool-call-with-agent (tool-name args result agent)
+  "Write the audit entry for a tool call with AGENT pre-captured.
+Same detail policy as `iar--audit-log-tool-call' but takes the
+agent name as an argument instead of resolving it (which fails in
+async sentinel contexts)."
+  (let* ((status (if (and (stringp result)
+                          (string-prefix-p "Error:" result))
+                     "error" "success"))
+         (detail
+          (concat (format "name=%s status=%s result_len=%d"
+                          (or tool-name "nil") status
+                          (length (or result "")))
+                  (pcase tool-name
+                    ((or "write_file" "append_file")
+                     (when-let* ((fp (plist-get args :filepath)))
+                       (format " path=%s" fp)))
+                    ((or "execute_code_local" "execute_code_remote")
+                     (when-let* ((cmd (plist-get args :command)))
+                       (format " cmd=%s"
+                               (if (> (length cmd) 200)
+                                   (concat (substring cmd 0 197) "...")
+                                 cmd))))
+                    ("git_commit"
+                     (format " repo=%s msg=%s"
+                             (or (plist-get args :repo_path) "?")
+                             (let ((m (or (plist-get args :message) "")))
+                               (if (> (length m) 80)
+                                   (concat (substring m 0 77) "...")
+                                 m))))
+                    (_ "")))))
+    (iar--audit-log-as agent "tool_call" detail)))
+
+(defun iar--audit-log-as (agent tool detail)
+  "Append an audit entry as AGENT for TOOL with DETAIL.
+Like `iar--audit-log' but the agent name is supplied by the caller
+(pre-captured in the conversation buffer's dynamic context by the
+tool-call bridge). Falls back to `iar--audit-log' resolution if
+AGENT is nil. Never signals."
+  (if agent
+      (condition-case err
+          (let ((timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
+                (safe-detail (iar--audit-sanitize-detail detail)))
+            (iar--audit-maybe-rotate)
+            (let ((log-dir (file-name-directory iar--audit-log-path)))
+              (unless (file-exists-p log-dir)
+                (make-directory log-dir t)))
+            (let ((coding-system-for-write 'utf-8-unix))
+              (write-region (format "[%s] %s | %s | %s\n"
+                                    timestamp agent tool safe-detail)
+                            nil iar--audit-log-path t 'silent)))
+        (error
+         (message "Warning: audit log write failed: %s"
+                  (error-message-string err))))
+    (iar--audit-log tool detail)))
 
 (defun iar--audit-log-setup ()
   "Create the audit log directory at load time.
@@ -129,3 +188,4 @@ handles errors gracefully."
               (error-message-string err)))))
 
 (iar--audit-log-setup)
+(provide 'iar-audit-log)
