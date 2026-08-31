@@ -23,9 +23,10 @@
       (should (string= "global-agent" (iar--get-agent-name))))))
 
 (ert-deftest test-utils-get-agent-name-nil-both ()
-  "Should return nil when neither local nor global is set."
+  "Should return nil when name, file, and globals are all unset."
   (with-temp-buffer
-    (let ((iar--current-agent-name nil))
+    (let ((iar--current-agent-name nil)
+          (iar--current-agent-file nil))
       (should (null (iar--get-agent-name))))))
 
 (ert-deftest test-utils-get-agent-name-from-file ()
