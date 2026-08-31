@@ -44,7 +44,12 @@ on local state.
 Phase 1 -- Orient (HEALTH PULSE, background check only).
 Run the pulse in one batched execute_code_local (timeout
 wrappers on every ssh, UserKnownHostsFile=/tmp/aria_known_hosts
-because known_hosts is a read-only mount here):
+because known_hosts is a read-only mount here). Self-healing
+re-pin: /tmp is fresh per container, so FIRST reseed the host
+key with `ssh-keyscan -T 5 10.66.0.5 > /tmp/aria_known_hosts`
+(the keyscan output IS the known_hosts format; sophon's key was
+verified out-of-band 2026-08-31 -- if keyscan fails, skip the
+ssh checks and note it):
 - systemctl is-active aria-cycle.timer agora-agent frigate ollama
   (on sophon, via ssh)
 - root-owned file tripwire ON SOPHON HOST (the container's view
