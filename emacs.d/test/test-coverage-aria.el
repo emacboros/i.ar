@@ -438,8 +438,13 @@ then runs the post-tool-call bridge with the truncated result."
       (should (= calls 2)))))
 
 (ert-deftest test-tool-call-bridge-pre-tool-call-nil-hooks ()
-  "No hooks registered: bridge returns nil (allow)."
-  (should (null (iar--bridge-pre-tool-call '(:tool "x")))))
+  "No hooks registered: bridge returns nil (allow).
+2026-09-01: the tool guard now registers GLOBALLY on
+iar-pre-tool-call-functions (interactive sessions get unknown-tool
+interception too -- the 00:35 AR hang). The test must nil the hook
+list to test the empty-hook path."
+  (let ((iar-pre-tool-call-functions nil))
+    (should (null (iar--bridge-pre-tool-call '(:tool "x"))))))
 
 (ert-deftest test-tool-call-bridge-pre-tool-call-first-block-wins ()
   "First hook returning (:block . msg) stops the chain."

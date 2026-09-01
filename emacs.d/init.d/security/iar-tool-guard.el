@@ -49,3 +49,18 @@ hallucinated tool names."
                     name)))))
 
 (provide 'iar-tool-guard)
+;;; --- Setup ---
+;; 2026-09-01: made GLOBAL. The interactive hang (00:35-00:41 AR,
+;; execute_local_test_placeholder): the built-in unknown-tool branch
+;; in gptel--handle-tool-use did not fire in the live session (no
+;; audit entry, no error injected, FSM stalled silently). The TPRE
+;; :block path (gptel.el gptel--handle-pre-tool -> gptel--process-
+;; tool-call directly) is the path that provably works in
+;; isolation. Cycles and delegates already had this; interactive
+;; sessions now do too. One guard, all modes.
+(defun iar--tool-guard-setup ()
+  "Register the unknown-tool blocker globally on the pre-tool hook."
+  (remove-hook 'iar-pre-tool-call-functions #'iar--block-unknown-tools)
+  (add-hook 'iar-pre-tool-call-functions #'iar--block-unknown-tools))
+
+(iar--tool-guard-setup)
