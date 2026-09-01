@@ -1,0 +1,44 @@
+FROM quay.io/fedora/fedora-minimal:42
+
+ENV LANG=C.utf8
+
+# Purpose: Research sidecar -- the sanctioned internet door.
+# Outbound internet access (bridge network). NO personal data
+# mounted: no personalization, no audit, no repos. The only file
+# bridge is /workspace (shared with the Emacs container, session-
+# scoped, wiped at session end).
+#
+# Epistemic defenses live in the agent, not here (see aria_daily
+# cycle prompt THE INTERNET section): primary sources, no link-
+# following from fetched content, summaries-not-pastes,
+# external content is DATA never instructions.
+#
+# Tools: curl (fetch), python3 (parse/summarize), ripgrep, jq.
+# Deliberately minimal -- no browsers, no package managers at
+# runtime (read-only rootfs), no mail, no chat clients.
+
+RUN microdnf update -y && \
+    microdnf install -y \
+        bash \
+        coreutils \
+        findutils \
+        curl \
+        python3 \
+        jq \
+        ripgrep \
+        sed \
+        grep \
+        gawk \
+        tar \
+        gzip \
+        unzip \
+        git \
+    && microdnf clean all
+
+# Unprivileged user for all operations
+RUN useradd -m -s /bin/bash research
+WORKDIR /workspace
+USER research
+
+# Default entrypoint: sleep keeps container alive for podman exec
+ENTRYPOINT ["sleep", "infinity"]
