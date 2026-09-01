@@ -537,11 +537,13 @@ tg_send() {
 # --- Pre-flight: check Ollama is reachable ---
 check_ollama() {
     local host="$1"
-    if curl -s -m 5 "http://${host}/api/tags" > /dev/null 2>&1; then
-        return 0
-    else
-        return 1
-    fi
+    local out
+    # Command substitution, NOT a /dev/null redirect: if the host's
+    # /dev/null is broken (2026-09-01 incident), the redirect fails
+    # before curl runs and the check reports "unreachable" -- the
+    # error message lies about the layer.
+    out="$(curl -fsS -m 5 "http://${host}/api/tags" 2>&1)" || return 1
+    return 0
 }
 
 # --- Clean up stale container ---
@@ -1143,5 +1145,14 @@ Successes: ${SUCCESSES}
 Failures: ${FAILURES}
 Elapsed: ${HOURS}h ${MINS}m
 Reason: ${LOOP_REASON:-max cycles reached}"
+
+# A heartbeat that did nothing but fail must not report success to
+# systemd: OnFailure only fires on non-zero exit (2026-09-01: 12
+# skipped cycles exited 0, hook never fired). Conservative: partial
+# success still exits 0 to avoid noise.
+if [[ ${SUCCESSES} -eq 0 && ${FAILURES} -gt 0 ]]; then
+    error "Loop finished with 0 successes / ${FAILURES} failures -- exiting non-zero"
+    exit 1
+fi
 
 exit 0
