@@ -105,13 +105,14 @@
     (should (string-match-p "Darwin" gptel-system-prompt))))
 
 (ert-deftest test-pers-setup-sets-containers ()
-  "iar--setup-assembled-buffer should set iar--current-containers."
+  "iar--setup-assembled-buffer should set iar--current-containers.
+2026-09-01: the iar project gained #+CONTAINERS: research (the
+sanctioned internet sidecar). The container list is now (research)."
   (with-temp-buffer
     (text-mode)
     (let ((result (iar--setup-assembled-buffer "interactive" "mirror" "iar")))
       (should (plistp result))
-      ;; iar project has no containers, so should be nil
-      (should (null iar--current-containers)))))
+      (should (equal '("research") iar--current-containers)))))
 
 (ert-deftest test-pers-setup-sets-mode ()
   "iar--setup-assembled-buffer should set iar--current-mode."
