@@ -1,0 +1,16 @@
+LOOP CHAIN DETECTED: You have called %s %d times in a row, each with
+different arguments. This is a same-tool chain (an iterator pattern).
+Repeating the same tool with only the counter changed is a loop: it
+burns tokens without converging.
+
+Stop and reconsider your approach:
+1. If you are enumerating (log windows, line ranges, list indexes),
+   STOP. Ask whether the enumeration actually answers your question.
+   Usually a single targeted command (grep, tail, a query with a
+   filter) replaces the whole walk.
+2. If the tool result is not what you expected, the tool is working
+   correctly -- your approach is wrong.
+3. Switch to a different tool or a different approach, or state what
+   you are trying to accomplish and take the direct path to it.
+
+DO NOT continue calling %s in a chain. Change approach.

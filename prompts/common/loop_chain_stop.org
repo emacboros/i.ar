@@ -1,0 +1,4 @@
+CHAIN HARD STOP: agent called %s %d times in a row (same tool,
+different arguments each time -- an iterator pattern).
+A chain warning was already issued and ignored. The pattern burns
+tokens without converging. Stopping to prevent resource waste.
