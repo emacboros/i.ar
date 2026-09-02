@@ -143,6 +143,43 @@ not expanded -- base_context.org is a leaf file with no includes."
   (let ((path (expand-file-name "agents.d/base_context.org" user-emacs-directory)))
     (or (iar--read-file-string path) "")))
 
+;;; --- Digest pressure guard (2026-09-02, aria cycle 137) ---
+
+(defvar iar-digest-warn-chars 12000
+  "DIGEST.md size (chars) above which assembly logs a warning.
+DIGEST.md is injected in full on EVERY request of every cycle
+(aria-cycle and interactive), so regrowth multiplies across the
+whole round-trip budget. 12k matches the regrowth-watch threshold
+in the roadmap; the diet law lives in the digest's first section.")
+
+(defvar iar-digest-hard-cap-chars 16000
+  "DIGEST.md size (chars) above which injection truncates to the
+tail. Emergency pressure valve, not a license: a digest that hits
+this is a diet failure. Keeps the TAIL (recent world-state), drops
+the HEAD (law + identity), and prepends a marker so the agent knows
+the cut happened and diets the file at the next opportunity.")
+
+(defun iar--read-digest-guarded (project-name personality-name)
+  "Read DIGEST.md for PERSONALITY-NAME with the pressure guard.
+Warns (message) when over `iar-digest-warn-chars'; truncates to the
+last `iar-digest-hard-cap-chars' chars with an explanatory marker
+when over the hard cap. Returns the digest string (possibly empty)."
+  (let* ((digest (iar--read-memory-file-full project-name personality-name "DIGEST.md"))
+         (len (length digest)))
+    (when (and (> len 0) (> len iar-digest-warn-chars)
+               (<= len iar-digest-hard-cap-chars))
+      (message "[assembly] DIGEST [%s/%s] %d chars (warn at %d) -- injected full on every request; diet it"
+               project-name personality-name len iar-digest-warn-chars))
+    (when (> len iar-digest-hard-cap-chars)
+      (message "[assembly] DIGEST [%s/%s] HARD CAP: %d > %d chars, truncating to tail"
+               project-name personality-name len iar-digest-hard-cap-chars)
+      (setq digest
+            (concat
+             (format "[DIGEST TRUNCATED by hard cap: dropped %d chars from the head. The injection-math law lives at the head you cannot see: operational state belongs in ROADMAP.org, history in logs/journal/knowledge, world-state is ONE replaceable dated block. DIET THIS FILE at the next opportunity.]\n"
+                     (- len iar-digest-hard-cap-chars))
+             (substring digest (- len iar-digest-hard-cap-chars)))))
+    digest))
+
 ;;; --- Memory injection (mode-based) ---
 
 (defun iar--read-memory-file (project-name personality-name filename)
@@ -204,7 +241,7 @@ else. LOGS.md/JOURNAL.org are the recent pages behind it, truncated
 to `iar-personal-file-max-lines' to bound context growth."
   (pcase mode
     ((or 'interactive 'aria-cycle)
-     (let* ((digest (iar--read-memory-file-full project-name personality-name "DIGEST.md"))
+     (let* ((digest (iar--read-digest-guarded project-name personality-name))
             (logs (iar--read-memory-file project-name personality-name "LOGS.md"))
             (journal (iar--read-memory-file project-name personality-name "JOURNAL.org"))
             (parts nil))
