@@ -122,6 +122,15 @@
 ;; the session silently. Watchdog makes the invisible failure visible.
 (load (expand-file-name "iar-request-watchdog.el" init-tool-call-dir))
 
+;; Text-mode tool call detector -- the channel-switch witness (Aevum
+;; finding, 2026-09-01): a model can emit tool calls as fenced markdown
+;; prose instead of native tool_calls; gptel parses tools=0 and the tick
+;; looks like a successful chat tick while nothing executed. This module
+;; detects the pattern, logs it to REQUESTS.log, and fires
+;; iar-text-mode-detected-functions. Loads after iar-request-log
+;; (uses iar--reqlog-append).
+(load (expand-file-name "iar-text-mode-detector.el" init-tool-call-dir))
+
 ;; Prompt loader -- load prompt templates from common/ directory.
 ;; Must load before mount-awareness, delegate, memory-tools, and loop-guard
 ;; which call iar--load-prompt at load time.

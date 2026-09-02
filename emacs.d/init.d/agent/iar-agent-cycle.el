@@ -181,8 +181,83 @@ Signals an error if the personality is not found."
         :turn-count 0 :tool-call-count 0 :completed nil :exit-code 0))
 
 (defun iar--cycle-tool-call-tracker (_tool-name _tool-result)
-  "Track tool calls in the cycle. Increments tool-call-count."
-  (cl-incf (plist-get iar--cycle-state :tool-call-count)))
+  "Track tool calls in the cycle. Increments tool-call-count.
+GLOBAL hook (registered on the default value of
+`iar-post-tool-call-functions' at cycle start): the advice that
+fires this runs from async sentinels where current-buffer is NOT
+the cycle buffer -- a buffer-local hook never fires there (the
+2026-09-02 invisible-cycles finding: 360 calls counted as 13).
+Guarded: no active state -> silent no-op."
+  (when iar--cycle-state
+    (cl-incf (plist-get iar--cycle-state :tool-call-count))))
+
+(defvar iar-cycle-tool-call-cap 60
+  "Maximum tool calls per cycle before the cap hook ends it.
+A tool-call chain never reaches DONE (gptel FSM: TPRE->TOOL->TRET
+loops without a model stop), so max-turns never fires mid-chain --
+only this cap and the wall timeout bound a chain. 60 calls in one
+cycle is far above any legitimate pattern (the worst observed
+legitimate cycle used ~40) and far below the 540-call runaway.")
+
+(defun iar--cycle-tool-call-cap (info)
+  "Pre-tool-call hook: end the cycle when the tool-call cap is hit.
+INFO is the gptel pre-tool-call plist (:name :args :buffer ...).
+Returns (:block msg) on the call that exceeds the cap AND marks the
+cycle completed with exit code 1, so the batch event loop exits
+instead of continuing to burn tokens. No active state -> nil
+(interactive sessions are not capped by the cycle machinery)."
+  (when iar--cycle-state
+    (let ((count (1+ (plist-get iar--cycle-state :tool-call-count))))
+      (when (> count iar-cycle-tool-call-cap)
+        (let ((agent (plist-get iar--cycle-state :agent)))
+          (message "[%s] Tool-call cap (%d) reached -- ending cycle"
+                   agent iar-cycle-tool-call-cap)
+          (setf (plist-get iar--cycle-state :completed) t)
+          (setf (plist-get iar--cycle-state :exit-code) 1)
+          (list :block
+                (format "Tool-call cap (%d) reached for this cycle. The cycle is ending -- finish with a CYCLE_COMPLETE summary now. Do not call more tools."
+                        iar-cycle-tool-call-cap)))))))
+
+(defun iar--cycle-tombstone (agent-name timeout-secs)
+  "Write a [TIMED OUT] tombstone to AGENT-NAME's cycle.log.
+Called from the timeout path of `iar-run-cycle' BEFORE kill-emacs:
+the state exists at kill time and was previously never written --
+four cycles on 2026-09-02 burned ~150M tokens with zero record.
+Records turns, tool calls, token totals, and the last 200 chars of
+the cycle buffer (the last model activity). Never signals: this
+runs at kill time, an error would mask the exit code."
+  (condition-case err
+      (when iar--cycle-state
+        (let* ((turns (plist-get iar--cycle-state :turn-count))
+               (tools (plist-get iar--cycle-state :tool-call-count))
+               (buf (plist-get iar--cycle-state :buffer))
+               (last-activity
+                (when (buffer-live-p buf)
+                  (with-current-buffer buf
+                    (buffer-substring-no-properties
+                     (max (point-min) (- (point-max) 200))
+                     (point-max)))))
+               (totals (iar--usage-totals))
+               (project (iar--current-project-name))
+               (log-path (expand-file-name
+                          (format "%s/%s/cycle.log" project agent-name)
+                          (expand-file-name iar-audit-path iar-personalization-path))))
+          (make-directory (file-name-directory log-path) t)
+          (with-temp-buffer
+            (insert (format-time-string "[%Y-%m-%d %H:%M:%S] ") "[TIMED OUT]"
+                    (format " after %ds. Turns: %d, Tool calls: %d" timeout-secs turns tools)
+                    (format "\nTokens: %d in / %d out / %d total / %d requests"
+                            (plist-get totals :input-tokens)
+                            (plist-get totals :output-tokens)
+                            (plist-get totals :total-tokens)
+                            (plist-get totals :requests))
+                    (when last-activity
+                      (format "\nLast activity: %.200s" last-activity))
+                    "\n\n")
+            (let ((coding-system-for-write 'utf-8))
+              (append-to-file (point-min) (point-max) log-path)))))
+    (error
+     (message "[cycle] Tombstone write failed: %s" (error-message-string err)))))
 
 (defvar iar--cycle-error-strikes 0
   "Consecutive failed-request strikes in the current cycle.
@@ -338,9 +413,14 @@ Tools are gated by the project's #+TOOLS metadata."
       ;; Self-modification: buffer-local so delegates inherit global nil
       (setq-local iar-guard-allow-self-modification self-mod)
 
-      ;; Install hooks (named functions, idempotent per rule 57)
-      (remove-hook 'iar-post-tool-call-functions #'iar--cycle-tool-call-tracker t)
-      (add-hook 'iar-post-tool-call-functions #'iar--cycle-tool-call-tracker nil t)
+      ;; Install hooks (named functions, idempotent per rule 57).
+      ;; Tracker + cap are registered GLOBALLY at module load (bottom of
+      ;; this file): state-guarded no-ops outside cycles, and global
+      ;; registration is what makes them fire from async sentinels where
+      ;; current-buffer is NOT cycle-buf (the 2026-09-02 invisible-cycles
+      ;; finding: buffer-local registration counted 360 calls as 13).
+      ;; Unknown-tools + post-response handler stay buffer-local: they
+      ;; are only meaningful for this cycle's buffer.
       (remove-hook 'iar-pre-tool-call-functions #'iar--block-unknown-tools t)
       (add-hook 'iar-pre-tool-call-functions #'iar--block-unknown-tools nil t)
       (remove-hook 'iar-post-response-functions #'iar--cycle-post-response-handler t)
@@ -382,11 +462,26 @@ Tools are gated by the project's #+TOOLS metadata."
               (message "[%s] Cycle complete. Turns: %d, Tool calls: %d, Exit: %d%s"
                        agent-name turn-count tool-call-count exit-code
                        (iar--cycle-token-summary))
+            ;; Tombstone FIRST: write what died to the journal before
+            ;; the state is cleared (fix C, invisible-cycles 2026-09-02)
+            (iar--cycle-tombstone agent-name timeout)
             (message "[%s] Cycle timed out after %ds. Turns: %d, Tool calls: %d%s"
                      agent-name timeout turn-count tool-call-count
                      (iar--cycle-token-summary)))
           (setq iar--cycle-state nil)
           (kill-emacs exit-code))))))
+
+;;; --- Global fence registration ---
+;; The tracker and cap hooks are STATE-GUARDED (no-ops when
+;; iar--cycle-state is nil), so they are safe to register globally at
+;; load time. Registering here (not per-cycle in iar-run-cycle) means
+;; the hooks fire from async sentinels regardless of current-buffer --
+;; the 2026-09-02 invisible-cycles finding showed buffer-local
+;; registration made the counter context-blind (360 calls counted as 13).
+(remove-hook 'iar-post-tool-call-functions #'iar--cycle-tool-call-tracker)
+(add-hook 'iar-post-tool-call-functions #'iar--cycle-tool-call-tracker)
+(remove-hook 'iar-pre-tool-call-functions #'iar--cycle-tool-call-cap)
+(add-hook 'iar-pre-tool-call-functions #'iar--cycle-tool-call-cap)
 
 (provide 'iar-agent-cycle)
 ;;; ---------------------------------------------------------

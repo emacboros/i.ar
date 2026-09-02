@@ -289,13 +289,21 @@ still readable."
           (when info
             (let ((tool-use (plist-get info :tool-use))
                   (errdata (plist-get info :error))
-                  (status (plist-get info :status)))
+                  (status (plist-get info :status))
+                  ;; Terminal done_reason (stop/length/load/error).
+                  ;; Captured by the fork's streaming parser since
+                  ;; 970da80; length = truncated generation (num_predict
+                  ;; hit or watchdog kill). Without this, a truncated
+                  ;; response is indistinguishable from a complete one
+                  ;; -- the Aevum lesson (run 1, ticks 37+).
+                  (stop (plist-get info :stop-reason)))
               (iar--reqlog-append
-               "REQ %d PARSE status=%s tools=%d specs=%s error=%s"
+               "REQ %d PARSE status=%s tools=%d specs=%s error=%s stop=%s"
                id (or status "?")
                (if (listp tool-use) (length tool-use) 0)
                (iar--reqlog-tool-specs tool-use)
-               (or errdata "nil"))))))
+               (or errdata "nil")
+               (or stop "nil"))))))
     (error
      (message "[request-log] dump failed: %s"
               (error-message-string err)))))
