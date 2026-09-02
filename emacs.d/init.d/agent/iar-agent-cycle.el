@@ -39,7 +39,8 @@
     ("gardener" . "monitoring")
     ("librarian" . "documentation_sync")
     ("test-continuous" . "test_continuous")
-    ("aria" . "aria_daily"))
+    ("aria" . "aria_daily")
+    ("continuo" . "continuo_daily"))
   "Mapping from personality names to default cycle files.
 Used when :cycle is not explicitly provided to iar-run-cycle.")
 

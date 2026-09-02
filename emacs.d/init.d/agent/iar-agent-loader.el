@@ -79,6 +79,7 @@ Set buffer-local by `iar-load-agent'. Kept for backward compat.")
   '(("mirror" . "interactive")
     ("bessie" . "interactive")
     ("aria" . "aria-cycle") ; cycle runner only; interactive sessions hardcode interactive (C-c a)
+    ("continuo" . "aria-cycle") ; second cycle agent (sibling); same runner, rotated by timer
     ("darwin" . "autonomous")
     ("gardener" . "continuous")
     ("librarian" . "continuous")
