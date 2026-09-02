@@ -160,6 +160,9 @@
 ;; Loop guard — detect and break repetitive tool call loops
 (load (expand-file-name "iar-loop-guard.el" init-security-dir))
 
+;; Loop guard chain — same-tool chains with varying args (iterator patterns)
+(load (expand-file-name "iar-loop-guard-chain.el" init-security-dir))
+
 ;; Tool guard — block unknown/hallucinated tool names
 (load (expand-file-name "iar-tool-guard.el" init-security-dir))
 
