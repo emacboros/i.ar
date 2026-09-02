@@ -10,6 +10,11 @@
 ;;   counter lives in iar--cycle-state (global special var), and a
 ;;   pre-tool-call hook enforces the cap.
 ;;
+;; Fix D: context circuit breaker (2026-09-02, continuo): when the cycle
+;; buffer exceeds 800k chars (~200k tokens), the breaker blocks tool
+;; calls -- first fire grants one grace round-trip to write a summary,
+;; second fire ends the cycle.
+;;
 ;; Fix C: timeout tombstone. When the cycle times out, the state that
 ;;   exists at kill time (turns, tool calls, tokens, last activity)
 ;;   is written to the journal before kill-emacs, instead of dying
@@ -208,5 +213,85 @@ hook, not buffer-local in cycle-buf. Regression for the context-
 blind counter."
   (should (memq #'iar--cycle-tool-call-tracker iar-post-tool-call-functions)))
 
+;;; --- Fix D: context circuit breaker ---
+
+(ert-deftest test-fence-breaker-arms-on-first-fire ()
+  "First fire over the context limit blocks the call and arms the
+breaker (:breaker-fired) -- the model gets one grace round-trip to
+write its summary as text. Regression for the 1082-msg runaway that
+re-sent a ~254k-token context 100+ times."
+  (let ((buf (get-buffer-create "*test-fence-breaker1*")))
+    (unwind-protect
+        (let ((iar-cycle-context-limit-chars 100)
+              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+          (with-current-buffer buf (insert (make-string 200 ?x)))
+          (let ((result (iar--cycle-context-breaker
+                         (list :name "execute_code_local" :args '(:command "ls")))))
+            (should result)
+            (should (plist-get result :block))
+            (should (string-match-p "circuit breaker" (plist-get result :block)))
+            ;; NOT completed yet -- grace round-trip granted
+            (should-not (plist-get iar--cycle-state :completed))
+            (should (plist-get iar--cycle-state :breaker-fired))))
+      (kill-buffer buf))))
+
+(ert-deftest test-fence-breaker-ends-cycle-on-second-fire ()
+  "After the grace round-trip, any further tool call ends the cycle
+(completed, exit 1) -- the model had its chance to write the summary."
+  (let ((buf (get-buffer-create "*test-fence-breaker2*")))
+    (unwind-protect
+        (let ((iar-cycle-context-limit-chars 100)
+              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+          (with-current-buffer buf (insert (make-string 200 ?x)))
+          ;; First fire: arms the breaker
+          (should (iar--cycle-context-breaker
+                   (list :name "execute_code_local" :args '(:command "ls"))))
+          ;; Second fire: ends the cycle
+          (let ((result (iar--cycle-context-breaker
+                         (list :name "execute_code_local" :args '(:command "pwd")))))
+            (should result)
+            (should (plist-get result :block))
+            (should (plist-get iar--cycle-state :completed))
+            (should (= 1 (plist-get iar--cycle-state :exit-code)))))
+      (kill-buffer buf))))
+
+(ert-deftest test-fence-breaker-allows-under-limit ()
+  "Under the limit the breaker is invisible."
+  (let ((buf (get-buffer-create "*test-fence-breaker3*")))
+    (unwind-protect
+        (let ((iar-cycle-context-limit-chars 100000)
+              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+          (with-current-buffer buf (insert (make-string 200 ?x)))
+          (should-not (iar--cycle-context-breaker
+                       (list :name "execute_code_local" :args '(:command "ls"))))
+          (should-not (plist-get iar--cycle-state :breaker-fired)))
+      (kill-buffer buf))))
+
+(ert-deftest test-fence-breaker-no-state-passes ()
+  "No active cycle state (interactive session) -> nil, no signal."
+  (let ((iar--cycle-state nil))
+    (should-not (iar--cycle-context-breaker
+                 (list :name "execute_code_local" :args '(:command "ls"))))))
+
+(ert-deftest test-fence-breaker-dead-buffer-treats-as-empty ()
+  "A dead cycle buffer must not signal -- treat size as 0 (allow)."
+  (let ((buf (get-buffer-create "*test-fence-breaker4*")))
+    (unwind-protect
+        (let ((iar-cycle-context-limit-chars 100)
+              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+          (kill-buffer buf)
+          (should-not (iar--cycle-context-breaker
+                       (list :name "execute_code_local" :args '(:command "ls")))))
+      (when (buffer-live-p buf) (kill-buffer buf)))))
+
+(ert-deftest test-fence-breaker-default-limit-is-800k ()
+  "Default limit is 800k chars (~200k tokens at 4 chars/token)."
+  (should (= 800000 iar-cycle-context-limit-chars)))
+
+(ert-deftest test-fence-breaker-hook-is-registered ()
+  "The breaker must be on the GLOBAL iar-pre-tool-call-functions
+hook (same reasoning as the cap: async sentinels run outside the
+cycle buffer)."
+  (should (memq #'iar--cycle-context-breaker iar-pre-tool-call-functions)))
 (provide 'test-invisible-cycle-fences)
 ;;; test-invisible-cycle-fences.el ends here
