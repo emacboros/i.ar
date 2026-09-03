@@ -30,6 +30,7 @@
 ;;
 ;; If gptel's internals change, only this file needs updating.
 
+(require 'iar-utf8-scrub)
 (require 'gptel)
 (require 'cl-lib)
 (require 'subr-x)
@@ -143,11 +144,18 @@ Returns RESULT unchanged if under limit or if truncation is disabled."
 
 (defun iar--truncate-tool-result-advice (orig-fun fsm tool-spec tool-call result)
   "Around advice on `gptel--process-tool-call'.
-Truncates RESULT before it enters the conversation buffer.
+Scrubs raw bytes from RESULT (utf-8), then truncates it before it
+enters the conversation buffer. The scrub is the json-value-p
+sentinel-crash fix (2026-09-02): raw binary bytes in a tool result
+(restic lock blobs via ssh) became raw-eight-bit chars in the
+conversation, and json-serialize rejected them on the NEXT request,
+killing batch Emacs with exit 255. Scrub happens before truncation
+so both paths see clean text.
 Also runs post-tool-call audit logging after the original function."
   (let* ((tool-name (when tool-spec (gptel-tool-name tool-spec)))
          (args (when (plistp tool-call) (plist-get tool-call :args)))
-         (truncated (iar--truncate-tool-result result))
+         (truncated (iar--truncate-tool-result
+                     (iar--utf8-scrub result)))
          (ret (funcall orig-fun fsm tool-spec tool-call truncated)))
     ;; Post-tool-call: audit log (with args detail) + i.ar hooks
     (iar--bridge-post-tool-call tool-name truncated args)

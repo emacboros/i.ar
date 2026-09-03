@@ -163,6 +163,10 @@
 ;; Tool guard — block unknown/hallucinated tool names
 (load (expand-file-name "iar-tool-guard.el" init-security-dir))
 
+;; UTF-8 scrub — replace raw bytes in tool results before they enter
+;; the conversation (json-value-p sentinel crash, 2026-09-02)
+(load (expand-file-name "iar-utf8-scrub.el" init-security-dir))
+
 ;; ──────────────────────────────────────────────────────────
 ;; Tools modules
 ;; ──────────────────────────────────────────────────────────
