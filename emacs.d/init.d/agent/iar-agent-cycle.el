@@ -268,8 +268,9 @@ sessions are not capped)."
                              agent blocks)
                     (setf (plist-get state :completed) t)
                     (setf (plist-get state :exit-code) 1)
+                    (iar--fence-state-writeback state)
                     (list :block
-                          (format "Tool-call hard cap reached (%d ignored blocks). The cycle is ending NOW. Do not call more tools."
+                          (format "Tool-call hard cap reached (%d ignored blocks). The run is ending NOW. Do not call more tools."
                                   blocks)))
                 ;; Soft block: demand the landing, allow memory tools.
                 (message "[%s] Tool-call soft cap (%d) -- blocking tool, demanding summary (block %d/%d)"
@@ -292,9 +293,10 @@ further tool call ends the cycle.")
   "Write the mutated fence STATE back to its owning global.
 The fences alias the active state as (or iar--cycle-state
 iar--one-shot-state); setf/plist-put through the alias loses the
-write when the key is absent from the state plist: plist-put conses
-a new head and only the local alias moves, the global keeps the old
-list. The breaker tests caught this 2026-09-03: :breaker-fired was
+write when the key is absent from the state plist: the lossy op is
+setf-on-absent-key-through-alias (verified empirically on Emacs
+30.2: the alias rebinds to a fresh list, the owning global keeps
+the old one; present-key writes DO propagate). The breaker tests caught this 2026-09-03: :breaker-fired was
 never pre-initialized, so the armed flag vanished between calls and
 the breaker re-armed forever, never ending the run."
   (cond (iar--cycle-state (setq iar--cycle-state state))
@@ -875,10 +877,14 @@ Tools are gated by the project's #+TOOLS metadata."
           (let ((summary-prompt
                  (format "Time limit reached. Stop all tool calls immediately. Summarize all findings so far and wrap your summary in %s and %s markers. Include all vulnerabilities discovered, even partial ones."
                          iar-one-shot-response-open iar-one-shot-response-close)))
-            (with-current-buffer os-buf
-              (goto-char (point-max))
-              (insert summary-prompt)
-              (gptel-send)))
+            (condition-case err
+                (with-current-buffer os-buf
+                  (goto-char (point-max))
+                  (insert summary-prompt)
+                  (gptel-send))
+              (error
+               (message "[%s] One-shot summary request failed: %s" agent-name
+                        (error-message-string err)))))
           ;; Wait up to 120s for the summary response
           (let ((summary-deadline (time-add nil (seconds-to-time 120))))
             (while (and (not (plist-get iar--one-shot-state :completed))

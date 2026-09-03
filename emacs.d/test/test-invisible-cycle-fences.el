@@ -357,3 +357,31 @@ cycle buffer)."
   (should (memq #'iar--cycle-context-breaker iar-pre-tool-call-functions)))
 (provide 'test-invisible-cycle-fences)
 ;;; test-invisible-cycle-fences.el ends here
+(ert-deftest test-fence-writeback-pins-global-state ()
+  "Pin iar--fence-state-writeback: mutation through the (or cycle
+one-shot) alias must reach the OWNING global, not just the local
+alias. Regression for the 2026-09-03 breaker bug: on Emacs 30.2
+plist-put is destructive-append, so breaker tests passed even with
+the writeback removed -- the fix was unpinned. This test binds the
+globals to nil and a MINIMAL state (absent keys) so the writeback
+is the only path that can land the write."
+  (let ((iar--cycle-state nil)
+        (iar--one-shot-state nil)
+        (state (list :agent "test")))
+    ;; Cycle path: global nil, state minimal -> only writeback lands it
+    (setq iar--cycle-state state)
+    (setq state (plist-put state :breaker-fired t))
+    (iar--fence-state-writeback state)
+    (should (plist-get iar--cycle-state :breaker-fired))
+    ;; One-shot path
+    (setq iar--cycle-state nil)
+    (setq iar--one-shot-state (list :agent "test"))
+    (setq state (plist-put state :breaker-fired nil))
+    (iar--fence-state-writeback state)
+    (should (eq (plist-get iar--one-shot-state :breaker-fired) nil))
+    ;; Precedence: cycle state wins when both bound
+    (setq iar--cycle-state (list :agent "c"))
+    (setq iar--one-shot-state (list :agent "o"))
+    (iar--fence-state-writeback (plist-put (list :agent "x") :completed t))
+    (should (plist-get iar--cycle-state :completed))
+    (should-not (plist-get iar--one-shot-state :completed))))
