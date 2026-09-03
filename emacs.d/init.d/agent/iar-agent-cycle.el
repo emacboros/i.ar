@@ -186,7 +186,7 @@ Signals an error if the personality is not found."
   "Create a fresh cycle state plist."
   (list :agent agent :buffer buf :continue continue :max-turns max-turns
         :turn-count 0 :tool-call-count 0 :completed nil :exit-code 0
-        :cap-blocks 0))
+        :cap-blocks 0 :cap-warned nil))
 
 (defun iar--cycle-tool-call-tracker (_tool-name _tool-result)
   "Track tool calls in the cycle. Increments tool-call-count.
@@ -198,6 +198,18 @@ the cycle buffer -- a buffer-local hook never fires there (the
 Guarded: no active state -> silent no-op."
   (when iar--cycle-state
     (cl-incf (plist-get iar--cycle-state :tool-call-count))))
+
+(defvar iar-cycle-tool-call-warn 60
+  "Early-warning threshold for the tool-call cap (census option c,
+aria cycle 137 / continuo cycle 3). At this count the NEXT tool
+call is blocked ONCE with a budget notice -- the call is not lost,
+the model retries it -- and after that warning, calls pass through
+until the soft cap. The warning is the only message the model can
+see in-cycle; without it a cycle discovers the cap only by hitting
+it, and a healthy long cycle dies at the fence it never saw.
+Numbers: healthy cycles run 51-61 calls (cap-60 era census); the
+warn at 60 tells the model it is at the edge while there is still
+room to converge or land.")
 
 (defvar iar-cycle-tool-call-cap 120
   "SOFT cap: tool calls per cycle before tools are blocked.
@@ -243,6 +255,16 @@ cycles, final-response delimiters for one-shots), and MEMORY TOOLS
 git_commit, send_telegram) are still allowed so the model can
 finish its record. After `iar-cycle-tool-call-hard-cap' ignored
 blocks, the run is force-ended (exit 1).
+Before the soft cap, `iar-cycle-tool-call-warn' (default 60) blocks
+ONE non-memory call with a budget notice -- warn-once, the call is
+retried. The warn and cap branches are or-wrapped: the block plist
+must BE the return. (2026-09-03 inert-warn bug: as a when-sequence,
+the warn's :block was discarded by the following cap `when' and the
+warning never reached the model -- a fence that fires into the void
+never fired. `>=' not `=' on the warn count: a memory tool landing
+exactly at the warn count must not skip the warning forever. The
+warn window is [warn, cap]: past the cap the urgent landing message
+wins -- a cycle past 120 must never be told to retry it.)
 Dispatches on the active state: cycle first, then one-shot -- the
 fences are mode-generic; one-shot runs were previously UNPROTECTED
 (2026-09-03 parity fix). No active state -> nil (interactive
@@ -252,6 +274,21 @@ sessions are not capped)."
       (let* ((count (1+ (plist-get state :tool-call-count)))
              (agent (plist-get state :agent))
              (tool-name (plist-get info :name)))
+        (or (when (and (not (member tool-name '("append_file" "write_file" "write_subtask"
+                                                "write_roadmap" "git_commit" "send_telegram")))
+                       (>= count iar-cycle-tool-call-warn)
+                       (<= count iar-cycle-tool-call-cap)
+                       (not (plist-get state :cap-warned)))
+          ;; Budget warning: block ONE call with the notice, then pass
+          ;; through until the soft cap. The call is not lost -- the
+          ;; model retries it after reading the warning.
+          (setf (plist-get state :cap-warned) t)
+          (iar--fence-state-writeback state)
+          (message "[%s] Tool-call budget warning (%d/%d) -- one call blocked with notice"
+                   agent count iar-cycle-tool-call-cap)
+          (list :block
+                (format "Tool-call budget warning: %d of %d tool calls used. You are at the edge of the cap. Batch your remaining work (one command carrying many operations), avoid enumeration walks, and converge this cycle. This call was NOT lost -- retry it. This warning fires once."
+                        count iar-cycle-tool-call-cap)))
         (when (> count iar-cycle-tool-call-cap)
           (if (member tool-name '("append_file" "write_file" "write_subtask"
                                   "write_roadmap" "git_commit" "send_telegram"))
@@ -278,7 +315,7 @@ sessions are not capped)."
                 (list :block
                       (format "Tool-call soft cap (%d) reached. STOP calling tools (except memory/record tools: append_file, write_file, write_subtask, write_roadmap, git_commit, send_telegram -- those still work). %s"
                               iar-cycle-tool-call-cap
-                              (iar--fence-summary-instruction)))))))))))
+                              (iar--fence-summary-instruction))))))))))))
 
 (defvar iar-cycle-context-limit-chars 800000
   "Cycle buffer size (chars) at which the context circuit breaker fires.
@@ -689,6 +726,7 @@ a hardcoded copy here drifted from them the moment either changed.")
   "Create a fresh one-shot state plist."
   (list :agent agent :buffer buf :max-turns max-turns
         :turn-count 0 :tool-call-count 0 :cap-blocks 0
+        :cap-warned nil
         :completed nil :exit-code 0 :final-response nil))
 
 (defun iar--one-shot-tool-call-tracker (_tool-name _tool-result)

@@ -124,7 +124,13 @@ too -- the landing IS the record."
     (unwind-protect
         (let ((iar--cycle-state nil)
               (iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
-          (setf (plist-get iar--one-shot-state :tool-call-count) 59)
+          ;; call #59: below the warn threshold, untouched
+          (setf (plist-get iar--one-shot-state :tool-call-count) 58)
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "read_file" :args nil)))
+          ;; call #120: warn already fired, still under the cap
+          (setf (plist-get iar--one-shot-state :tool-call-count) 119)
+          (setf (plist-get iar--one-shot-state :cap-warned) t)
           (should-not (iar--cycle-tool-call-cap
                        (list :name "read_file" :args nil))))
       (kill-buffer buf))))

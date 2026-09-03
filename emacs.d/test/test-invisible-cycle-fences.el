@@ -96,7 +96,13 @@ its CYCLE_COMPLETE landing. Regression for the 53 exit-1 cycles
     (unwind-protect
         (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40))
               (iar--one-shot-state nil))
-          (setf (plist-get iar--cycle-state :tool-call-count) 59)
+          ;; call #59: below the warn threshold, untouched
+          (setf (plist-get iar--cycle-state :tool-call-count) 58)
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "read_file" :args nil)))
+          ;; call #120: warn already fired, still under the cap
+          (setf (plist-get iar--cycle-state :tool-call-count) 119)
+          (setf (plist-get iar--cycle-state :cap-warned) t)
           (should-not (iar--cycle-tool-call-cap
                        (list :name "read_file" :args nil))))
       (kill-buffer cycle-buf))))
@@ -111,6 +117,65 @@ its CYCLE_COMPLETE landing. Regression for the 53 exit-1 cycles
 (ert-deftest test-fence-cap-default-is-120 ()
   "The cap default is 120 tool calls per cycle."
   (should (= 120 iar-cycle-tool-call-cap)))
+
+(ert-deftest test-fence-cap-warns-once-at-budget ()
+  "At the warn threshold the hook blocks ONE non-memory call with
+the budget notice (the call is NOT lost -- the model retries it),
+marks :cap-warned, and does NOT complete the cycle. The warning is
+the only in-cycle visibility the model gets before the soft cap."
+  (let ((cycle-buf (get-buffer-create "*test-fence-capwarn*")))
+    (unwind-protect
+        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40))
+              (iar--one-shot-state nil))
+          (setf (plist-get iar--cycle-state :tool-call-count)
+                (1- iar-cycle-tool-call-warn))
+          (let ((result (iar--cycle-tool-call-cap
+                         (list :name "execute_code_local" :args nil))))
+            (should (plist-get result :block))
+            (should (string-match-p "budget warning" (plist-get result :block)))
+            (should (plist-get iar--cycle-state :cap-warned))
+            ;; warning, not a kill
+            (should-not (plist-get iar--cycle-state :completed))
+            ;; writeback: the armed flag reached the global
+            (should (plist-get iar--cycle-state :cap-warned)))
+          ;; second call passes through (warn fires once)
+          (setf (plist-get iar--cycle-state :tool-call-count)
+                iar-cycle-tool-call-warn)
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "read_file" :args nil))))
+      (kill-buffer cycle-buf))))
+
+(ert-deftest test-fence-cap-warn-under-threshold-passes ()
+  "Below the warn threshold calls pass through untouched."
+  (let ((cycle-buf (get-buffer-create "*test-fence-capwarn2*")))
+    (unwind-protect
+        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40))
+              (iar--one-shot-state nil))
+          (setf (plist-get iar--cycle-state :tool-call-count)
+                (- iar-cycle-tool-call-warn 2))
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "read_file" :args nil)))
+          (should-not (plist-get iar--cycle-state :cap-warned)))
+      (kill-buffer cycle-buf))))
+
+(ert-deftest test-fence-cap-warn-memory-tools-pass ()
+  "Memory tools are never warned or blocked -- the landing IS the
+memory pass, and the warn must not burn a memory call."
+  (let ((cycle-buf (get-buffer-create "*test-fence-capwarn3*")))
+    (unwind-protect
+        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40))
+              (iar--one-shot-state nil))
+          (setf (plist-get iar--cycle-state :tool-call-count)
+                (1- iar-cycle-tool-call-warn))
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "append_file" :args nil)))
+          (should-not (plist-get iar--cycle-state :cap-warned)))
+      (kill-buffer cycle-buf))))
+
+(ert-deftest test-fence-cap-warn-default-is-60 ()
+  "The warn default is 60, below the 120 cap."
+  (should (= 60 iar-cycle-tool-call-warn))
+  (should (< iar-cycle-tool-call-warn iar-cycle-tool-call-cap)))
 
 (ert-deftest test-fence-cap-hard-kill-after-ignored-blocks ()
   "HARD cap: after `iar-cycle-tool-call-hard-cap' ignored soft
