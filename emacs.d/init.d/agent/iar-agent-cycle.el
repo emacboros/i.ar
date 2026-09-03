@@ -118,8 +118,14 @@ Looks up `iar-personality-cycle-map'. Returns nil if not in the map."
 
 (defun iar--cycle-load-continue-prompt (_agent-name)
   "Load the shared continue prompt from agents.d/common/agent_cycle_continue.org.
-Returns nil if the file is not found (the caller handles the nil case)."
-  (ignore-errors (iar--load-prompt "agent_cycle_continue")))
+Signals an error if the file is missing: a cycle without a continue
+prompt is a misconfigured house. Before 2026-09-03 this wrapped the
+load in ignore-errors and returned nil silently; a nil :continue
+made the post-response handler complete the cycle on the first
+response with the default exit-code 0 -- the grace-loop expiry
+branch (honest exit 1) became dead code, and a timed-out cycle
+exited 0 with no tombstone (iar/timeout-exit0-no-continue)."
+  (iar--load-prompt "agent_cycle_continue"))
 
 
 ;;; ---------------------------------------------------------
@@ -549,6 +555,14 @@ Tools are gated by the project's #+TOOLS metadata."
          (prompt (or (plist-get args :prompt)
                      (iar--cycle-load-cycle-prompt cycle-name)))
          (continue-prompt (iar--cycle-load-continue-prompt agent-name))
+         ;; Fail loud BEFORE any state or request: a cycle without a
+         ;; continue prompt cannot land honestly (the handler's
+         ;; no-continue branch completes with default exit 0, making
+         ;; the timeout path's exit-1 branch unreachable). Belt after
+         ;; the loader's own signal -- covers a nil return from any
+         ;; future refactor of the loader.
+         (_ (unless continue-prompt
+              (error "Continue prompt missing for %s -- cycle cannot land honestly" agent-name)))
          (archetype (iar--archetype-for-personality agent-name))
          (project (iar--project-for-personality agent-name))
          (extra-knowledge (plist-get args :knowledge))
