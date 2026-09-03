@@ -361,6 +361,16 @@ produce non-colliding ids (the c26 instrument finding)."
       (delete-directory tmpdir :recursive))))
 
 ;;; --- iar--reqlog-abort-advice (19 uncovered) ---
+;;; ENVIRONMENTAL-FAILURE NOTE (turn 163, 2026-09-03):
+;;; test-reqlog-abort-advice-dumps-partial once failed in the aria
+;;; container, suspected nativecomp trampoline interaction (stale
+;;; .eln in eln-cache; 16 trampolines incl. delete_process). By turn
+;;; 163 it was green with NO code change: 1015/1015 on 3654a61 and
+;;; on parent 30c5385 (clean worktree). Trampolines still present,
+;;; so presence alone is not the trigger -- likely a stale .eln
+;;; compiled from older source. If this test fails again with no
+;;; code change: suspect eln-cache staleness first (clear it,
+;;; re-run) before diagnosing the test or the module.
 
 (ert-deftest test-reqlog-abort-advice-dumps-partial ()
   "abort advice finds the request by buffer and dumps the partial."
