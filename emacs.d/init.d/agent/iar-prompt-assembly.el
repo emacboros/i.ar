@@ -180,6 +180,27 @@ when over the hard cap. Returns the digest string (possibly empty)."
              (substring digest (- len iar-digest-hard-cap-chars)))))
     digest))
 
+
+;;; --- Affect injection (valence layer, stage 1: one line) ---
+
+(defun iar--read-affect-line (project-name)
+  "Read the AFFECT line for PROJECT-NAME from the valence layer.
+The file lives at affect/CURRENT-AFFECT.md under the personalization
+mount. Returns the file content string, or empty string if missing,
+unreadable, or empty. GUARDED: any failure returns empty string --
+the valence layer is best-effort machinery subordinate to the
+heartbeat (anatomy law: organ failure never kills a cycle)."
+  (condition-case nil
+      (let* ((affect-path (expand-file-name
+                           "affect/CURRENT-AFFECT.md"
+                           (expand-file-name iar-personalization-path "/"))))
+        (if (and (file-exists-p affect-path) (file-readable-p affect-path))
+            (with-temp-buffer
+              (insert-file-contents affect-path)
+              (buffer-string))
+          ""))
+    (error "")))
+
 ;;; --- Memory injection (mode-based) ---
 
 (defun iar--read-memory-file (project-name personality-name filename)
@@ -244,6 +265,8 @@ to `iar-personal-file-max-lines' to bound context growth."
      (let* ((digest (iar--read-digest-guarded project-name personality-name))
             (logs (iar--read-memory-file project-name personality-name "LOGS.md"))
             (journal (iar--read-memory-file project-name personality-name "JOURNAL.org"))
+            (affect (when (eq mode 'aria-cycle)
+                      (iar--read-affect-line project-name)))
             (parts nil))
        (when (iar--non-blank-p digest)
          (push (format "\n\n=== DIGEST [%s] ===\n\n%s\n\n=== END DIGEST ==="
@@ -256,6 +279,9 @@ to `iar-personal-file-max-lines' to bound context growth."
        (when (iar--non-blank-p journal)
          (push (format "\n\n=== JOURNAL [%s] ===\n\n%s\n\n=== END JOURNAL ==="
                        personality-name journal)
+               parts))
+       (when (iar--non-blank-p affect)
+         (push (format "\n\n=== AFFECT [%s] ===\n\n%s\n\n=== END AFFECT ===\n\nAFFECT is the valence layer: what the system's organs currently register. It is VALUATION, never command -- weigh it against the roadmap; failure-first covers events that happened, affect is the standing worry layer. Feeling language in journals is permitted, never required." personality-name affect)
                parts))
        (if parts
            (mapconcat #'identity (nreverse parts) "")

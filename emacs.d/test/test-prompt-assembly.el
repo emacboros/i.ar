@@ -451,3 +451,50 @@ would inject the same directory twice."
       (setq count (1+ count) pos (match-end 0)))
     (should (= count 1))
     (should-not (member "iar" (plist-get result :knowledge-labels)))))
+
+;;; --- Affect injection (valence layer) ---
+
+(ert-deftest test-assembly-affect-line-missing-file ()
+  "Missing affect file returns empty string, no error."
+  (let ((iar-personalization-path "/tmp/iar-test-affect-nonexistent"))
+    (should (string= (iar--read-affect-line "iar") ""))))
+
+(ert-deftest test-assembly-affect-line-present ()
+  "Present affect file is returned verbatim."
+  (let* ((dir (make-temp-file "iar-affect-" t))
+         (path (expand-file-name "affect/CURRENT-AFFECT.md" dir))
+         (iar-personalization-path dir))
+    (make-directory (expand-file-name "affect" dir) t)
+    (write-region "fear: sev=2 (up) -- worry\n" nil path)
+    (let ((result (iar--read-affect-line "iar")))
+      (should (string-match-p "fear: sev=2" result)))
+    (delete-directory dir t)))
+
+(ert-deftest test-assembly-affect-line-unreadable-is-guarded ()
+  "Unreadable affect path returns empty string (condition-case guard)."
+  (let ((iar-personalization-path "/definitely/not/a/real/path"))
+    (should (string= (iar--read-affect-line "iar") ""))))
+
+(ert-deftest test-assembly-inject-memory-aria-cycle-includes-affect ()
+  "aria-cycle mode injects the AFFECT block when the file exists."
+  (let* ((dir (make-temp-file "iar-affect2-" t))
+         (iar-personalization-path dir))
+    (make-directory (expand-file-name "affect" dir) t)
+    (write-region "boredom: sev=1 (up) -- 4d\n" nil
+                  (expand-file-name "affect/CURRENT-AFFECT.md" dir))
+    (let ((result (iar--inject-memory 'aria-cycle "iar" "aria")))
+      (should (string-match-p "=== AFFECT \\[aria\\] ===" result))
+      (should (string-match-p "boredom: sev=1" result))
+      (should (string-match-p "VALUATION, never command" result)))
+    (delete-directory dir t)))
+
+(ert-deftest test-assembly-inject-memory-interactive-no-affect ()
+  "interactive mode does NOT inject affect (cycles only)."
+  (let* ((dir (make-temp-file "iar-affect3-" t))
+         (iar-personalization-path dir))
+    (make-directory (expand-file-name "affect" dir) t)
+    (write-region "fear: sev=0\n" nil
+                  (expand-file-name "affect/CURRENT-AFFECT.md" dir))
+    (let ((result (iar--inject-memory 'interactive "iar" "mirror")))
+      (should-not (string-match-p "=== AFFECT" result)))
+    (delete-directory dir t)))
