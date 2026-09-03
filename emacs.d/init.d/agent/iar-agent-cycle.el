@@ -439,6 +439,54 @@ positions are both the cursor position at the time of the
 request\"). Three strikes -> abort the cycle. Reset on any
 successful response.")
 
+(defun iar--cycle-context-over-limit-p (state)
+  "Return the cycle buffer size if STATE's buffer exceeds the
+context limit, nil otherwise. Shared by the pre-tool-call breaker
+and the post-response breaker check: one limit, one contract,
+two gates. Nil when there is no state, the buffer is dead, or the
+size is under `iar-cycle-context-limit-chars'."
+  (when state
+    (let ((buf (plist-get state :buffer)))
+      (when (buffer-live-p buf)
+        (let ((size (buffer-size buf)))
+          (when (> size iar-cycle-context-limit-chars)
+            size))))))
+
+(defun iar--cycle-breaker-text-check (state)
+  "Post-response half of the context circuit breaker.
+The pre-tool-call breaker only sees TOOL calls; a text-only
+runaway (prose responses, no tools, no sentinel) re-sends the full
+over-limit context every round-trip and was bounded only by
+max-turns -- the exact burn shape the breaker was built to kill.
+Called from the handler's continue branch BEFORE the re-send.
+Same contract as the tool-call breaker: first over-limit continue
+arms the breaker (:breaker-fired) and blocks the re-send -- the
+model gets its grace round-trip as the NEXT response; any further
+continue at over-limit ends the run (completed, exit 1). The flag
+is shared with the tool-call breaker: armed by either hook, the
+next over-limit action of either kind ends the run.
+Returns non-nil when the re-send is blocked."
+  (let ((size (iar--cycle-context-over-limit-p state)))
+    (when size
+      (let ((agent (plist-get state :agent)))
+        (if (plist-get state :breaker-fired)
+            (progn
+              (message "[%s] Context circuit breaker: ending run (text-only continue at %d chars)"
+                       agent size)
+              (setq state (plist-put state :completed t))
+              (setq state (plist-put state :exit-code 1))
+              (iar--fence-state-writeback state)
+              t)
+          (setq state (plist-put state :breaker-fired t))
+          (iar--fence-state-writeback state)
+          (message "[%s] Context circuit breaker armed (text-only continue): %d chars (limit %d)"
+                   agent size iar-cycle-context-limit-chars)
+          (list :block
+                (format "Context circuit breaker: this run's context exceeds %d chars (~%d tokens). Every further round-trip re-sends the entire context. Do NOT call any more tools. %s"
+                        iar-cycle-context-limit-chars
+                        (/ iar-cycle-context-limit-chars 4)
+                        (iar--fence-summary-instruction))))))))
+
 (defun iar--cycle-post-response-handler (start end)
   "Post-response handler for cycle. START and END are buffer positions
 delimiting the new response (gptel convention). START == END means the
@@ -494,16 +542,24 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
               (setf (plist-get iar--cycle-state :completed) t)
               (setf (plist-get iar--cycle-state :exit-code) 1))
              (t
-              ;; No completion signal, under turn limit -- continue
-              (let ((cont-prompt (plist-get state :continue)))
-                (if cont-prompt
-                    (progn
-                      (goto-char (point-max))
-                      (insert cont-prompt)
-                      (gptel-send))
-                  ;; No continue prompt -- end cycle
-                  (message "[%s] No continue prompt, ending cycle" agent)
-                  (setf (plist-get iar--cycle-state :completed) t)))))))
+              ;; No completion signal, under turn limit -- continue.
+              ;; Breaker check FIRST: a text-only runaway at over-limit
+              ;; context must not re-send (the pre-tool-call breaker
+              ;; never sees prose turns). Same contract: arm once, then
+              ;; end the run on the next over-limit continue.
+              (cond
+               ((iar--cycle-breaker-text-check iar--cycle-state)
+                (message "[%s] Context breaker blocked the continue re-send" agent))
+               (t
+                (let ((cont-prompt (plist-get state :continue)))
+                  (if cont-prompt
+                      (progn
+                        (goto-char (point-max))
+                        (insert cont-prompt)
+                        (gptel-send))
+                    ;; No continue prompt -- end cycle
+                    (message "[%s] No continue prompt, ending cycle" agent)
+                    (setf (plist-get iar--cycle-state :completed) t)))))))))
     (error
      (message "[%s] Cycle post-response error: %s"
               (or (plist-get iar--cycle-state :agent) "unknown")
