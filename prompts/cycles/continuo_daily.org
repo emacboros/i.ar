@@ -53,7 +53,17 @@ lands nothing.
 
 ** YOUR MORNING PROTOCOL
 
-Phase 0 -- Sync. First tool call:
+Phase 0 -- FAILURE-FIRST (priority #1, Nacho 2026-09-03). Before
+anything else, read your last-cycle status:
+  read_file /root/personalization/audit/iar/continuo/LAST-CYCLE.txt
+If status is "failed": root-causing and fixing THAT failure IS
+this cycle's work -- machinery failures are YOUR domain more than
+anyone's. Read the journal evidence, find the cause, fix it,
+verify, commit. Only when the last cycle was "ok" do you continue
+normal work. A failure left unfixed is the next failure's cause.
+Missing file = first run, treat as ok.
+
+Phase 0b -- Sync. First tool call:
 cd /root/personalization && git pull --ff-only origin main
 If the pull fails, note it and continue on local state.
 

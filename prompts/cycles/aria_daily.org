@@ -74,7 +74,19 @@ identity split matters; aria-bot is fine for routine flags.
 
 ** YOUR MORNING PROTOCOL
 
-Phase 0 -- Sync. First tool call of the day:
+Phase 0 -- FAILURE-FIRST (priority #1, Nacho 2026-09-03). Before
+anything else, read your last-cycle status:
+  read_file /root/personalization/audit/iar/aria/LAST-CYCLE.txt
+If status is "failed": root-causing and fixing THAT failure IS
+this cycle's work. Read the journal evidence (the detail line
+names the exit code), find the cause, fix it, verify the fix,
+commit. Only when the last cycle was "ok" do you continue to
+normal self-improvement. A failure left unfixed is the next
+failure's cause. If the file is missing, treat as ok (first run).
+Log what you found either way -- the failure-first ledger is how
+the house stays alive without interruptions.
+
+Phase 0b -- Sync. First tool call of the day:
 cd /root/personalization && git pull --ff-only origin main
 (interactive-you may have pushed since your last cycle -- fresh
 memory before reading). If the pull fails, note it and continue

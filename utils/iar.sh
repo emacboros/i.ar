@@ -564,6 +564,31 @@ reset_worktree() {
 }
 
 # =============================================================================
+# Last-cycle status (failure-first protocol)
+# =============================================================================
+# Written after EVERY cycle run (success or failure). The cycle
+# prompt's step 0 reads this file: if the last cycle failed,
+# root-causing and fixing that IS the next cycle's work -- before
+# any self-improvement thread. Priority #1 (Nacho, 2026-09-03):
+# cycles must run without failures; a failure left unfixed is the
+# next failure's cause.
+LAST_CYCLE_FILE="${PERSONALIZATION_DIR}/audit/iar/${AGENT_NAME}/LAST-CYCLE.txt"
+
+write_last_cycle() {
+    local status="$1"   # ok | failed
+    local exit_code="$2"
+    local detail="$3"
+    mkdir -p "$(dirname "${LAST_CYCLE_FILE}")" 2>/dev/null || true
+    {
+        echo "status: ${status}"
+        echo "exit: ${exit_code}"
+        echo "agent: ${AGENT_NAME}"
+        echo "ended: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+        echo "detail: ${detail}"
+    } > "${LAST_CYCLE_FILE}" 2>/dev/null || true
+}
+
+# =============================================================================
 # Multi-container orchestration
 # =============================================================================
 # Starts purpose-specific containers alongside the Emacs container.
@@ -1080,6 +1105,7 @@ Failures: ${FAILURES}"
     if [[ ${CYCLE_EXIT} -eq 0 ]]; then
         SUCCESSES=$((SUCCESSES + 1))
         log "${GREEN}[INF][$(timestamp)]${NC} Cycle ${CYCLE} succeeded in ${CYCLE_ELAPSED}s (exit 0)"
+        write_last_cycle ok 0 "cycle ${CYCLE} ok in ${CYCLE_ELAPSED}s"
         tg_send "Cycle ${CYCLE}/${MAX_CYCLES}: *SUCCESS* (${CYCLE_ELAPSED}s)
 Successes: ${SUCCESSES} | Failures: ${FAILURES}"
     elif [[ ${CYCLE_EXIT} -eq 2 ]]; then
@@ -1095,10 +1121,11 @@ Loop stopping -- task finished."
         FAILURES=$((FAILURES + 1))
         CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
         log "${RED}[ERR][$(timestamp)]${NC} Cycle ${CYCLE} failed in ${CYCLE_ELAPSED}s (exit ${CYCLE_EXIT})"
-        tg_send "Cycle ${CYCLE}/${MAX_CYCLES}: *FAILED* (exit ${CYCLE_EXIT}, ${CYCLE_ELAPSED}s)
-Successes: ${SUCCESSES} | Failures: ${FAILURES}
-
-Resetting working tree..."
+        write_last_cycle failed "${CYCLE_EXIT}" "cycle ${CYCLE} failed in ${CYCLE_ELAPSED}s, exit ${CYCLE_EXIT}; next cycle: fix this first (failure-first protocol)"
+        # Per-failure telegram REMOVED (2026-09-03, Nacho): 100
+        # messages on Sep 2 was spam. The hourly failure digest
+        # (agent-failure-notify.sh) carries the signal; the
+        # loop-stop telegram below still fires on hard stops.
 
         # Reset working tree to clean state so next cycle starts fresh
         reset_worktree
