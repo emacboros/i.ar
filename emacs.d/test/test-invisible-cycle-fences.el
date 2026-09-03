@@ -72,7 +72,7 @@ its CYCLE_COMPLETE landing. Regression for the 53 exit-1 cycles
   (let ((cycle-buf (get-buffer-create "*test-fence-cap*")))
     (unwind-protect
         (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40)))
-          (setf (plist-get iar--cycle-state :tool-call-count) 60)
+          (setf (plist-get iar--cycle-state :tool-call-count) iar-cycle-tool-call-cap)
           (let ((result (iar--cycle-tool-call-cap
                          (list :name "execute_code_local" :args nil))))
             (should (plist-get result :block))
@@ -99,9 +99,9 @@ its CYCLE_COMPLETE landing. Regression for the 53 exit-1 cycles
     (should-not (iar--cycle-tool-call-cap
                  (list :name "read_file" :args nil)))))
 
-(ert-deftest test-fence-cap-default-is-60 ()
-  "The cap default is 60 tool calls per cycle."
-  (should (= 60 iar-cycle-tool-call-cap)))
+(ert-deftest test-fence-cap-default-is-120 ()
+  "The cap default is 120 tool calls per cycle."
+  (should (= 120 iar-cycle-tool-call-cap)))
 
 (ert-deftest test-fence-cap-hard-kill-after-ignored-blocks ()
   "HARD cap: after `iar-cycle-tool-call-hard-cap' ignored soft
@@ -110,7 +110,7 @@ confirmed, the model is not responding to the landing instruction."
   (let ((cycle-buf (get-buffer-create "*test-fence-cap3*")))
     (unwind-protect
         (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40)))
-          (setf (plist-get iar--cycle-state :tool-call-count) 60)
+          (setf (plist-get iar--cycle-state :tool-call-count) iar-cycle-tool-call-cap)
           ;; Burn through the soft blocks
           (dotimes (_ (1- iar-cycle-tool-call-hard-cap))
             (iar--cycle-tool-call-cap (list :name "read_file" :args nil))
@@ -129,7 +129,7 @@ pass. Only non-memory tools are blocked."
   (let ((cycle-buf (get-buffer-create "*test-fence-cap4*")))
     (unwind-protect
         (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40)))
-          (setf (plist-get iar--cycle-state :tool-call-count) 60)
+          (setf (plist-get iar--cycle-state :tool-call-count) iar-cycle-tool-call-cap)
           (should-not (iar--cycle-tool-call-cap
                        (list :name "append_file" :args nil)))
           (should-not (iar--cycle-tool-call-cap

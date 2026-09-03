@@ -194,20 +194,22 @@ Guarded: no active state -> silent no-op."
   (when iar--cycle-state
     (cl-incf (plist-get iar--cycle-state :tool-call-count))))
 
-(defvar iar-cycle-tool-call-cap 60
+(defvar iar-cycle-tool-call-cap 120
   "SOFT cap: tool calls per cycle before tools are blocked.
 At the soft cap the cycle does NOT die: further tool calls are
 blocked with a message telling the model to write its summary
 (CYCLE_COMPLETE) and memory writes are still allowed. The model
 gets its landing. Hard kill happens only at
 `iar-cycle-tool-call-hard-cap' ignored blocks.
-History: the pre-2026-09-03 cap set completed=t + exit 1 the
-instant call 61 arrived, so the batch loop killed Emacs before the
-model could write ANY summary or memory -- 53 cycles died this way
-(Sep 2), each burning ~2.5M input tokens with zero record. A
-legitimate full cycle (pulse + agora + sync + thread + memory
-pass) runs 51-61 calls, so the soft cap sits at the edge of real
-work by design; the hard cap is the runaway fence.")
+History: 60 was calibrated when the cap killed instantly (53
+cycles died Sep 2 with zero record), but a legitimate full cycle
+(pulse + agora + sync + thread + memory pass) runs 51-61 calls,
+so 60 sat AT the edge of real work and killed healthy cycles
+(26 tool-cap exits in 3 days, aria cycle 137 census). Raised to
+120 (tool-cap-overcorrection fix, continuo cycle 3): pathology
+is owned by the chain guard (shape, 10 same-tool calls) and the
+context breaker (burn, 800k chars); this cap is the last-resort
+absolute bound only.")
 
 (defvar iar-cycle-tool-call-hard-cap 5
   "Ignored soft-cap blocks before the cycle is force-ended.
