@@ -219,6 +219,47 @@ instead of continuing to burn tokens. No active state -> nil
                 (format "Tool-call cap (%d) reached for this cycle. The cycle is ending -- finish with a CYCLE_COMPLETE summary now. Do not call more tools."
                         iar-cycle-tool-call-cap)))))))
 
+(defvar iar-cycle-context-limit-chars 800000
+  "Cycle buffer size (chars) at which the context circuit breaker fires.
+~4 chars per token, so 800k chars is roughly a 200k-token context.
+Past this size every round-trip re-sends the whole accumulated
+context -- the 2026-09-02 runaway re-sent a ~254k-token context
+100+ times (68M prompt tokens from one session). The breaker gives
+the model ONE grace round-trip to write a final text summary; any
+further tool call ends the cycle.")
+
+(defun iar--cycle-context-breaker (info)
+  "Pre-tool-call hook: context circuit breaker for cycles (fix D).
+INFO is the gptel pre-tool-call plist (:name :args :buffer ...).
+
+When the cycle buffer exceeds `iar-cycle-context-limit-chars':
+first fire blocks the call and arms the breaker (:breaker-fired) --
+the model gets one grace round-trip to write its summary as text.
+Any further tool call ends the cycle (completed, exit 1). Under the
+limit, or with no active cycle state, returns nil. Unlike the
+tool-call cap (pure pathology stop), the breaker's grace round-trip
+exists because the timeout-kill loses the work: a summary written
+at 200k tokens is cheaper than re-deriving it next cycle."
+  (when iar--cycle-state
+    (let* ((buf (plist-get iar--cycle-state :buffer))
+           (size (if (buffer-live-p buf) (buffer-size buf) 0)))
+      (when (> size iar-cycle-context-limit-chars)
+        (if (plist-get iar--cycle-state :breaker-fired)
+            (let ((agent (plist-get iar--cycle-state :agent)))
+              (message "[%s] Context circuit breaker: ending cycle (buffer %d chars)"
+                       agent size)
+              (setf (plist-get iar--cycle-state :completed) t)
+              (setf (plist-get iar--cycle-state :exit-code) 1)
+              (list :block
+                    (format "Context circuit breaker: the summary round-trip already elapsed with the context over the limit (%d chars). The cycle is ending now."
+                            iar-cycle-context-limit-chars)))
+          (setf (plist-get iar--cycle-state :breaker-fired) t)
+          (message "[cycle] Context circuit breaker armed: %d chars (limit %d)"
+                   size iar-cycle-context-limit-chars)
+          (list :block
+                (format "Context circuit breaker: this cycle's context exceeds %d chars (~%d tokens). Every further round-trip re-sends the entire context. Do NOT call any more tools. Write your final summary now as plain text -- what you found, what you did, what remains -- and end with CYCLE_COMPLETE."
+                        iar-cycle-context-limit-chars
+                        (/ iar-cycle-context-limit-chars 4))))))))
 (defun iar--cycle-tombstone (agent-name timeout-secs)
   "Write a [TIMED OUT] tombstone to AGENT-NAME's cycle.log.
 Called from the timeout path of `iar-run-cycle' BEFORE kill-emacs:
@@ -483,6 +524,8 @@ Tools are gated by the project's #+TOOLS metadata."
 (add-hook 'iar-post-tool-call-functions #'iar--cycle-tool-call-tracker)
 (remove-hook 'iar-pre-tool-call-functions #'iar--cycle-tool-call-cap)
 (add-hook 'iar-pre-tool-call-functions #'iar--cycle-tool-call-cap)
+(remove-hook 'iar-pre-tool-call-functions #'iar--cycle-context-breaker)
+(add-hook 'iar-pre-tool-call-functions #'iar--cycle-context-breaker)
 
 (provide 'iar-agent-cycle)
 ;;; ---------------------------------------------------------
