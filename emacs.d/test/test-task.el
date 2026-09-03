@@ -23,7 +23,9 @@
   (setq test-task--tmpdir (make-temp-file "test-task-" :dir-flag))
   (let ((tasks-dir (expand-file-name "tasks" test-task--tmpdir)))
     (make-directory tasks-dir t)
-    (let ((agent-dir (expand-file-name "testagent" tasks-dir)))
+    ;; Per-agent isolation (2026-09-03): tree lives under
+    ;; tasks/<project>/<personality>/ = tasks/testagent/testagent/.
+    (let ((agent-dir (expand-file-name "testagent/testagent" tasks-dir)))
       (make-directory agent-dir t)
       (make-directory (expand-file-name "track-a" agent-dir) t)
       (with-temp-file (expand-file-name "track-a/description.org" agent-dir)
@@ -45,7 +47,7 @@
         (insert "Simple task with no subdirectories"))
       (with-temp-file (expand-file-name "simple-task/do-thing.org" agent-dir)
         (insert "* Do the thing\n\nJust do it.")))
-    (let ((agent-dir (expand-file-name "otheragent" tasks-dir)))
+    (let ((agent-dir (expand-file-name "testagent/otheragent" tasks-dir)))
       (make-directory agent-dir t)))
   (let ((audit-dir (expand-file-name "audit" test-task--tmpdir)))
     (make-directory audit-dir t)
@@ -66,13 +68,20 @@
     (setq test-task--tmpdir nil)))
 
 (defmacro with-task-fixture (&rest body)
-  "Execute BODY with a temporary tasks/ and audit/ directory."
+  "Execute BODY with a temporary tasks/ and audit/ directory.
+Sets personality=testagent: since the 2026-09-03 per-agent
+isolation, task paths resolve to tasks/<project>/<personality>/
+when a personality is active. The fixture tree already lives at
+tasks/testagent/... so personality == project keeps the tree
+valid (resolution becomes tasks/testagent/testagent/...)."
   (declare (indent 0))
   `(let ((old-emacs-dir user-emacs-directory)
          (old-agent-name (and (boundp 'iar--current-agent-name)
                               iar--current-agent-name))
          (old-project (and (boundp 'iar--current-project)
                            iar--current-project))
+         (old-personality (and (boundp 'iar--current-personality)
+                               iar--current-personality))
          (old-pers-path (and (boundp 'iar-personalization-path)
                             iar-personalization-path)))
      (unwind-protect
@@ -81,12 +90,14 @@
            (let ((user-emacs-directory test-task--tmpdir))
              (setq iar--current-agent-name "testagent")
              (setq iar--current-project "testagent")
+             (setq iar--current-personality "testagent")
              (setq iar-personalization-path test-task--tmpdir)
              ,@body))
        (test-task--teardown)
        (setq user-emacs-directory old-emacs-dir)
        (setq iar--current-agent-name old-agent-name)
        (setq iar--current-project old-project)
+       (setq iar--current-personality old-personality)
        (setq iar-personalization-path old-pers-path))))
 
 ;;; --- read_task tests ---
@@ -170,10 +181,10 @@
     (let ((result (iar--tool-create-task "new-task" "A new task for testing")))
       (should (stringp result))
       (should (string-match-p "created" result))
-      (should (file-directory-p (expand-file-name "tasks/testagent/new-task" test-task--tmpdir)))
-      (should (file-exists-p (expand-file-name "tasks/testagent/new-task/description.org" test-task--tmpdir)))
+      (should (file-directory-p (expand-file-name "tasks/testagent/testagent/new-task" test-task--tmpdir)))
+      (should (file-exists-p (expand-file-name "tasks/testagent/testagent/new-task/description.org" test-task--tmpdir)))
       (with-temp-buffer
-        (insert-file-contents (expand-file-name "tasks/testagent/new-task/description.org" test-task--tmpdir))
+        (insert-file-contents (expand-file-name "tasks/testagent/testagent/new-task/description.org" test-task--tmpdir))
         (should (string-match-p "A new task for testing" (buffer-string)))))))
 
 (ert-deftest test-task-create-nested-with-existing-parent ()
@@ -182,8 +193,8 @@
     (let ((result (iar--tool-create-task "track-a/new-subtask" "Nested under existing track")))
       (should (stringp result))
       (should (string-match-p "created" result))
-      (should (file-directory-p (expand-file-name "tasks/testagent/track-a/new-subtask" test-task--tmpdir)))
-      (should (file-exists-p (expand-file-name "tasks/testagent/track-a/new-subtask/description.org" test-task--tmpdir))))))
+      (should (file-directory-p (expand-file-name "tasks/testagent/testagent/track-a/new-subtask" test-task--tmpdir)))
+      (should (file-exists-p (expand-file-name "tasks/testagent/testagent/track-a/new-subtask/description.org" test-task--tmpdir))))))
 
 (ert-deftest test-task-create-warns-on-missing-parent ()
   "create_task should warn when parent directory does not exist."
@@ -215,7 +226,7 @@
   "write_subtask should create a .org file inside a task directory."
   (with-task-fixture
     (let ((result (iar--tool-write-subtask "track-a/new-subtask" "* New Subtask\n\nDo work."))
-          (subtask-path (expand-file-name "tasks/testagent/track-a/new-subtask.org" test-task--tmpdir)))
+          (subtask-path (expand-file-name "tasks/testagent/testagent/track-a/new-subtask.org" test-task--tmpdir)))
       (should (stringp result))
       (should (string-match-p "written" result))
       (should (file-exists-p subtask-path))
@@ -243,7 +254,7 @@
 (ert-deftest test-task-remove-directory ()
   "remove_task should remove an entire task directory."
   (with-task-fixture
-    (let ((task-dir (expand-file-name "tasks/testagent/track-a/subtask-2" test-task--tmpdir)))
+    (let ((task-dir (expand-file-name "tasks/testagent/testagent/track-a/subtask-2" test-task--tmpdir)))
       (should (file-directory-p task-dir))
       (let ((result (iar--tool-remove-task "track-a/subtask-2")))
         (should (stringp result))
@@ -253,13 +264,13 @@
 (ert-deftest test-task-remove-file ()
   "remove_task should remove a single subtask file."
   (with-task-fixture
-    (let ((subtask-file (expand-file-name "tasks/testagent/track-a/subtask-1/step-one.org" test-task--tmpdir)))
+    (let ((subtask-file (expand-file-name "tasks/testagent/testagent/track-a/subtask-1/step-one.org" test-task--tmpdir)))
       (should (file-exists-p subtask-file))
       (let ((result (iar--tool-remove-task "track-a/subtask-1/step-one")))
         (should (stringp result))
         (should (string-match-p "removed" result))
         (should-not (file-exists-p subtask-file)))
-      (should (file-directory-p (expand-file-name "tasks/testagent/track-a/subtask-1" test-task--tmpdir))))))
+      (should (file-directory-p (expand-file-name "tasks/testagent/testagent/track-a/subtask-1" test-task--tmpdir))))))
 
 (ert-deftest test-task-remove-not-found ()
   "remove_task should return not-found message for nonexistent path."

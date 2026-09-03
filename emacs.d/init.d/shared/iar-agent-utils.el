@@ -88,12 +88,22 @@ Returns nil if no personality is set."
 
 (defun iar--resolve-project-tasks-dir ()
   "Return the tasks directory path for the current project.
-Tasks live at /root/personalization/tasks/<project>/.
-Uses `iar--current-project-name' for project resolution."
+Tasks live at /root/personalization/tasks/<project>/, or
+/root/personalization/tasks/<project>/<personality>/ when a
+personality is active -- two agents sharing a project must not
+share one ROADMAP.org (the 2026-09-03 clobber: continuo's
+write_roadmap overwrote aria's rewrite, both trees clean,
+file wrong, because tasks/* is gitignored)."
   (let* ((base-path (expand-file-name iar-tasks-path iar-personalization-path))
-         (project (iar--current-project-name)))
+         (project (iar--current-project-name))
+         (personality (iar--current-personality-name)))
     (iar--validate-agent-name project)
-    (let ((resolved (expand-file-name project base-path)))
+    (let ((resolved (if personality
+                        (progn
+                          (iar--validate-agent-name personality)
+                          (expand-file-name personality
+                                            (expand-file-name project base-path)))
+                      (expand-file-name project base-path))))
       (iar--path-traversal-check resolved base-path))))
 
 (defun iar--resolve-project-audit-dir ()

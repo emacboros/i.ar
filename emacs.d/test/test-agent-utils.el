@@ -110,13 +110,46 @@
 ;;; --- iar--resolve-project-tasks-dir tests ---
 
 (ert-deftest test-agent-utils-resolve-project-tasks-dir ()
-  "Should resolve tasks dir for current project."
+  "Should resolve tasks dir for current project (no personality)."
   (with-temp-buffer
-    (let ((iar--current-project "test-project"))
+    (let ((iar--current-project "test-project")
+          (iar--current-personality nil)
+          (iar--current-agent-name nil)
+          (iar--current-agent-file nil))
       (let ((result (iar--resolve-project-tasks-dir)))
         (should (stringp result))
         (should (string-match-p "test-project" result))
-        (should (string-match-p "tasks" result))))))
+        (should (string-match-p "tasks" result))
+        ;; Legacy layout: no personality segment.
+        (should-not (string-match-p "tasks/test-project/" result))))))
+
+(ert-deftest test-agent-utils-resolve-project-tasks-dir-per-agent ()
+  "With a personality, tasks dir gains a personality segment.
+Regression for the 2026-09-03 shared-ROADMAP clobber: two agents
+in one project must not share tasks/<project>/."
+  (with-temp-buffer
+    (let ((iar--current-project "test-project")
+          (process-environment (cons "IAR_PROJECT=test-project"
+                                     process-environment)))
+      (setq iar--current-personality "aria")
+      (should (string-match-p "tasks/test-project/aria"
+                              (iar--resolve-project-tasks-dir)))
+      (setq iar--current-personality "continuo")
+      (should (string-match-p "tasks/test-project/continuo"
+                              (iar--resolve-project-tasks-dir)))
+      ;; The two resolutions differ -- that is the whole point.
+      (setq iar--current-personality "aria")
+      (let ((aria (iar--resolve-project-tasks-dir)))
+        (setq iar--current-personality "continuo")
+        (let ((continuo (iar--resolve-project-tasks-dir)))
+          (should-not (string= aria continuo)))))))
+
+(ert-deftest test-agent-utils-resolve-project-tasks-dir-rejects-bad-personality ()
+  "A personality with invalid characters must be rejected."
+  (with-temp-buffer
+    (let ((iar--current-project "test-project")
+          (iar--current-personality "../evil"))
+      (should-error (iar--resolve-project-tasks-dir)))))
 
 ;;; --- iar--resolve-project-audit-dir tests ---
 
