@@ -24,6 +24,18 @@
 ;;   with new args still demonstrates the chain pattern.
 ;; - Blocked calls do not escalate the identical guard's count
 ;;   (it counts matches, not pushes).
+;;
+;; HOOK ORDER IS LOAD-BEARING (2026-09-03 frozen-at-soft bug): this
+;; guard MUST run AFTER `iar--loop-guard', not before. add-hook
+;; prepends by default, so registering with APPEND (t) is what makes
+;; the documented order true. With the wrong order the chain guard
+;; counts before the identical guard pushes, a blocked call never
+;; enters history, the chain count freezes at exactly the soft
+;; threshold, and the hard stop is unreachable -- the model can retry
+;; a blocked call forever, burning one full-context request per
+;; retry (observed live 2026-09-03 06:26-06:28: ~50 soft blocks in
+;; ~2.5 minutes, zero escalation, model escaped only by switching
+;; tools). See test-chain-guard-escalates-through-bridge.
 
 (require 'cl-lib)
 (require 'subr-x)
@@ -96,8 +108,14 @@ or (:stop t :stop-reason REASON) to stop the request."
 ;;; --- Setup ---
 
 (defun iar--loop-guard-chain-setup ()
-  "Register the chain guard after the identical-args guard."
-  (add-hook 'iar-pre-tool-call-functions #'iar--loop-guard-chain))
+  "Register the chain guard AFTER the identical-args guard.
+The APPEND argument is load-bearing: add-hook prepends by default,
+which would put this guard BEFORE `iar--loop-guard' in the hook
+list. The counting logic above assumes the identical guard has
+already pushed the current call; if this guard runs first, blocked
+calls never enter history, the chain count freezes at the soft
+threshold, and the hard stop is unreachable (2026-09-03)."
+  (add-hook 'iar-pre-tool-call-functions #'iar--loop-guard-chain t))
 
 (iar--loop-guard-chain-setup)
 
