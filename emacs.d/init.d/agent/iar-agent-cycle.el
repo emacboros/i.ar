@@ -53,6 +53,11 @@ Used when :cycle is not explicitly provided to iar-run-cycle.")
 (defvar iar-audit-path nil
   "Relative path to audit log directory.")
 
+;; Forward-declared: defined in the one-shot section below. The
+;; fences (cap, breaker, tombstone) dispatch on it so one-shot runs
+;; get the same protection as cycles.
+(defvar iar--one-shot-state nil)
+
 ;;; ---------------------------------------------------------
 ;;; Token usage summary
 ;;; ---------------------------------------------------------
@@ -218,45 +223,61 @@ demanding CYCLE_COMPLETE. After this many ignored blocks, the cycle
 is ended with exit 1 (runaway confirmed: the model is not
 responding to the landing instruction).")
 
+(defun iar--fence-summary-instruction ()
+  "Mode-correct instruction for writing the final summary at a fence.
+Cycles end with CYCLE_COMPLETE; one-shots wrap the final response in
+the delimiter pair. One fence, mode-correct vocabulary: a one-shot
+agent must never be told to write a CYCLE_COMPLETE it does not have."
+  (if iar--cycle-state
+      "Write your final summary now as plain text -- what you did, what landed, what is next -- and end with CYCLE_COMPLETE."
+    (format "Write your final summary now as plain text and wrap it in %s and %s."
+            iar-one-shot-response-open iar-one-shot-response-close)))
+
 (defun iar--cycle-tool-call-cap (info)
   "Pre-tool-call hook: SOFT tool-call cap with a landing.
 INFO is the gptel pre-tool-call plist (:name :args :buffer ...).
-At the soft cap the cycle is NOT killed: the call is blocked with a
-message demanding a CYCLE_COMPLETE summary, and MEMORY TOOLS
+At the soft cap the run is NOT killed: the call is blocked with a
+message demanding the mode-correct landing (CYCLE_COMPLETE for
+cycles, final-response delimiters for one-shots), and MEMORY TOOLS
 (append_file, write_file, write_subtask, write_roadmap,
 git_commit, send_telegram) are still allowed so the model can
 finish its record. After `iar-cycle-tool-call-hard-cap' ignored
-blocks, the cycle is force-ended (exit 1).
-No active state -> nil (interactive sessions are not capped)."
-  (when iar--cycle-state
-    (let* ((count (1+ (plist-get iar--cycle-state :tool-call-count)))
-           (agent (plist-get iar--cycle-state :agent))
-           (tool-name (plist-get info :name)))
-      (when (> count iar-cycle-tool-call-cap)
-        (if (member tool-name '("append_file" "write_file" "write_subtask"
-                                "write_roadmap" "git_commit" "send_telegram"))
-            ;; Memory/record tools always allowed past the soft cap:
-            ;; the landing IS the memory pass. Counted normally.
-            nil
-          (let ((blocks (1+ (or (plist-get iar--cycle-state :cap-blocks) 0))))
-            (setf (plist-get iar--cycle-state :cap-blocks) blocks)
-            (if (>= blocks iar-cycle-tool-call-hard-cap)
-                ;; Runaway confirmed: model ignoring the landing
-                ;; instruction. End it.
-                (progn
-                  (message "[%s] Tool-call hard cap: %d ignored soft-cap blocks -- ending cycle"
-                           agent blocks)
-                  (setf (plist-get iar--cycle-state :completed) t)
-                  (setf (plist-get iar--cycle-state :exit-code) 1)
-                  (list :block
-                        (format "Tool-call hard cap reached (%d ignored blocks). The cycle is ending NOW. Do not call more tools."
-                                blocks)))
-              ;; Soft block: demand the landing, allow memory tools.
-              (message "[%s] Tool-call soft cap (%d) -- blocking tool, demanding summary (block %d/%d)"
-                       agent iar-cycle-tool-call-cap blocks iar-cycle-tool-call-hard-cap)
-              (list :block
-                    (format "Tool-call soft cap (%d) reached. STOP calling tools (except memory/record tools: append_file, write_file, write_subtask, write_roadmap, git_commit, send_telegram -- those still work). Write your CYCLE_COMPLETE summary NOW: what you did, what landed, what is next. End with CYCLE_COMPLETE on its own line."
-                            iar-cycle-tool-call-cap)))))))))
+blocks, the run is force-ended (exit 1).
+Dispatches on the active state: cycle first, then one-shot -- the
+fences are mode-generic; one-shot runs were previously UNPROTECTED
+(2026-09-03 parity fix). No active state -> nil (interactive
+sessions are not capped)."
+  (let ((state (or iar--cycle-state iar--one-shot-state)))
+    (when state
+      (let* ((count (1+ (plist-get state :tool-call-count)))
+             (agent (plist-get state :agent))
+             (tool-name (plist-get info :name)))
+        (when (> count iar-cycle-tool-call-cap)
+          (if (member tool-name '("append_file" "write_file" "write_subtask"
+                                  "write_roadmap" "git_commit" "send_telegram"))
+              ;; Memory/record tools always allowed past the soft cap:
+              ;; the landing IS the memory pass. Counted normally.
+              nil
+            (let ((blocks (1+ (or (plist-get state :cap-blocks) 0))))
+              (setf (plist-get state :cap-blocks) blocks)
+              (if (>= blocks iar-cycle-tool-call-hard-cap)
+                  ;; Runaway confirmed: model ignoring the landing
+                  ;; instruction. End it.
+                  (progn
+                    (message "[%s] Tool-call hard cap: %d ignored soft-cap blocks -- ending cycle"
+                             agent blocks)
+                    (setf (plist-get state :completed) t)
+                    (setf (plist-get state :exit-code) 1)
+                    (list :block
+                          (format "Tool-call hard cap reached (%d ignored blocks). The cycle is ending NOW. Do not call more tools."
+                                  blocks)))
+                ;; Soft block: demand the landing, allow memory tools.
+                (message "[%s] Tool-call soft cap (%d) -- blocking tool, demanding summary (block %d/%d)"
+                         agent iar-cycle-tool-call-cap blocks iar-cycle-tool-call-hard-cap)
+                (list :block
+                      (format "Tool-call soft cap (%d) reached. STOP calling tools (except memory/record tools: append_file, write_file, write_subtask, write_roadmap, git_commit, send_telegram -- those still work). %s"
+                              iar-cycle-tool-call-cap
+                              (iar--fence-summary-instruction)))))))))))
 
 (defvar iar-cycle-context-limit-chars 800000
   "Cycle buffer size (chars) at which the context circuit breaker fires.
@@ -267,76 +288,100 @@ context -- the 2026-09-02 runaway re-sent a ~254k-token context
 the model ONE grace round-trip to write a final text summary; any
 further tool call ends the cycle.")
 
+(defun iar--fence-state-writeback (state)
+  "Write the mutated fence STATE back to its owning global.
+The fences alias the active state as (or iar--cycle-state
+iar--one-shot-state); setf/plist-put through the alias loses the
+write when the key is absent from the state plist: plist-put conses
+a new head and only the local alias moves, the global keeps the old
+list. The breaker tests caught this 2026-09-03: :breaker-fired was
+never pre-initialized, so the armed flag vanished between calls and
+the breaker re-armed forever, never ending the run."
+  (cond (iar--cycle-state (setq iar--cycle-state state))
+        (iar--one-shot-state (setq iar--one-shot-state state)))
+  state)
+
 (defun iar--cycle-context-breaker (info)
-  "Pre-tool-call hook: context circuit breaker for cycles (fix D).
+  "Pre-tool-call hook: context circuit breaker (fix D).
 INFO is the gptel pre-tool-call plist (:name :args :buffer ...).
 
-When the cycle buffer exceeds `iar-cycle-context-limit-chars':
+When the active run's buffer exceeds `iar-cycle-context-limit-chars':
 first fire blocks the call and arms the breaker (:breaker-fired) --
 the model gets one grace round-trip to write its summary as text.
-Any further tool call ends the cycle (completed, exit 1). Under the
-limit, or with no active cycle state, returns nil. Unlike the
-tool-call cap (pure pathology stop), the breaker's grace round-trip
-exists because the timeout-kill loses the work: a summary written
-at 200k tokens is cheaper than re-deriving it next cycle."
-  (when iar--cycle-state
-    (let* ((buf (plist-get iar--cycle-state :buffer))
-           (size (if (buffer-live-p buf) (buffer-size buf) 0)))
-      (when (> size iar-cycle-context-limit-chars)
-        (if (plist-get iar--cycle-state :breaker-fired)
-            (let ((agent (plist-get iar--cycle-state :agent)))
-              (message "[%s] Context circuit breaker: ending cycle (buffer %d chars)"
-                       agent size)
-              (setf (plist-get iar--cycle-state :completed) t)
-              (setf (plist-get iar--cycle-state :exit-code) 1)
-              (list :block
-                    (format "Context circuit breaker: the summary round-trip already elapsed with the context over the limit (%d chars). The cycle is ending now."
-                            iar-cycle-context-limit-chars)))
-          (setf (plist-get iar--cycle-state :breaker-fired) t)
-          (message "[cycle] Context circuit breaker armed: %d chars (limit %d)"
-                   size iar-cycle-context-limit-chars)
-          (list :block
-                (format "Context circuit breaker: this cycle's context exceeds %d chars (~%d tokens). Every further round-trip re-sends the entire context. Do NOT call any more tools. Write your final summary now as plain text -- what you found, what you did, what remains -- and end with CYCLE_COMPLETE."
-                        iar-cycle-context-limit-chars
-                        (/ iar-cycle-context-limit-chars 4))))))))
+Any further tool call ends the run (completed, exit 1). Under the
+limit, or with no active state, returns nil. Dispatches on cycle
+state first, then one-shot (one-shot runs were previously
+UNPROTECTED). Unlike the tool-call cap (pure pathology stop), the
+breaker's grace round-trip exists because the timeout-kill loses
+the work: a summary written at 200k tokens is cheaper than
+re-deriving it next cycle."
+  (let ((state (or iar--cycle-state iar--one-shot-state)))
+    (when state
+      (let* ((buf (plist-get state :buffer))
+             (size (if (buffer-live-p buf) (buffer-size buf) 0)))
+        (when (> size iar-cycle-context-limit-chars)
+          (if (plist-get state :breaker-fired)
+              (let ((agent (plist-get state :agent)))
+                (message "[%s] Context circuit breaker: ending run (buffer %d chars)"
+                         agent size)
+                (setq state (plist-put state :completed t))
+                (setq state (plist-put state :exit-code 1))
+                (iar--fence-state-writeback state)
+                (list :block
+                      (format "Context circuit breaker: the summary round-trip already elapsed with the context over the limit (%d chars). The run is ending now."
+                              iar-cycle-context-limit-chars)))
+            (setq state (plist-put state :breaker-fired t))
+            (iar--fence-state-writeback state)
+            (message "[cycle] Context circuit breaker armed: %d chars (limit %d)"
+                     size iar-cycle-context-limit-chars)
+            (list :block
+                  (format "Context circuit breaker: this run's context exceeds %d chars (~%d tokens). Every further round-trip re-sends the entire context. Do NOT call any more tools. %s"
+                          iar-cycle-context-limit-chars
+                          (/ iar-cycle-context-limit-chars 4)
+                          (iar--fence-summary-instruction)))))))))
+
 (defun iar--cycle-tombstone (agent-name timeout-secs)
   "Write a [TIMED OUT] tombstone to AGENT-NAME's cycle.log.
-Called from the timeout path of `iar-run-cycle' BEFORE kill-emacs:
-the state exists at kill time and was previously never written --
-four cycles on 2026-09-02 burned ~150M tokens with zero record.
-Records turns, tool calls, token totals, and the last 200 chars of
-the cycle buffer (the last model activity). Never signals: this
-runs at kill time, an error would mask the exit code."
+Called from the timeout and idle-stall paths of `iar-run-cycle' and
+`iar-run-one-shot' BEFORE kill-emacs: the state that exists at kill
+time was previously never written -- four cycles on 2026-09-02
+burned ~150M tokens with zero record, and a timed-out one-shot
+exited 0 with nothing written (same lie, one-shot edition, fixed
+2026-09-03). Dispatches on the active state (cycle first, then
+one-shot). Records turns, tool calls, token totals, and the last
+200 chars of the run buffer (the last model activity). Never
+signals: this runs at kill time, an error would mask the exit code."
   (condition-case err
-      (when iar--cycle-state
-        (let* ((turns (plist-get iar--cycle-state :turn-count))
-               (tools (plist-get iar--cycle-state :tool-call-count))
-               (buf (plist-get iar--cycle-state :buffer))
-               (last-activity
-                (when (buffer-live-p buf)
-                  (with-current-buffer buf
-                    (buffer-substring-no-properties
-                     (max (point-min) (- (point-max) 200))
-                     (point-max)))))
-               (totals (iar--usage-totals))
-               (project (iar--current-project-name))
-               (log-path (expand-file-name
-                          (format "%s/%s/cycle.log" project agent-name)
-                          (expand-file-name iar-audit-path iar-personalization-path))))
-          (make-directory (file-name-directory log-path) t)
-          (with-temp-buffer
-            (insert (format-time-string "[%Y-%m-%d %H:%M:%S] ") "[TIMED OUT]"
-                    (format " after %ds. Turns: %d, Tool calls: %d" timeout-secs turns tools)
-                    (format "\nTokens: %d in / %d out / %d total / %d requests"
-                            (plist-get totals :input-tokens)
-                            (plist-get totals :output-tokens)
-                            (plist-get totals :total-tokens)
-                            (plist-get totals :requests))
-                    (when last-activity
-                      (format "\nLast activity: %.200s" last-activity))
-                    "\n\n")
-            (let ((coding-system-for-write 'utf-8))
-              (append-to-file (point-min) (point-max) log-path)))))
+      (let ((state (or iar--cycle-state iar--one-shot-state)))
+        (when state
+          (let* ((turns (plist-get state :turn-count))
+                 (tools (plist-get state :tool-call-count))
+                 (buf (plist-get state :buffer))
+                 (last-activity
+                  (when (buffer-live-p buf)
+                    (with-current-buffer buf
+                      (buffer-substring-no-properties
+                       (max (point-min) (- (point-max) 200))
+                       (point-max)))))
+                 (totals (iar--usage-totals))
+                 (project (iar--current-project-name))
+                 (log-path (expand-file-name
+                            (format "%s/%s/cycle.log" project agent-name)
+                            (expand-file-name iar-audit-path iar-personalization-path))))
+            (make-directory (file-name-directory log-path) t)
+            (with-temp-buffer
+              (insert (format-time-string "[%Y-%m-%d %H:%M:%S] ") "[TIMED OUT]"
+                      (format " after %ds. Turns: %d, Tool calls: %d" timeout-secs turns tools)
+                      (format "\nTokens: %d in / %d out / %d total / %d requests"
+                              (plist-get totals :input-tokens)
+                              (plist-get totals :output-tokens)
+                              (plist-get totals :total-tokens)
+                              (plist-get totals :requests))
+                      (when last-activity
+                        (format "\nLast activity: %.200s" last-activity))
+                      "\n\n")
+              (let ((coding-system-for-write 'utf-8))
+                (append-to-file (point-min) (point-max) log-path))))))
     (error
      (message "[cycle] Tombstone write failed: %s" (error-message-string err)))))
 
@@ -533,8 +578,10 @@ Tools are gated by the project's #+TOOLS metadata."
             (unless (plist-get iar--cycle-state :completed)
               (unless idle-since (setq idle-since (current-time)))
               (when (> (time-convert (time-subtract nil idle-since) 'integer) 1800)
-                (message "[%s] No active requests for 1800s, exiting" agent-name)
-                (setf (plist-get iar--cycle-state :completed) t)))))
+                (message "[%s] No active requests for 1800s -- stalled, exit 1" agent-name)
+                (iar--cycle-tombstone agent-name 1800)
+                (setf (plist-get iar--cycle-state :completed) t)
+                (setf (plist-get iar--cycle-state :exit-code) 1)))))
         ;; Timeout path: graceful landing, not a cliff.
         ;; The model gets one final round-trip to write its summary
         ;; and memory (the one-shot pattern, ported 2026-09-03).
@@ -595,6 +642,12 @@ Tools are gated by the project's #+TOOLS metadata."
 ;; registration made the counter context-blind (360 calls counted as 13).
 (remove-hook 'iar-post-tool-call-functions #'iar--cycle-tool-call-tracker)
 (add-hook 'iar-post-tool-call-functions #'iar--cycle-tool-call-tracker)
+;; One-shot tracker: GLOBAL for the same reason -- the buffer-local
+;; registration in iar-run-one-shot never fired from async sentinels
+;; (the 360-as-13 class, one-shot edition) and would double-count on
+;; top of this one.
+(remove-hook 'iar-post-tool-call-functions #'iar--one-shot-tool-call-tracker)
+(add-hook 'iar-post-tool-call-functions #'iar--one-shot-tool-call-tracker)
 (remove-hook 'iar-pre-tool-call-functions #'iar--cycle-tool-call-cap)
 (add-hook 'iar-pre-tool-call-functions #'iar--cycle-tool-call-cap)
 (remove-hook 'iar-pre-tool-call-functions #'iar--cycle-context-breaker)
@@ -625,6 +678,7 @@ a hardcoded copy here drifted from them the moment either changed.")
 :max-turns       -- max LLM turns
 :turn-count      -- current turn count
 :tool-call-count -- total tool calls made
+:cap-blocks      -- tool calls blocked at the soft cap (hard-cap counter)
 :completed       -- t when one-shot is done
 :exit-code       -- 0 for success, 1 for timeout/error
 :final-response  -- extracted response string or nil")
@@ -632,12 +686,20 @@ a hardcoded copy here drifted from them the moment either changed.")
 (defun iar--one-shot-make-state (agent buf max-turns)
   "Create a fresh one-shot state plist."
   (list :agent agent :buffer buf :max-turns max-turns
-        :turn-count 0 :tool-call-count 0
+        :turn-count 0 :tool-call-count 0 :cap-blocks 0
         :completed nil :exit-code 0 :final-response nil))
 
 (defun iar--one-shot-tool-call-tracker (_tool-name _tool-result)
-  "Track tool calls in one-shot mode. Increments tool-call-count."
-  (cl-incf (plist-get iar--one-shot-state :tool-call-count)))
+  "Track tool calls in one-shot mode. Increments tool-call-count.
+GLOBAL hook (registered at module load, same reasoning as the
+cycle tracker): the post-tool-call advice fires from async
+sentinels where current-buffer is NOT the one-shot buffer -- the
+buffer-local registration this replaces undercounted one-shot tool
+calls exactly the way cycles were undercounted (2026-09-02
+invisible-cycles finding). State-guarded: no active one-shot ->
+silent no-op (safe to fire during cycle runs and interactive use)."
+  (when iar--one-shot-state
+    (cl-incf (plist-get iar--one-shot-state :tool-call-count))))
 
 (defun iar--one-shot-extract-response (text)
   "Extract content between one-shot delimiters in TEXT.
@@ -766,9 +828,12 @@ Tools are gated by the project's #+TOOLS metadata."
       ;; Self-modification: buffer-local so delegates inherit global nil
       (setq-local iar-guard-allow-self-modification self-mod)
 
-      ;; Install hooks (named functions, idempotent per rule 57)
-      (remove-hook 'iar-post-tool-call-functions #'iar--one-shot-tool-call-tracker t)
-      (add-hook 'iar-post-tool-call-functions #'iar--one-shot-tool-call-tracker nil t)
+      ;; Install hooks (named functions, idempotent per rule 57).
+      ;; The one-shot tool-call tracker is NOT registered here: it is
+      ;; registered GLOBALLY at module load (state-guarded). A
+      ;; buffer-local registration on top of the global one would
+      ;; double-count, and buffer-local alone never fires from async
+      ;; sentinels (the 360-as-13 class).
       (remove-hook 'iar-pre-tool-call-functions #'iar--block-unknown-tools t)
       (add-hook 'iar-pre-tool-call-functions #'iar--block-unknown-tools nil t)
       (remove-hook 'iar-post-response-functions #'iar--one-shot-post-response-handler t)
@@ -798,14 +863,18 @@ Tools are gated by the project's #+TOOLS metadata."
             (progn
               (unless idle-since (setq idle-since (current-time)))
               (when (> (time-convert (time-subtract nil idle-since) 'integer) 1800)
-                (message "[%s] One-shot: no active requests for 1800s, exiting"
+                (message "[%s] One-shot: no active requests for 1800s -- stalled, exit 1"
                          agent-name)
-                (setf (plist-get iar--one-shot-state :completed) t)))))
+                (iar--cycle-tombstone agent-name 1800)
+                (setf (plist-get iar--one-shot-state :completed) t)
+                (setf (plist-get iar--one-shot-state :exit-code) 1)))))
         ;; Timeout check: if deadline passed and not completed, ask for summary
         (when (and (not (plist-get iar--one-shot-state :completed))
                    (not (time-less-p nil deadline)))
           (message "[%s] One-shot: timeout reached, requesting summary..." agent-name)
-          (let ((summary-prompt "Time limit reached. Stop all tool calls immediately. Summarize all findings so far and wrap your summary in === BEGIN FINAL RESPONSE === and === END FINAL RESPONSE === markers. Include all vulnerabilities discovered, even partial ones."))
+          (let ((summary-prompt
+                 (format "Time limit reached. Stop all tool calls immediately. Summarize all findings so far and wrap your summary in %s and %s markers. Include all vulnerabilities discovered, even partial ones."
+                         iar-one-shot-response-open iar-one-shot-response-close)))
             (with-current-buffer os-buf
               (goto-char (point-max))
               (insert summary-prompt)
@@ -815,6 +884,16 @@ Tools are gated by the project's #+TOOLS metadata."
             (while (and (not (plist-get iar--one-shot-state :completed))
                         (time-less-p nil summary-deadline))
               (accept-process-output nil 1))))
+        ;; Still not done after the summary grace: tombstone + honest
+        ;; exit. Before this fix the one-shot timeout path fell through
+        ;; with exit-code 0 -- timeout-as-success, the same lie the
+        ;; cycle path killed on 2026-09-02 ("timed out" then "succeeded
+        ;; exit 0" ten seconds later, nothing written).
+        (unless (plist-get iar--one-shot-state :completed)
+          (message "[%s] One-shot summary grace expired without final response -- exit 1"
+                   agent-name)
+          (iar--cycle-tombstone agent-name timeout)
+          (setf (plist-get iar--one-shot-state :exit-code) 1))
         ;; One-shot ended -- print result and exit
         (let ((exit-code (plist-get iar--one-shot-state :exit-code))
               (turn-count (plist-get iar--one-shot-state :turn-count))

@@ -22,6 +22,12 @@
 ;;   record).
 ;;
 ;; Evidence: knowledge/aria/invisible-cycles.md (cycle 127, 2026-09-02).
+;;
+;; 2026-09-03 parity fix (continuo): the cap, breaker, and tombstone
+;; now dispatch on the active state -- cycle first, then one-shot
+;; (iar--one-shot-state). One-shot runs were previously UNPROTECTED:
+;; no cap, no breaker, no tombstone. Tests in test-one-shot.el cover
+;; the one-shot side; these tests pin the cycle side.
 
 (require 'ert)
 (require 'cl-lib)
@@ -71,7 +77,8 @@ its CYCLE_COMPLETE landing. Regression for the 53 exit-1 cycles
 (2026-09-02) that burned 2.5M tokens with zero memory writes."
   (let ((cycle-buf (get-buffer-create "*test-fence-cap*")))
     (unwind-protect
-        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40)))
+        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40))
+              (iar--one-shot-state nil))
           (setf (plist-get iar--cycle-state :tool-call-count) iar-cycle-tool-call-cap)
           (let ((result (iar--cycle-tool-call-cap
                          (list :name "execute_code_local" :args nil))))
@@ -87,7 +94,8 @@ its CYCLE_COMPLETE landing. Regression for the 53 exit-1 cycles
   "Calls under the cap pass through untouched."
   (let ((cycle-buf (get-buffer-create "*test-fence-cap2*")))
     (unwind-protect
-        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40)))
+        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40))
+              (iar--one-shot-state nil))
           (setf (plist-get iar--cycle-state :tool-call-count) 59)
           (should-not (iar--cycle-tool-call-cap
                        (list :name "read_file" :args nil))))
@@ -95,7 +103,8 @@ its CYCLE_COMPLETE landing. Regression for the 53 exit-1 cycles
 
 (ert-deftest test-fence-cap-no-state-passes ()
   "No active cycle (interactive use) -- cap never fires."
-  (let ((iar--cycle-state nil))
+  (let ((iar--cycle-state nil)
+        (iar--one-shot-state nil))
     (should-not (iar--cycle-tool-call-cap
                  (list :name "read_file" :args nil)))))
 
@@ -109,7 +118,8 @@ blocks, the cycle IS force-ended (completed, exit 1) -- runaway
 confirmed, the model is not responding to the landing instruction."
   (let ((cycle-buf (get-buffer-create "*test-fence-cap3*")))
     (unwind-protect
-        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40)))
+        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40))
+              (iar--one-shot-state nil))
           (setf (plist-get iar--cycle-state :tool-call-count) iar-cycle-tool-call-cap)
           ;; Burn through the soft blocks
           (dotimes (_ (1- iar-cycle-tool-call-hard-cap))
@@ -128,7 +138,8 @@ are NEVER blocked by the soft cap -- the landing IS the memory
 pass. Only non-memory tools are blocked."
   (let ((cycle-buf (get-buffer-create "*test-fence-cap4*")))
     (unwind-protect
-        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40)))
+        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40))
+              (iar--one-shot-state nil))
           (setf (plist-get iar--cycle-state :tool-call-count) iar-cycle-tool-call-cap)
           (should-not (iar--cycle-tool-call-cap
                        (list :name "append_file" :args nil)))
@@ -160,7 +171,8 @@ agent's cycle.log."
                 (with-current-buffer buf
                   (insert "last model activity before the timeout")
                   (let ((iar--cycle-state
-                         (iar--cycle-make-state "test-agent" buf nil 40)))
+                         (iar--cycle-make-state "test-agent" buf nil 40))
+                        (iar--one-shot-state nil))
                     (setf (plist-get iar--cycle-state :turn-count) 5)
                     (setf (plist-get iar--cycle-state :tool-call-count) 23)
                     (iar--cycle-tombstone "test-agent" 1800)
@@ -181,7 +193,8 @@ agent's cycle.log."
 (ert-deftest test-fence-tombstone-no-state-is-safe ()
   "Tombstone with no cycle state must not signal (timeout path runs
 at kill time; an error here would mask the exit)."
-  (let ((iar--cycle-state nil))
+  (let ((iar--cycle-state nil)
+        (iar--one-shot-state nil))
     (should-not (iar--cycle-tombstone "test-agent" 1800))))
 
 (ert-deftest test-fence-tombstone-truncates-last-activity ()
@@ -198,7 +211,8 @@ response must not bloat the tombstone."
                 (with-current-buffer buf
                   (insert (make-string 1000 ?x))
                   (let ((iar--cycle-state
-                         (iar--cycle-make-state "test-agent" buf nil 40)))
+                         (iar--cycle-make-state "test-agent" buf nil 40))
+                        (iar--one-shot-state nil))
                     (iar--cycle-tombstone "test-agent" 1800)
                     (with-temp-buffer
                       (insert-file-contents
@@ -224,7 +238,8 @@ response must not bloat the tombstone."
                 (with-current-buffer buf
                   (insert "x")
                   (let ((iar--cycle-state
-                         (iar--cycle-make-state "test-agent" buf nil 40)))
+                         (iar--cycle-make-state "test-agent" buf nil 40))
+                        (iar--one-shot-state nil))
                     (iar--cycle-tombstone "test-agent" 1800)
                     (with-temp-buffer
                       (insert-file-contents
@@ -248,6 +263,13 @@ hook, not buffer-local in cycle-buf. Regression for the context-
 blind counter."
   (should (memq #'iar--cycle-tool-call-tracker iar-post-tool-call-functions)))
 
+(ert-deftest test-fence-oneshot-tracker-hook-is-global ()
+  "The one-shot tracker must ALSO be on the GLOBAL hook. The old
+buffer-local registration in iar-run-one-shot never fired from
+async sentinels (360-as-13 class, one-shot edition) and would
+double-count on top of the global registration."
+  (should (memq #'iar--one-shot-tool-call-tracker iar-post-tool-call-functions)))
+
 ;;; --- Fix D: context circuit breaker ---
 
 (ert-deftest test-fence-breaker-arms-on-first-fire ()
@@ -258,7 +280,8 @@ re-sent a ~254k-token context 100+ times."
   (let ((buf (get-buffer-create "*test-fence-breaker1*")))
     (unwind-protect
         (let ((iar-cycle-context-limit-chars 100)
-              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40))
+              (iar--one-shot-state nil))
           (with-current-buffer buf (insert (make-string 200 ?x)))
           (let ((result (iar--cycle-context-breaker
                          (list :name "execute_code_local" :args '(:command "ls")))))
@@ -276,7 +299,8 @@ re-sent a ~254k-token context 100+ times."
   (let ((buf (get-buffer-create "*test-fence-breaker2*")))
     (unwind-protect
         (let ((iar-cycle-context-limit-chars 100)
-              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40))
+              (iar--one-shot-state nil))
           (with-current-buffer buf (insert (make-string 200 ?x)))
           ;; First fire: arms the breaker
           (should (iar--cycle-context-breaker
@@ -295,7 +319,8 @@ re-sent a ~254k-token context 100+ times."
   (let ((buf (get-buffer-create "*test-fence-breaker3*")))
     (unwind-protect
         (let ((iar-cycle-context-limit-chars 100000)
-              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40))
+              (iar--one-shot-state nil))
           (with-current-buffer buf (insert (make-string 200 ?x)))
           (should-not (iar--cycle-context-breaker
                        (list :name "execute_code_local" :args '(:command "ls"))))
@@ -304,7 +329,8 @@ re-sent a ~254k-token context 100+ times."
 
 (ert-deftest test-fence-breaker-no-state-passes ()
   "No active cycle state (interactive session) -> nil, no signal."
-  (let ((iar--cycle-state nil))
+  (let ((iar--cycle-state nil)
+        (iar--one-shot-state nil))
     (should-not (iar--cycle-context-breaker
                  (list :name "execute_code_local" :args '(:command "ls"))))))
 
@@ -313,7 +339,8 @@ re-sent a ~254k-token context 100+ times."
   (let ((buf (get-buffer-create "*test-fence-breaker4*")))
     (unwind-protect
         (let ((iar-cycle-context-limit-chars 100)
-              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40))
+              (iar--one-shot-state nil))
           (kill-buffer buf)
           (should-not (iar--cycle-context-breaker
                        (list :name "execute_code_local" :args '(:command "ls")))))

@@ -61,6 +61,189 @@
   "Should return nil for empty string input."
   (should (null (iar--one-shot-extract-response ""))))
 
+;;; --- Parity: fences dispatch to one-shot (2026-09-03) ---
+;; The cap, breaker, and tombstone dispatch on the active state:
+;; cycle first, then one-shot. These tests pin the one-shot side;
+;; the cycle side is pinned in test-invisible-cycle-fences.el.
+
+(ert-deftest test-one-shot-cap-blocks-at-limit ()
+  "SOFT cap fires for a one-shot run past the tool-call cap: the
+call is blocked with the DELIMITER landing (not CYCLE_COMPLETE --
+a one-shot has no cycle to complete), and the run is NOT ended."
+  (let ((buf (get-buffer-create "*test-oneshot-cap*")))
+    (unwind-protect
+        (let ((iar--cycle-state nil)
+              (iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
+          (setf (plist-get iar--one-shot-state :tool-call-count)
+                iar-cycle-tool-call-cap)
+          (let ((result (iar--cycle-tool-call-cap
+                         (list :name "execute_code_local" :args nil))))
+            (should (plist-get result :block))
+            (should (string-match-p "BEGIN FINAL RESPONSE"
+                                    (plist-get result :block)))
+            (should-not (string-match-p "CYCLE_COMPLETE"
+                                        (plist-get result :block)))
+            (should-not (plist-get iar--one-shot-state :completed))
+            (should (= 1 (plist-get iar--one-shot-state :cap-blocks)))))
+      (kill-buffer buf))))
+
+(ert-deftest test-one-shot-cap-allows-memory-tools-past-soft-cap ()
+  "Memory/record tools pass through the soft cap for one-shot runs
+too -- the landing IS the record."
+  (let ((buf (get-buffer-create "*test-oneshot-cap2*")))
+    (unwind-protect
+        (let ((iar--cycle-state nil)
+              (iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
+          (setf (plist-get iar--one-shot-state :tool-call-count)
+                iar-cycle-tool-call-cap)
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "append_file" :args nil)))
+          (should (= 0 (plist-get iar--one-shot-state :cap-blocks))))
+      (kill-buffer buf))))
+
+(ert-deftest test-one-shot-cap-hard-kill-after-ignored-blocks ()
+  "HARD cap ends a one-shot run too: completed, exit 1."
+  (let ((buf (get-buffer-create "*test-oneshot-cap3*")))
+    (unwind-protect
+        (let ((iar--cycle-state nil)
+              (iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
+          (setf (plist-get iar--one-shot-state :tool-call-count)
+                iar-cycle-tool-call-cap)
+          (dotimes (_ (1- iar-cycle-tool-call-hard-cap))
+            (iar--cycle-tool-call-cap (list :name "read_file" :args nil)))
+          (let ((result (iar--cycle-tool-call-cap
+                         (list :name "read_file" :args nil))))
+            (should (plist-get result :block))
+            (should (plist-get iar--one-shot-state :completed))
+            (should (= 1 (plist-get iar--one-shot-state :exit-code)))))
+      (kill-buffer buf))))
+
+(ert-deftest test-one-shot-cap-under-limit-passes ()
+  "Under the cap the fence is invisible for one-shot runs."
+  (let ((buf (get-buffer-create "*test-oneshot-cap4*")))
+    (unwind-protect
+        (let ((iar--cycle-state nil)
+              (iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
+          (setf (plist-get iar--one-shot-state :tool-call-count) 59)
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "read_file" :args nil))))
+      (kill-buffer buf))))
+
+(ert-deftest test-one-shot-breaker-arms-and-ends ()
+  "Context breaker dispatches to one-shot: first fire arms (grace
+round-trip), second fire ends the run (completed, exit 1)."
+  (let ((buf (get-buffer-create "*test-oneshot-breaker*")))
+    (unwind-protect
+        (let ((iar-cycle-context-limit-chars 100)
+              (iar--cycle-state nil)
+              (iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
+          (with-current-buffer buf (insert (make-string 200 ?x)))
+          ;; First fire: arms the breaker
+          (let ((r1 (iar--cycle-context-breaker
+                     (list :name "execute_code_local" :args '(:command "ls")))))
+            (should (plist-get r1 :block))
+            (should (plist-get iar--one-shot-state :breaker-fired))
+            (should-not (plist-get iar--one-shot-state :completed)))
+          ;; Second fire: ends the run
+          (let ((r2 (iar--cycle-context-breaker
+                     (list :name "execute_code_local" :args '(:command "pwd")))))
+            (should (plist-get r2 :block))
+            (should (plist-get iar--one-shot-state :completed))
+            (should (= 1 (plist-get iar--one-shot-state :exit-code)))))
+      (kill-buffer buf))))
+
+(ert-deftest test-one-shot-breaker-allows-under-limit ()
+  "Under the context limit the breaker never fires for one-shot runs."
+  (let ((buf (get-buffer-create "*test-oneshot-breaker2*")))
+    (unwind-protect
+        (let ((iar-cycle-context-limit-chars 100000)
+              (iar--cycle-state nil)
+              (iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
+          (with-current-buffer buf (insert (make-string 200 ?x)))
+          (should-not (iar--cycle-context-breaker
+                       (list :name "execute_code_local" :args '(:command "ls")))))
+      (kill-buffer buf))))
+
+(ert-deftest test-one-shot-tombstone-writes-journal ()
+  "The tombstone dispatches to one-shot state: writes the [TIMED
+OUT] record to the agent's cycle.log. Before the parity fix a
+timed-out one-shot exited 0 with NOTHING written."
+  (let* ((tmpdir (make-temp-file "test-oneshot-tomb-" :dir-flag))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit"))
+    (cl-letf (((symbol-function 'iar--current-project-name) (lambda () "test-project"))
+              ((symbol-function 'iar--usage-totals)
+               (lambda () (list :input-tokens 1000 :output-tokens 500
+                                :total-tokens 1500 :requests 42))))
+      (unwind-protect
+          (let ((buf (get-buffer-create "*test-oneshot-tomb*")))
+            (unwind-protect
+                (with-current-buffer buf
+                  (insert "last one-shot activity before the timeout")
+                  (let ((iar--cycle-state nil)
+                        (iar--one-shot-state
+                         (iar--one-shot-make-state "test-agent" buf 40)))
+                    (setf (plist-get iar--one-shot-state :turn-count) 3)
+                    (setf (plist-get iar--one-shot-state :tool-call-count) 17)
+                    (iar--cycle-tombstone "test-agent" 7200)
+                    (let ((log-path (expand-file-name
+                                     "audit/test-project/test-agent/cycle.log" tmpdir)))
+                      (should (file-exists-p log-path))
+                      (with-temp-buffer
+                        (insert-file-contents log-path)
+                        (let ((content (buffer-string)))
+                          (should (string-match-p "\\[TIMED OUT\\]" content))
+                          (should (string-match-p "Turns: 3" content))
+                          (should (string-match-p "Tool calls: 17" content))
+                          (should (string-match-p "42 requests" content))
+                          (should (string-match-p "last one-shot activity" content)))))))
+              (kill-buffer buf)))
+        (delete-directory tmpdir t)))))
+
+(ert-deftest test-one-shot-tombstone-cycle-state-takes-precedence ()
+  "When both states are active (cycle running a delegate that
+started a one-shot), the tombstone records the CYCLE state."
+  (let* ((tmpdir (make-temp-file "test-oneshot-tomb2-" :dir-flag))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit"))
+    (cl-letf (((symbol-function 'iar--current-project-name) (lambda () "test-project"))
+              ((symbol-function 'iar--usage-totals)
+               (lambda () (list :input-tokens 0 :output-tokens 0
+                                :total-tokens 0 :requests 0))))
+      (unwind-protect
+          (let ((cbuf (get-buffer-create "*test-oneshot-tomb2-c*"))
+                (obuf (get-buffer-create "*test-oneshot-tomb2-o*")))
+            (unwind-protect
+                (with-current-buffer cbuf
+                  (insert "cycle activity")
+                  (let ((iar--cycle-state
+                         (iar--cycle-make-state "test-agent" cbuf nil 40))
+                        (iar--one-shot-state
+                         (iar--one-shot-make-state "test-agent" obuf 40)))
+                    (setf (plist-get iar--cycle-state :turn-count) 9)
+                    (setf (plist-get iar--one-shot-state :turn-count) 2)
+                    (iar--cycle-tombstone "test-agent" 1800)
+                    (with-temp-buffer
+                      (insert-file-contents
+                       (expand-file-name "audit/test-project/test-agent/cycle.log" tmpdir))
+                      (should (string-match-p "Turns: 9" (buffer-string))))))
+              (kill-buffer cbuf)
+              (kill-buffer obuf)))
+        (delete-directory tmpdir t)))))
+
+(ert-deftest test-one-shot-tracker-state-guarded ()
+  "The one-shot tracker must not signal with no active one-shot
+state (it now fires globally on every tool call, including during
+cycle runs and interactive use)."
+  (let ((iar--one-shot-state nil))
+    (should-not (iar--one-shot-tool-call-tracker nil nil))))
+
+(ert-deftest test-one-shot-make-state-has-cap-blocks ()
+  "One-shot state carries :cap-blocks (the hard-cap counter) --
+the fence machinery reads it."
+  (let ((state (iar--one-shot-make-state "test" nil 40)))
+    (should (= 0 (plist-get state :cap-blocks)))))
+
 ;;; --- iar--one-shot-make-state ---
 
 (ert-deftest test-one-shot-make-state-defaults ()
