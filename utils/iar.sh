@@ -1111,6 +1111,7 @@ Successes: ${SUCCESSES} | Failures: ${FAILURES}"
     elif [[ ${CYCLE_EXIT} -eq 2 ]]; then
         SUCCESSES=$((SUCCESSES + 1))
         log "${GREEN}[INF][$(timestamp)]${NC} Cycle ${CYCLE} completed task in ${CYCLE_ELAPSED}s (exit 2 -- loop stop)"
+        write_last_cycle ok 2 "cycle ${CYCLE} task complete in ${CYCLE_ELAPSED}s"
         tg_send "Cycle ${CYCLE}/${MAX_CYCLES}: *TASK COMPLETE* (${CYCLE_ELAPSED}s)
 Successes: ${SUCCESSES} | Failures: ${FAILURES}
 Loop stopping -- task finished."
