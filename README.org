@@ -102,6 +102,7 @@ The =--model= and =--ctx= flags control which LLM runs and how much context wind
 | =--model NAME= | =glm-5.2:cloud= | Model name (must be in =metaconfig/gptel.el= model list) |
 | =--ctx N= | =1048576= (1M) | Max context window in tokens. Use 131072 (128K) or 262144 (256K) for local models |
 | =--ollama-host HOST= | =10.66.0.5:11434= | Ollama API host:port |
+| =--no-think= | off | Send =think:false= to Ollama, disabling model thinking. Only models that honor the toggle are affected (e.g. =nemotron-3-super:120b=); gpt-oss ignores it, =glm-5.3:cloud= leaks thinking into content (startup warns). No-op for non-thinking models. |
 
 Cloud models (suffix =:cloud=) handle context server-side and can use the default 1M. Local models need explicit =--ctx= to avoid OOM.
 

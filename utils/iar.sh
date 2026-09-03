@@ -76,6 +76,11 @@ Options (both modes):
   --ctx N               Max context window in tokens (default: 1048576 = 1M).
                        Critical for local models -- KV cache scales linearly.
                        Use 131072 (128K) or 262144 (256K) for local models.
+  --no-think           Disable model thinking (send think:false to Ollama).
+                       Only affects models that honor the toggle (e.g.
+                       nemotron-3-super:120b). gpt-oss models ignore it and
+                       glm-5.3:cloud leaks thinking into content -- startup
+                       warns about both. No-op for non-thinking models.
   --mount PATH          Mount a host directory read-write inside the container
                        at the same absolute path. Can be specified multiple times.
   --mount-ro PATH       Mount a host directory read-only inside the container
@@ -169,6 +174,7 @@ MAX_CONSECUTIVE_FAILURES=5
 OLLAMA_HOST="${LOCAL_OLLAMA_HOST}"
 OLLAMA_MODEL=""
 OLLAMA_CTX=""
+OLLAMA_NO_THINK=0
 USE_LOCAL=false
 PERSONALIZATION_DIR=""
 PROJECT_NAME=""
@@ -254,6 +260,10 @@ while [[ $# -gt 0 ]]; do
             [[ $# -lt 2 ]] && error "--ctx requires a value" && exit 1
             OLLAMA_CTX="$2"
             shift 2
+            ;;
+        --no-think)
+            OLLAMA_NO_THINK=1
+            shift
             ;;
         --knowledge)
             [[ $# -lt 2 ]] && error "--knowledge requires a label argument" && exit 1
@@ -850,6 +860,7 @@ build_podman_args() {
         -e "EMACBOROS_OLLAMA_HOST=${OLLAMA_HOST}" \
         $([[ -n "${OLLAMA_MODEL}" ]] && echo "-e EMACBOROS_OLLAMA_MODEL=${OLLAMA_MODEL}") \
         $([[ -n "${OLLAMA_CTX}" ]] && echo "-e EMACBOROS_OLLAMA_CTX=${OLLAMA_CTX}") \
+        $([[ "${OLLAMA_NO_THINK:-0}" -eq 1 ]] && echo "-e EMACBOROS_OLLAMA_NO_THINK=1") \
         -e "AGENT_TELEGRAM_BOT_TOKEN=${AGENT_TELEGRAM_BOT_TOKEN:-}" \
         -e "AGENT_TELEGRAM_CHAT_ID=${AGENT_TELEGRAM_CHAT_ID:-}" \
         -e "MIRROR_BOT_MATRIX_TOKEN=${MIRROR_BOT_MATRIX_TOKEN:-}" \
@@ -894,6 +905,9 @@ run_interactive() {
     info "  Ollama: ${OLLAMA_HOST}"
     info "  Model: ${OLLAMA_MODEL:-glm-5.2:cloud (default)}"
     info "  Context: ${OLLAMA_CTX:-1048576 (default)}"
+    if [[ "${OLLAMA_NO_THINK:-0}" -eq 1 ]]; then
+        info "  Thinking: disabled (think:false)"
+    fi
     if [[ "${SELF_MODIFICATION}" -eq 1 ]]; then
         info "  Self-modification: ENABLED"
     else
@@ -957,6 +971,9 @@ run_one_shot() {
     info "  Ollama: ${OLLAMA_HOST}"
     info "  Model: ${OLLAMA_MODEL:-glm-5.2:cloud (default)}"
     info "  Context: ${OLLAMA_CTX:-1048576 (default)}"
+    if [[ "${OLLAMA_NO_THINK:-0}" -eq 1 ]]; then
+        info "  Thinking: disabled (think:false)"
+    fi
     if [[ "${SELF_MODIFICATION}" -eq 1 ]]; then
         info "  Self-modification: ENABLED"
     else
@@ -1037,6 +1054,9 @@ info "  Max consecutive failures: ${MAX_CONSECUTIVE_FAILURES}"
 info "  Ollama: ${OLLAMA_HOST}"
 info "  Model: ${OLLAMA_MODEL:-glm-5.2:cloud (default)}"
 info "  Context: ${OLLAMA_CTX:-1048576 (default)}"
+if [[ "${OLLAMA_NO_THINK:-0}" -eq 1 ]]; then
+    info "  Thinking: disabled (think:false)"
+fi
 if [[ -f "${SSH_KEY_DIR}/${SSH_KEY_NAME}" ]]; then
     info "  SSH key: ${SSH_KEY_DIR}/${SSH_KEY_NAME}"
 else
@@ -1055,7 +1075,8 @@ Max cycles: ${MAX_CYCLES}
 Cooldown: ${COOLDOWN}s
 Timeout: ${TIMEOUT}s per cycle
 Ollama: ${OLLAMA_HOST}
-Model: ${OLLAMA_MODEL:-glm-5.2:cloud}"
+Model: ${OLLAMA_MODEL:-glm-5.2:cloud}
+Thinking: $( [[ "${OLLAMA_NO_THINK:-0}" -eq 1 ]] && echo "disabled" || echo "enabled (default)" )"
 
 while [[ ${CYCLE} -lt ${MAX_CYCLES} ]]; do
     CYCLE=$((CYCLE + 1))
