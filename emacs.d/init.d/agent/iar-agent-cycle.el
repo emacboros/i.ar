@@ -533,6 +533,40 @@ Tools are gated by the project's #+TOOLS metadata."
               (when (> (time-convert (time-subtract nil idle-since) 'integer) 1800)
                 (message "[%s] No active requests for 1800s, exiting" agent-name)
                 (setf (plist-get iar--cycle-state :completed) t)))))
+        ;; Timeout path: graceful landing, not a cliff.
+        ;; The model gets one final round-trip to write its summary
+        ;; and memory (the one-shot pattern, ported 2026-09-03).
+        ;; Before this, a timed-out cycle exited 0 via iar.sh's
+        ;; success path with NOTHING written -- "timeout-as-success",
+        ;; the record lied (2026-09-02 00:12: "timed out" then
+        ;; "succeeded exit 0" ten seconds later).
+        (unless (plist-get iar--cycle-state :completed)
+          (message "[%s] Cycle timed out after %ds -- requesting summary (grace 120s)"
+                   agent-name timeout)
+          (condition-case err
+              (with-current-buffer cycle-buf
+                (goto-char (point-max))
+                (insert (format "\n%s\n"
+                                (or (plist-get iar--cycle-state :continue)
+                                    "Continue.")))
+                (insert "TIME LIMIT REACHED. Stop all tool calls immediately. Write your summary NOW: what you did, what landed, what is next. Update your memory files (append_file still allowed). End with CYCLE_COMPLETE on its own line.\n")
+                (gptel-send))
+            (error
+             (message "[%s] Summary request failed: %s" agent-name
+                      (error-message-string err))))
+          ;; Grace window: wait up to 120s for the summary round-trip.
+          ;; The post-response handler sees CYCLE_COMPLETE -> completed,
+          ;; exit 0. Anything else -> exit 1 (honest failure).
+          (let ((grace-deadline (time-add nil (seconds-to-time 120))))
+            (while (and (not (plist-get iar--cycle-state :completed))
+                        (time-less-p nil grace-deadline))
+              (accept-process-output nil 1)))
+          ;; Still not done after grace: mark failed honestly.
+          (unless (plist-get iar--cycle-state :completed)
+            (setf (plist-get iar--cycle-state :completed) t)
+            (setf (plist-get iar--cycle-state :exit-code) 1)
+            (message "[%s] Grace window expired without CYCLE_COMPLETE -- exit 1"
+                     agent-name)))
         ;; Cycle ended -- log results and exit
         (let ((exit-code (plist-get iar--cycle-state :exit-code))
               (turn-count (plist-get iar--cycle-state :turn-count))
@@ -541,8 +575,8 @@ Tools are gated by the project's #+TOOLS metadata."
               (message "[%s] Cycle complete. Turns: %d, Tool calls: %d, Exit: %d%s"
                        agent-name turn-count tool-call-count exit-code
                        (iar--cycle-token-summary))
-            ;; Tombstone FIRST: write what died to the journal before
-            ;; the state is cleared (fix C, invisible-cycles 2026-09-02)
+            ;; Unreachable in practice (all paths set completed), kept
+            ;; as belt-and-suspenders: tombstone before state clears.
             (iar--cycle-tombstone agent-name timeout)
             (message "[%s] Cycle timed out after %ds. Turns: %d, Tool calls: %d%s"
                      agent-name timeout turn-count tool-call-count
