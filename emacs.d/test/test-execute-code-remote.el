@@ -11,6 +11,15 @@
 (require 'subr-x)
 (require 'iar-tool--execute-code-remote)
 
+;; Stubbing a primitive (make-process) with cl-letf triggers native-comp
+;; trampoline compilation, which dies in batch mode with
+;; excessive-lisp-nesting (tramp-archive file-name-handler recursion,
+;; observed 2026-09-03). Advice-around does not recompile the primitive.
+;; Disable trampolines for this test file's session as a belt-and-braces
+;; guard: any test that stubs a primitive sets this before cl-letf runs.
+(when (boundp 'comp-enable-subr-trampolines)
+  (setq comp-enable-subr-trampolines nil))
+
 ;;; --- Target resolution tests ---
 
 (ert-deftest test-remote-resolve-local-container ()
@@ -112,64 +121,61 @@
 ;;; --- Target validation tests ---
 
 (ert-deftest test-remote-validate-target-allowed ()
-  "Target in current-containers list is allowed."
+  "Allowed target passes validation."
   (let ((iar--current-containers '("pentest" "concepts")))
     (should (iar--validate-target "pentest"))
     (should (iar--validate-target "concepts"))))
 
 (ert-deftest test-remote-validate-target-not-allowed ()
-  "Target not in current-containers list is rejected."
+  "Target not in container list fails validation."
   (let ((iar--current-containers '("pentest")))
-    (should-not (iar--validate-target "concepts"))
-    (should-not (iar--validate-target "life-org"))))
+    (should-not (iar--validate-target "concepts"))))
 
 (ert-deftest test-remote-validate-target-no-containers ()
-  "When current-containers is nil, all targets are rejected."
+  "With no container list configured, all targets are rejected."
   (let ((iar--current-containers nil))
-    (should-not (iar--validate-target "pentest"))
-    (should-not (iar--validate-target "anything"))))
+    (should-not (iar--validate-target "pentest"))))
 
-;;; --- Tool function error path tests ---
+;;; --- Tool-level rejection tests ---
 
 (ert-deftest test-remote-tool-rejects-unauthorized-target ()
-  "Tool returns error for target not in container list."
-  (let ((iar--current-containers '("pentest"))
+  "Tool rejects a target not in the session's container list."
+  (let ((iar--current-containers '("allowed-target"))
         (result nil))
     (iar--tool-execute-code-remote
      (lambda (r) (setq result r))
-     "concepts" "echo hello")
-    ;; The callback is called synchronously for the error path
+     "forbidden-target" "echo hello")
     (should (stringp result))
-    (should (string-match-p "not in the current session" result))))
+    (should (string-match-p "Error" result))
+    (should (string-match-p "not in the current session's container list" result))
+    (should (string-match-p "allowed-target" result))))
 
 (ert-deftest test-remote-tool-rejects-unknown-target ()
-  "Tool returns error for target that cannot be resolved."
-  (let ((iar--current-containers '("ghost"))
+  "Tool rejects a target that resolves to :unknown."
+  (let ((iar--current-containers '("ghost-target"))
         (result nil))
     (iar--tool-execute-code-remote
      (lambda (r) (setq result r))
-     "ghost" "echo hello")
+     "ghost-target" "echo hello")
     (should (stringp result))
+    (should (string-match-p "Error" result))
     (should (string-match-p "Unknown target" result))))
 
-(provide 'test-execute-code-remote)
-;;; test-execute-code-remote.el ends here
-;;; --- Additional coverage tests ---
-
 (ert-deftest test-remote-tool-error-handler ()
-  "iar--tool-execute-code-remote should catch errors and return via callback."
-  (let ((iar--current-containers '("test-target")))
+  "Errors from the dispatch path are caught and returned as strings."
+  (let ((iar--current-containers '("test-target"))
+        (result nil))
     (cl-letf (((symbol-function 'iar--resolve-target)
-               (lambda (_target) (signal 'error "mock error"))))
-      (let (result)
-        (iar--tool-execute-code-remote
-         (lambda (r) (setq result r))
-         "test-target" "echo hello")
-        (should (stringp result))
-        (should (string-match-p "Error" result))))))
+               (lambda (_target) (error "boom"))))
+      (iar--tool-execute-code-remote
+       (lambda (r) (setq result r))
+       "test-target" "echo hello")
+      (should (stringp result))
+      (should (string-match-p "Error" result))
+      (should (string-match-p "boom" result)))))
 
 (ert-deftest test-remote-tool-local-dispatch ()
-  "iar--tool-execute-code-remote should dispatch to local container."
+  "iar--tool-execute-code-remote should dispatch to local container exec."
   (let ((iar--current-containers '("test-target"))
         (dispatched nil))
     (cl-letf (((symbol-function 'iar--resolve-target)
@@ -227,6 +233,102 @@
       (should (string= "10.66.0.99" (plist-get result :host)))
       (should (= 22 (plist-get result :port)))
       (should (string= "debug-user" (plist-get result :user))))))
+
+;;; --- Preflight honest-failure tests (2026-09-03, fix C) ---
+;; Regression for the sidecar-wiring failure (knowledge/aria/
+;; research-sidecar-wiring.md): every execute_code_remote call since the
+;; sidecar existed failed with a generic re-signaled "No such file or
+;; directory, podman" error that failure-first could not see (cycle exit
+;; stayed green; audit bridge logged the callback as success). The
+;; preflight must return an honest diagnosis instead.
+
+(ert-deftest test-remote-preflight-podman-missing-honest-error ()
+  "Without a podman binary, local exec returns an honest diagnosis,
+calls the callback exactly once, and never spawns a process."
+  (let ((iar--current-containers '("research"))
+        (process-environment (cons "IAR_CONTAINER_RESEARCH=iar-research-1"
+                                   process-environment))
+        (results nil)
+        (spawned nil))
+    (advice-add 'make-process :around
+                (lambda (_orig &rest _args) (setq spawned t))
+                '((name . preflight-stub)))
+    (cl-letf (((symbol-function 'executable-find)
+               (lambda (_name) nil)))
+      (unwind-protect
+          (progn
+            (iar--tool-execute-code-remote
+             (lambda (r) (push r results))
+             "research" "echo hello")
+            (should (= (length results) 1))
+            (should (string-match-p "podman client not found" (car results)))
+            (should (string-match-p "Do not retry" (car results)))
+            (should (string-match-p "execute_code_local" (car results)))
+            (should-not spawned))
+        (advice-remove 'make-process 'preflight-stub)))))
+
+(ert-deftest test-remote-preflight-ssh-missing-honest-error ()
+  "Without an ssh binary, remote exec returns an honest diagnosis
+and never spawns a process."
+  (let ((iar--current-containers '("sophon"))
+        (iar-remote-targets '(("sophon" . (:host "10.66.0.5" :port 22 :user "debug-agent"))))
+        (results nil)
+        (spawned nil))
+    (advice-add 'make-process :around
+                (lambda (_orig &rest _args) (setq spawned t))
+                '((name . preflight-stub)))
+    (cl-letf (((symbol-function 'executable-find)
+               (lambda (_name) nil)))
+      (unwind-protect
+          (progn
+            (iar--tool-execute-code-remote
+             (lambda (r) (push r results))
+             "sophon" "echo hello")
+            (should (= (length results) 1))
+            (should (string-match-p "ssh client not found" (car results)))
+            (should-not spawned))
+        (advice-remove 'make-process 'preflight-stub)))))
+
+(ert-deftest test-remote-preflight-present-proceeds-to-dispatch ()
+  "With the binary present, preflight is a no-op and dispatch
+proceeds (no behavior change on the happy path)."
+  (let ((iar--current-containers '("research"))
+        (process-environment (cons "IAR_CONTAINER_RESEARCH=iar-research-1"
+                                   process-environment))
+        (results nil)
+        (dispatched nil))
+    (advice-add 'make-process :around
+                (lambda (orig &rest args)
+                  (setq dispatched t)
+                  ;; Emulate a clean exit: insert output into the tool's
+                  ;; own buffer, then start a REAL short-lived process
+                  ;; (via the original make-process -- advice recursion
+                  ;; would blow max-lisp-eval-depth) carrying the tool's
+                  ;; own sentinel; on exit the sentinel reads the buffer
+                  ;; and calls the callback, exactly like a real exec.
+                  (let ((buf (plist-get args :buffer))
+                        (sentinel (plist-get args :sentinel)))
+                    (with-current-buffer buf (insert "sidecar says hi"))
+                    (let ((real-proc (funcall orig :name "probe" :buffer buf
+                                              :command '("sleep" "0.05"))))
+                      (set-process-sentinel real-proc sentinel)
+                      real-proc)))
+                '((name . preflight-stub)))
+    (cl-letf (((symbol-function 'executable-find)
+               (lambda (_name) t))
+              ((symbol-function 'iar--rate-limit-maybe-sleep)
+               (lambda () nil)))
+      (unwind-protect
+          (progn
+            (iar--tool-execute-code-remote
+             (lambda (r) (push r results))
+             "research" "echo hello")
+            ;; the emulated process needs a moment to exit and fire the
+            ;; sentinel that delivers the callback
+            (sit-for 0.5)
+            (should dispatched)
+            (should (string-match-p "sidecar says hi" (car results))))
+        (advice-remove 'make-process 'preflight-stub)))))
 
 (provide 'test-execute-code-remote)
 ;;; test-execute-code-remote.el ends here

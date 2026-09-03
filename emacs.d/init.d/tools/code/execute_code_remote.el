@@ -20,6 +20,7 @@
 (require 'iar-utils)
 (require 'subr-x)
 (require 'iar-rate-limit)
+(require 'cl-lib)
 
 ;; Declared in configs/paths.el (loaded before init.d modules).
 (defvar iar-personalization-path nil
@@ -113,55 +114,73 @@ are rejected -- execute_code_remote should not be registered."
 (defun iar--exec-local-container (callback target command &optional timeout)
   "Execute COMMAND in local container TARGET via podman exec.
 Calls CALLBACK with the result string when done.
-TIMEOUT in seconds (default 3600)."
+TIMEOUT in seconds (default 3600).
+
+Honest-failure preflight (fix C, 2026-09-03): the Emacs container
+image ships no podman client and no podman socket, so every local
+sidecar exec used to fail with \"Searching for program: No such file
+or directory, podman\" -- re-signaled, formatted by the outer handler
+as a generic error, and invisible to failure-first (cycle exit stayed
+green; the audit bridge logged the callback as success). The preflight
+says exactly what is broken so no cycle re-diagnoses from zero."
   (let* ((container-name (iar--resolve-container-env-var target))
          (timeout (or timeout 3600))
          (buf (generate-new-buffer " *gptel-remote-exec*"))
          (timed-out nil)
          (timer nil)
          (proc nil)
-         (sanitize-output (bound-and-true-p iar--sanitize-exec-output)))
-    ;; Rate limit: sleep before exec if enabled
-    (iar--rate-limit-maybe-sleep)
-    (setq proc
-          (condition-case err
-              (make-process
-               :name "gptel-remote-exec"
-               :buffer buf
-               :connection-type 'pipe
-               :command (list "podman" "exec" container-name
-                              "/bin/bash" "-c" command)
-               :sentinel
-               (lambda (proc _event)
-                 (when (memq (process-status proc) '(exit signal))
-                   (when timer (cancel-timer timer))
-                   (let* ((exit-code (process-exit-status proc))
-                          (output (if (buffer-live-p buf)
-                                      (with-current-buffer buf (buffer-string))
-                                    "[buffer was no longer live -- output lost]")))
-                     (when (buffer-live-p buf) (kill-buffer buf))
-                     (let ((result
-                            (cond
-                             (timed-out
-                              (format "[TIMEOUT after %ds -- process killed]\n%s"
-                                      timeout output))
-                             ((and exit-code (/= exit-code 0))
-                              (format "Command exited with code %d.\nOutput:\n%s"
-                                      exit-code output))
-                             (t output))))
-                       (funcall callback
-                                (if sanitize-output
-                                    (iar--sanitize-external-output result)
-                                  result)))))))
-            (error
-             (when (buffer-live-p buf) (kill-buffer buf))
-             (signal (car err) (cdr err)))))
-    (setq timer
-          (run-with-timer timeout nil
-                          (lambda ()
-                            (when (process-live-p proc)
-                              (setq timed-out t)
-                              (delete-process proc)))))))
+         (sanitize-output (bound-and-true-p iar--sanitize-exec-output))
+         (podman-present (executable-find "podman")))
+    (cond
+     ;; Preflight: no podman client -> honest diagnosis, no exec.
+     ((not podman-present)
+      (funcall callback
+               (format "Error: podman client not found in this environment. Local container target '%s' (container '%s') is unreachable: this Emacs ships no podman binary and no podman socket, so sidecar exec cannot work here. Do not retry -- use execute_code_local instead, or fix the sidecar wiring in an interactive session (socket bridge is a security decision)."
+                       target (or container-name "?")))
+      (kill-buffer buf))
+     ;; Normal path: podman present, exec as before.
+     (t
+      ;; Rate limit: sleep before exec if enabled
+      (iar--rate-limit-maybe-sleep)
+      (setq proc
+            (condition-case err
+                (make-process
+                 :name "gptel-remote-exec"
+                 :buffer buf
+                 :connection-type 'pipe
+                 :command (list "podman" "exec" container-name
+                                "/bin/bash" "-c" command)
+                 :sentinel
+                 (lambda (proc _event)
+                   (when (memq (process-status proc) '(exit signal))
+                     (when timer (cancel-timer timer))
+                     (let* ((exit-code (process-exit-status proc))
+                            (output (if (buffer-live-p buf)
+                                        (with-current-buffer buf (buffer-string))
+                                      "[buffer was no longer live -- output lost]")))
+                       (when (buffer-live-p buf) (kill-buffer buf))
+                       (let ((result
+                              (cond
+                               (timed-out
+                                (format "[TIMEOUT after %ds -- process killed]\n%s"
+                                        timeout output))
+                               ((and exit-code (/= exit-code 0))
+                                (format "Command exited with code %d.\nOutput:\n%s"
+                                        exit-code output))
+                               (t output))))
+                         (funcall callback
+                                  (if sanitize-output
+                                      (iar--sanitize-external-output result)
+                                    result)))))))
+              (error
+               (when (buffer-live-p buf) (kill-buffer buf))
+               (signal (car err) (cdr err)))))
+      (setq timer
+            (run-with-timer timeout nil
+                            (lambda ()
+                              (when (process-live-p proc)
+                                (setq timed-out t)
+                                (delete-process proc)))))))))
 
 ;;; --- Command execution: remote (SSH) ---
 
@@ -169,7 +188,11 @@ TIMEOUT in seconds (default 3600)."
   "Execute COMMAND on remote target TARGET via SSH.
 Calls CALLBACK with the result string when done.
 TIMEOUT in seconds (default 3600).
-Uses call-process via make-process with explicit argv (no shell)."
+Uses call-process via make-process with explicit argv (no shell).
+
+Honest-failure preflight (same class as the podman check, 2026-09-03):
+a missing ssh binary would otherwise surface as a generic re-signaled
+error with no diagnosis."
   (let* ((conn (iar--resolve-remote-target target))
          (host (plist-get conn :host))
          (port (plist-get conn :port))
@@ -179,53 +202,63 @@ Uses call-process via make-process with explicit argv (no shell)."
          (timed-out nil)
          (timer nil)
          (proc nil)
-         (sanitize-output (bound-and-true-p iar--sanitize-exec-output)))
-    ;; Rate limit: sleep before exec if enabled
-    (iar--rate-limit-maybe-sleep)
-    (setq proc
-          (condition-case err
-              (make-process
-               :name "gptel-remote-ssh"
-               :buffer buf
-               :connection-type 'pipe
-               :command (list "ssh"
-                             "-o" "StrictHostKeyChecking=accept-new"
-                             "-o" "BatchMode=yes"
-                             "-o" "ConnectTimeout=10"
-                             "-p" (number-to-string port)
-                             (format "%s@%s" user host)
-                             command)
-               :sentinel
-               (lambda (proc _event)
-                 (when (memq (process-status proc) '(exit signal))
-                   (when timer (cancel-timer timer))
-                   (let* ((exit-code (process-exit-status proc))
-                          (output (if (buffer-live-p buf)
-                                      (with-current-buffer buf (buffer-string))
-                                    "[buffer was no longer live -- output lost]")))
-                     (when (buffer-live-p buf) (kill-buffer buf))
-                     (let ((result
-                            (cond
-                             (timed-out
-                              (format "[TIMEOUT after %ds -- process killed]\n%s"
-                                      timeout output))
-                             ((and exit-code (/= exit-code 0))
-                              (format "SSH command exited with code %d.\nOutput:\n%s"
-                                       exit-code output))
-                             (t output))))
-                       (funcall callback
-                                (if sanitize-output
-                                    (iar--sanitize-external-output result)
-                                  result)))))))
-            (error
-             (when (buffer-live-p buf) (kill-buffer buf))
-             (signal (car err) (cdr err)))))
-    (setq timer
-          (run-with-timer timeout nil
-                          (lambda ()
-                            (when (process-live-p proc)
-                              (setq timed-out t)
-                              (delete-process proc)))))))
+         (sanitize-output (bound-and-true-p iar--sanitize-exec-output))
+         (ssh-present (executable-find "ssh")))
+    (cond
+     ;; Preflight: no ssh client -> honest diagnosis, no exec.
+     ((not ssh-present)
+      (funcall callback
+               (format "Error: ssh client not found in this environment. Remote target '%s' is unreachable. Do not retry -- use execute_code_local instead, or fix the image wiring in an interactive session."
+                       target))
+      (kill-buffer buf))
+     ;; Normal path: ssh present, exec as before.
+     (t
+      ;; Rate limit: sleep before exec if enabled
+      (iar--rate-limit-maybe-sleep)
+      (setq proc
+            (condition-case err
+                (make-process
+                 :name "gptel-remote-ssh"
+                 :buffer buf
+                 :connection-type 'pipe
+                 :command (list "ssh"
+                                "-o" "StrictHostKeyChecking=accept-new"
+                                "-o" "BatchMode=yes"
+                                "-o" "ConnectTimeout=10"
+                                "-p" (number-to-string port)
+                                (format "%s@%s" user host)
+                                command)
+                 :sentinel
+                 (lambda (proc _event)
+                   (when (memq (process-status proc) '(exit signal))
+                     (when timer (cancel-timer timer))
+                     (let* ((exit-code (process-exit-status proc))
+                            (output (if (buffer-live-p buf)
+                                        (with-current-buffer buf (buffer-string))
+                                      "[buffer was no longer live -- output lost]")))
+                       (when (buffer-live-p buf) (kill-buffer buf))
+                       (let ((result
+                              (cond
+                               (timed-out
+                                (format "[TIMEOUT after %ds -- process killed]\n%s"
+                                        timeout output))
+                               ((and exit-code (/= exit-code 0))
+                                (format "SSH command exited with code %d.\nOutput:\n%s"
+                                        exit-code output))
+                               (t output))))
+                         (funcall callback
+                                  (if sanitize-output
+                                      (iar--sanitize-external-output result)
+                                    result)))))))
+              (error
+               (when (buffer-live-p buf) (kill-buffer buf))
+               (signal (car err) (cdr err)))))
+      (setq timer
+            (run-with-timer timeout nil
+                            (lambda ()
+                              (when (process-live-p proc)
+                                (setq timed-out t)
+                                (delete-process proc)))))))))
 
 ;;; --- Main tool function ---
 
