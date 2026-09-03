@@ -174,12 +174,14 @@ Signals an error if the personality is not found."
 :tool-call-count -- total tool calls made
 :completed   -- t when cycle is done
 :exit-code   -- 0 for CYCLE_COMPLETE, 1 for timeout/error,
-;;               2 for LOOP_COMPLETE (task done, iar.sh stops the loop)")
+;;               2 for LOOP_COMPLETE (task done, iar.sh stops the loop)
+:cap-blocks  -- tool calls blocked at the soft cap (hard-cap counter)")
 
 (defun iar--cycle-make-state (agent buf continue max-turns)
   "Create a fresh cycle state plist."
   (list :agent agent :buffer buf :continue continue :max-turns max-turns
-        :turn-count 0 :tool-call-count 0 :completed nil :exit-code 0))
+        :turn-count 0 :tool-call-count 0 :completed nil :exit-code 0
+        :cap-blocks 0))
 
 (defun iar--cycle-tool-call-tracker (_tool-name _tool-result)
   "Track tool calls in the cycle. Increments tool-call-count.
@@ -193,31 +195,66 @@ Guarded: no active state -> silent no-op."
     (cl-incf (plist-get iar--cycle-state :tool-call-count))))
 
 (defvar iar-cycle-tool-call-cap 60
-  "Maximum tool calls per cycle before the cap hook ends it.
-A tool-call chain never reaches DONE (gptel FSM: TPRE->TOOL->TRET
-loops without a model stop), so max-turns never fires mid-chain --
-only this cap and the wall timeout bound a chain. 60 calls in one
-cycle is far above any legitimate pattern (the worst observed
-legitimate cycle used ~40) and far below the 540-call runaway.")
+  "SOFT cap: tool calls per cycle before tools are blocked.
+At the soft cap the cycle does NOT die: further tool calls are
+blocked with a message telling the model to write its summary
+(CYCLE_COMPLETE) and memory writes are still allowed. The model
+gets its landing. Hard kill happens only at
+`iar-cycle-tool-call-hard-cap' ignored blocks.
+History: the pre-2026-09-03 cap set completed=t + exit 1 the
+instant call 61 arrived, so the batch loop killed Emacs before the
+model could write ANY summary or memory -- 53 cycles died this way
+(Sep 2), each burning ~2.5M input tokens with zero record. A
+legitimate full cycle (pulse + agora + sync + thread + memory
+pass) runs 51-61 calls, so the soft cap sits at the edge of real
+work by design; the hard cap is the runaway fence.")
+
+(defvar iar-cycle-tool-call-hard-cap 5
+  "Ignored soft-cap blocks before the cycle is force-ended.
+Each tool call attempted past the soft cap returns a block message
+demanding CYCLE_COMPLETE. After this many ignored blocks, the cycle
+is ended with exit 1 (runaway confirmed: the model is not
+responding to the landing instruction).")
 
 (defun iar--cycle-tool-call-cap (info)
-  "Pre-tool-call hook: end the cycle when the tool-call cap is hit.
+  "Pre-tool-call hook: SOFT tool-call cap with a landing.
 INFO is the gptel pre-tool-call plist (:name :args :buffer ...).
-Returns (:block msg) on the call that exceeds the cap AND marks the
-cycle completed with exit code 1, so the batch event loop exits
-instead of continuing to burn tokens. No active state -> nil
-(interactive sessions are not capped by the cycle machinery)."
+At the soft cap the cycle is NOT killed: the call is blocked with a
+message demanding a CYCLE_COMPLETE summary, and MEMORY TOOLS
+(append_file, write_file, write_subtask, write_roadmap,
+git_commit, send_telegram) are still allowed so the model can
+finish its record. After `iar-cycle-tool-call-hard-cap' ignored
+blocks, the cycle is force-ended (exit 1).
+No active state -> nil (interactive sessions are not capped)."
   (when iar--cycle-state
-    (let ((count (1+ (plist-get iar--cycle-state :tool-call-count))))
+    (let* ((count (1+ (plist-get iar--cycle-state :tool-call-count)))
+           (agent (plist-get iar--cycle-state :agent))
+           (tool-name (plist-get info :name)))
       (when (> count iar-cycle-tool-call-cap)
-        (let ((agent (plist-get iar--cycle-state :agent)))
-          (message "[%s] Tool-call cap (%d) reached -- ending cycle"
-                   agent iar-cycle-tool-call-cap)
-          (setf (plist-get iar--cycle-state :completed) t)
-          (setf (plist-get iar--cycle-state :exit-code) 1)
-          (list :block
-                (format "Tool-call cap (%d) reached for this cycle. The cycle is ending -- finish with a CYCLE_COMPLETE summary now. Do not call more tools."
-                        iar-cycle-tool-call-cap)))))))
+        (if (member tool-name '("append_file" "write_file" "write_subtask"
+                                "write_roadmap" "git_commit" "send_telegram"))
+            ;; Memory/record tools always allowed past the soft cap:
+            ;; the landing IS the memory pass. Counted normally.
+            nil
+          (let ((blocks (1+ (or (plist-get iar--cycle-state :cap-blocks) 0))))
+            (setf (plist-get iar--cycle-state :cap-blocks) blocks)
+            (if (>= blocks iar-cycle-tool-call-hard-cap)
+                ;; Runaway confirmed: model ignoring the landing
+                ;; instruction. End it.
+                (progn
+                  (message "[%s] Tool-call hard cap: %d ignored soft-cap blocks -- ending cycle"
+                           agent blocks)
+                  (setf (plist-get iar--cycle-state :completed) t)
+                  (setf (plist-get iar--cycle-state :exit-code) 1)
+                  (list :block
+                        (format "Tool-call hard cap reached (%d ignored blocks). The cycle is ending NOW. Do not call more tools."
+                                blocks)))
+              ;; Soft block: demand the landing, allow memory tools.
+              (message "[%s] Tool-call soft cap (%d) -- blocking tool, demanding summary (block %d/%d)"
+                       agent iar-cycle-tool-call-cap blocks iar-cycle-tool-call-hard-cap)
+              (list :block
+                    (format "Tool-call soft cap (%d) reached. STOP calling tools (except memory/record tools: append_file, write_file, write_subtask, write_roadmap, git_commit, send_telegram -- those still work). Write your CYCLE_COMPLETE summary NOW: what you did, what landed, what is next. End with CYCLE_COMPLETE on its own line."
+                            iar-cycle-tool-call-cap)))))))))
 
 (defvar iar-cycle-context-limit-chars 800000
   "Cycle buffer size (chars) at which the context circuit breaker fires.

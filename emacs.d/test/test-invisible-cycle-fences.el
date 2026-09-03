@@ -65,14 +65,22 @@ run in arbitrary contexts; a tracker error would kill the chain)."
 ;;; --- Fix A: per-cycle tool-call cap ---
 
 (ert-deftest test-fence-cap-blocks-at-limit ()
-  "The cap hook must block the call that exceeds the cap."
+  "SOFT cap: the call that exceeds the cap is blocked (with the
+landing message), but the cycle is NOT completed -- the model gets
+its CYCLE_COMPLETE landing. Regression for the 53 exit-1 cycles
+(2026-09-02) that burned 2.5M tokens with zero memory writes."
   (let ((cycle-buf (get-buffer-create "*test-fence-cap*")))
     (unwind-protect
         (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40)))
           (setf (plist-get iar--cycle-state :tool-call-count) 60)
           (let ((result (iar--cycle-tool-call-cap
                          (list :name "execute_code_local" :args nil))))
-            (should (plist-get result :block))))
+            (should (plist-get result :block))
+            (should (string-match-p "CYCLE_COMPLETE" (plist-get result :block)))
+            ;; NOT completed -- soft cap grants the landing
+            (should-not (plist-get iar--cycle-state :completed))
+            ;; block counter armed
+            (should (= 1 (plist-get iar--cycle-state :cap-blocks)))))
       (kill-buffer cycle-buf))))
 
 (ert-deftest test-fence-cap-allows-under-limit ()
@@ -95,16 +103,43 @@ run in arbitrary contexts; a tracker error would kill the chain)."
   "The cap default is 60 tool calls per cycle."
   (should (= 60 iar-cycle-tool-call-cap)))
 
-(ert-deftest test-fence-cap-block-marks-completed ()
-  "When the cap fires, the cycle state is marked completed with
-exit code 1 -- the event loop must end, not just this call blocked."
+(ert-deftest test-fence-cap-hard-kill-after-ignored-blocks ()
+  "HARD cap: after `iar-cycle-tool-call-hard-cap' ignored soft
+blocks, the cycle IS force-ended (completed, exit 1) -- runaway
+confirmed, the model is not responding to the landing instruction."
   (let ((cycle-buf (get-buffer-create "*test-fence-cap3*")))
     (unwind-protect
         (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40)))
           (setf (plist-get iar--cycle-state :tool-call-count) 60)
-          (iar--cycle-tool-call-cap (list :name "read_file" :args nil))
-          (should (plist-get iar--cycle-state :completed))
-          (should (= 1 (plist-get iar--cycle-state :exit-code))))
+          ;; Burn through the soft blocks
+          (dotimes (_ (1- iar-cycle-tool-call-hard-cap))
+            (iar--cycle-tool-call-cap (list :name "read_file" :args nil))
+            ;; simulate the model ignoring the block: counter not reset
+            )
+          (let ((result (iar--cycle-tool-call-cap (list :name "read_file" :args nil))))
+            (should (plist-get result :block))
+            (should (plist-get iar--cycle-state :completed))
+            (should (= 1 (plist-get iar--cycle-state :exit-code)))))
+      (kill-buffer cycle-buf))))
+
+(ert-deftest test-fence-cap-memory-tools-allowed-past-soft-cap ()
+  "Memory/record tools (append_file, write_file, git_commit, ...)
+are NEVER blocked by the soft cap -- the landing IS the memory
+pass. Only non-memory tools are blocked."
+  (let ((cycle-buf (get-buffer-create "*test-fence-cap4*")))
+    (unwind-protect
+        (let ((iar--cycle-state (iar--cycle-make-state "test" cycle-buf nil 40)))
+          (setf (plist-get iar--cycle-state :tool-call-count) 60)
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "append_file" :args nil)))
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "write_file" :args nil)))
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "git_commit" :args nil)))
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "send_telegram" :args nil)))
+          ;; and no blocks were counted
+          (should (= 0 (plist-get iar--cycle-state :cap-blocks))))
       (kill-buffer cycle-buf))))
 
 ;;; --- Fix C: timeout tombstone ---
