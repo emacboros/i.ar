@@ -16,3 +16,7 @@
   (or (and (integerp v) (> v 0)) (null v)))
 
 (provide 'iar-config-predicates)
+(defun iar--unit-float-or-nil-p (v)
+  "Return non-nil if V is nil or a float in [0, 1].
+Used by similarity thresholds (token-set Jaccard bounds)."
+  (or (null v) (and (floatp v) (>= v 0.0) (<= v 1.0))))

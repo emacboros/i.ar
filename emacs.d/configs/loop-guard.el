@@ -33,3 +33,18 @@ one soft warning before hard-stopping."
   :group 'iar)
 
 (provide 'iar-config-loop-guard)
+(defcustom iar-loop-guard-chain-similarity 0.5
+  "Minimum token-set Jaccard similarity between consecutive
+same-tool calls' args for the chain guard to count them as one
+chain. Below this, the newer call is a NEW QUESTION and the chain
+counter resets (convergence reset, 2026-09-03: five witness sets
+of legitimate converging investigation -- ssh -> curl -> grep --
+blocked by the tool-name counter). Calibrated on production
+shapes: canonical iterators score high (tail -N vs tail -M: 1.0;
+git-log paging: ~0.67); same-host different-command investigation
+is borderline (~0.5-0.7); tool-switching investigation ~0.07.
+One-char tokens (the iterator's changing counter) are dropped
+before comparison: the counter is noise, the shape is the signal."
+  :type 'float
+  :safe #'iar--unit-float-or-nil-p
+  :group 'iar)

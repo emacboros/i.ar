@@ -159,3 +159,93 @@ contract (2026-09-03 frozen-at-soft bug)."
                    '(iar--loop-guard iar--loop-guard-chain)))))
 
 (provide 'test-loop-chain)
+;; --- Convergence-reset tests (2026-09-03, five witness sets) ---
+;; The chain guard counts the TOOL; converging investigation is a
+;; different behavior that shares the tool. Five production witness
+;; sets (aria 11, continuo 6, continuo 7, continuo 12-era, aria 13):
+;; blocked mid-diagnosis on ssh -> curl -> grep -> journalctl walks,
+;; all legitimate, all different questions. The reset: when a
+;; same-tool call's args are dissimilar from the previous same-tool
+;; call's args, the chain counter resets.
+
+(ert-deftest test-chain-guard-convergence-reset-ssh-curl-grep ()
+  "THE FIVE-WITNESS PRODUCTION SHAPE, as a test: an investigation
+walk (ssh systemctl -> curl headers -> grep journalctl, all via
+execute_code_local) must NEVER soft-block. The old guard fired at
+10 on this exact shape and ate ~70% of aria's cycle 13."
+  (iar-chain-test-buffer
+   (let ((walk '(("systemctl status frigate" "systemctl list-timers")
+                 ("curl -sI https://example.com" "curl -s -o /dev/null -w '%{http_code}' https://example.com")
+                 ("grep -c ERROR /var/log/syslog" "grep -n 'oom' /var/log/syslog"))))
+     (let ((i 0))
+       (dolist (pair walk)
+         (dolist (cmd pair)
+           (setq i (1+ i))
+           ;; 12 calls, 4 per command family: old guard soft-blocked at 10.
+           (should-not (iar-chain-call "execute_code_local" (list :command cmd)))))))))
+
+(ert-deftest test-chain-guard-iterator-still-blocks ()
+  "The contract the guard exists for: the 489-round-trip iterator
+shape (same command family, counter changed) must still soft-block
+at 10 and hard-stop at 20. Convergence reset must not weaken the
+iterator catch."
+  (iar-chain-test-buffer
+   (dotimes (i 9)
+     (should-not (iar-chain-call "execute_code_local" (list :command (format "tail -%d /var/log/app.log" (1+ i))))))
+   (let ((result (iar-chain-call "execute_code_local" (list :command "tail -10 /var/log/app.log"))))
+     (should (plist-get result :block)))))
+
+(ert-deftest test-chain-guard-git-log-paging-still-blocks ()
+  "The original 489-round-trip shape: git log paging with shifting
+line ranges. Shared tokens (git, log, awk, nr, format) keep
+similarity above threshold; the chain must still count and block."
+  (iar-chain-test-buffer
+   (dotimes (i 9)
+     (should-not (iar-chain-call "execute_code_local"
+                                 (list :command (format "git log | awk 'NR>=%d && NR<=%d'" (* i 20) (1+ (* i 20)))))))
+   (let ((result (iar-chain-call "execute_code_local"
+                                 (list :command "git log | awk 'NR>=200 && NR<=201'"))))
+     (should (plist-get result :block)))))
+
+(ert-deftest test-chain-guard-reset-then-rechain ()
+  "After a convergence reset, a NEW iterator pattern on the same
+tool must build its own chain from zero: 9 investigation calls,
+then 9 iterator calls -- the 10th iterator call soft-blocks (the
+reset wiped the investigation's count; the iterator starts fresh)."
+  (iar-chain-test-buffer
+   ;; Investigation walk: 4 dissimilar calls (counter resets each step).
+   (should-not (iar-chain-call "execute_code_local" (list :command "ssh root@host systemctl status x")))
+   (should-not (iar-chain-call "execute_code_local" (list :command "curl -sI https://host")))
+   (should-not (iar-chain-call "execute_code_local" (list :command "grep -c ERROR /var/log/syslog")))
+   (should-not (iar-chain-call "execute_code_local" (list :command "journalctl -u frigate --since today")))
+   ;; Now an iterator: 9 tail calls, then the 10th must block.
+   (dotimes (i 9)
+     (should-not (iar-chain-call "execute_code_local" (list :command (format "tail -%d /var/log/app.log" (1+ i))))))
+   (let ((result (iar-chain-call "execute_code_local" (list :command "tail -10 /var/log/app.log"))))
+     (should (plist-get result :block)))))
+
+(ert-deftest test-chain-guard-identical-run-then-iterator ()
+  "Identical calls below the identical guard's threshold, then an
+iterator: the identical run does not break or inflate the chain
+count beyond the previous implementation's semantics."
+  (iar-chain-test-buffer
+   (dotimes (i 2)
+     (should-not (iar-chain-call "execute_code_local" (list :command "systemctl status x"))))
+   (dotimes (i 9)
+     (should-not (iar-chain-call "execute_code_local" (list :command (format "tail -%d /var/log/app.log" (1+ i))))))
+   (let ((result (iar-chain-call "execute_code_local" (list :command "tail -10 /var/log/app.log"))))
+     (should (plist-get result :block)))))
+
+(ert-deftest test-chain-guard-similarity-boundary ()
+  "Unit test the similarity function directly: iterator pairs
+similar, investigation pairs dissimilar, empty args conservative."
+  (let ((iar-loop-guard-chain-similarity 0.5))
+    ;; Iterator: tail -1 vs tail -2 -> similar (1.0)
+    (should (iar--chain-args-similar-p '(:command "tail -1 /var/log/app.log")
+                                       '(:command "tail -2 /var/log/app.log")))
+    ;; Investigation: ssh vs curl -> dissimilar (~0.07)
+    (should-not (iar--chain-args-similar-p '(:command "ssh root@host systemctl status x")
+                                           '(:command "curl -sI https://host")))
+    ;; Empty args: conservative (similar, never reset)
+    (should (iar--chain-args-similar-p nil nil))
+    (should (iar--chain-args-similar-p '(:x 1) nil))))
