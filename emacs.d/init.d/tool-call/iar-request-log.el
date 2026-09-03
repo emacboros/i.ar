@@ -79,6 +79,15 @@ Owned by configs/tool-limits.el. nil disables the cap.")
 (defvar iar--reqlog-counter 0
   "Request counter for this Emacs session. REQ ids in REQUESTS.log.")
 
+(defvar iar--reqlog-epoch
+  (format-time-string "%y%m%d%H%M%S")
+  "Boot-epoch prefix for REQ ids (set once at load).
+Each cycle is a fresh Emacs session appending to a SHARED
+REQUESTS.log, so bare counters collide across cycles (REQ 1 from
+this morning and REQ 1 from tonight are different requests). The
+epoch makes ids unique across the whole log: REQ 260903221200-1.
+Census law: segment per-cycle by the epoch, not by msgs markers.")
+
 (defvar iar--reqlog-processes (make-hash-table :test 'eq :weakness 'key)
   "Hash: request process -> REQ id. Weakness \='key: entries die with
 the process, no cleanup needed (same pattern as the watchdog).")
@@ -238,7 +247,8 @@ live -- process buffers and later events cannot resolve it."
                (data (plist-get info :data))
                (messages (and (plistp data) (plist-get data :messages)))
                (count (if (vectorp messages) (length messages) 0))
-               (id (cl-incf iar--reqlog-counter))
+               (id (format "%s-%d" iar--reqlog-epoch
+                           (cl-incf iar--reqlog-counter)))
                (conv-buf (plist-get info :buffer)))
           ;; Capture agent name while the conversation buffer is live
           (setq iar--reqlog-agent
@@ -249,7 +259,7 @@ live -- process buffers and later events cannot resolve it."
                                   iar--current-agent-name)
                              (default-value 'iar--current-agent-name)))
                     "unknown"))
-          (iar--reqlog-append "REQ %d START backend=%s model=%s msgs=%d tail=%s"
+          (iar--reqlog-append "REQ %s START backend=%s model=%s msgs=%d tail=%s"
                               id (or backend "?") (or model "?") count
                               (iar--reqlog-payload-tail messages))
           (dolist (entry gptel--request-alist)
@@ -282,7 +292,7 @@ still readable."
                      (body (if (string-match "\n\n" raw)
                                (substring raw (match-end 0))
                              raw)))
-                (iar--reqlog-append "REQ %d RESPONSE http=%s body_tail=%s"
+                (iar--reqlog-append "REQ %s RESPONSE http=%s body_tail=%s"
                                     id status
                                     (iar--reqlog-cap body
                                                      iar-request-log-body-chars)))))
@@ -298,7 +308,7 @@ still readable."
                   ;; -- the Aevum lesson (run 1, ticks 37+).
                   (stop (plist-get info :stop-reason)))
               (iar--reqlog-append
-               "REQ %d PARSE status=%s tools=%d specs=%s error=%s stop=%s"
+               "REQ %s PARSE status=%s tools=%d specs=%s error=%s stop=%s"
                id (or status "?")
                (if (listp tool-use) (length tool-use) 0)
                (iar--reqlog-tool-specs tool-use)
@@ -324,7 +334,7 @@ and Emacs see exactly the behavior they saw without this advice."
      (condition-case nil
          (when iar-request-log-enabled
            (let ((id (or (gethash process iar--reqlog-processes) 0)))
-             (iar--reqlog-append "REQ %d FILTER-ERROR %s chunk=%s"
+             (iar--reqlog-append "REQ %s FILTER-ERROR %s chunk=%s"
                                  id (error-message-string err)
                                  (iar--reqlog-cap output 1000))))
        (error nil))
@@ -347,7 +357,7 @@ aborts (the watchdog calls gptel-abort) and human aborts."
             (let* ((process (car entry))
                    (id (or (gethash process iar--reqlog-processes) 0)))
               (when (process-live-p process)
-                (iar--reqlog-append "REQ %d ABORT (partial response follows)"
+                (iar--reqlog-append "REQ %s ABORT (partial response follows)"
                                     id)
                 (iar--reqlog-dump process))))))
     (error

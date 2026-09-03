@@ -295,6 +295,56 @@
       (kill-buffer buf)
       (delete-directory tmpdir :recursive))))
 
+(ert-deftest test-reqlog-epoch-prefix-unique-across-sessions ()
+  "REQ ids carry the boot epoch: two sessions sharing one log file
+produce non-colliding ids (the c26 instrument finding)."
+  (let* ((tmpdir (make-temp-file "reqlog-epoch-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar-request-log-enabled t)
+         (iar-request-log-tail-chars 500)
+         (buf (generate-new-buffer " *test-epoch*"))
+         (backend (gptel-make-openai "test-backend" :key "k"))
+         (info (list :buffer buf :model "m1" :backend backend
+                     :data (list :messages (vector "msg1" "msg2"))))
+         (fsm (gptel-make-fsm :info info)))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf (setq iar--current-agent-name "convagent"))
+          (set-default 'iar--current-project "testproject")
+          ;; Session A: one request
+          (let ((gptel--request-alist nil))
+            (iar--reqlog-start-advice fsm))
+          ;; Simulate a fresh session: counter back to 0, epoch advanced
+          (let ((iar--reqlog-counter 0)
+                (iar--reqlog-epoch "260903000001"))
+            (let ((gptel--request-alist nil))
+              (iar--reqlog-start-advice fsm)))
+          (with-temp-buffer
+            (insert-file-contents
+             (expand-file-name "audit/testproject/convagent/REQUESTS.log" tmpdir))
+            (let ((text (buffer-string)))
+              ;; Both STARTs present
+              (should (string-match-p "REQ [0-9]+-[0-9]+ START" text))
+              ;; The two ids differ despite same counter value
+              (should (string-match-p (concat "REQ " iar--reqlog-epoch "-1 START") text))
+              (should (string-match-p "REQ 260903000001-1 START" text))
+              (should-not (string-match-p "REQ 260903000001-2" text)))))
+      ;; c30 scar: restore the globals the START advice captured -- a
+      ;; test that dirties iar--reqlog-agent redirects every later
+      ;; test's reqlog path (the suite wrote into the PRODUCTION audit
+      ;; tree). Cleanup is not hygiene; it is the law.
+      (setq iar--reqlog-agent nil)
+      (set-default 'iar--current-project nil)
+      (kill-buffer buf)
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-reqlog-epoch-set-once-at-load ()
+  "Epoch is a boot-time constant: non-nil, 12 digits, stable within session."
+  (should (stringp iar--reqlog-epoch))
+  (should (= (length iar--reqlog-epoch) 12))
+  (should (string-match-p "^[0-9]+$" iar--reqlog-epoch)))
+
 (ert-deftest test-reqlog-start-advice-disabled-no-log ()
   "Disabled module: no log file created."
   (let* ((tmpdir (make-temp-file "reqlog-start2-" t))
