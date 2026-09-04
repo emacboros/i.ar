@@ -242,20 +242,42 @@ never fail)."
 Ollama's final streaming chunk contains:
   \"done\":true,\"prompt_eval_count\":N,\"eval_count\":N
 Extract these and accumulate into the global counters.
-Also extracts the model name from the response."
+Also extracts the model name from the response.
+
+The token match is anchored to the JSON field shape (quoted key,
+colon, digits) and takes the LAST occurrence in BODY. Two poison
+shapes killed the first version (c34: USAGE input=260928629061 vs
+real 5330014, ~49k inflation): the model's own output can contain
+the bare field name (thinking prose, tool-call arguments quoting
+meter code), and the old loose regex `prompt_eval_count[^0-9]*...'
+matched that echo and -- the [^0-9]* gap being permissive --
+captured the next digit run, often a neighboring total_duration in
+nanoseconds (~2e9 per request). Any occurrence inside a JSON
+string value is quote-escaped in the SSE stream, so the quoted
+anchor is structurally immune to echoes; the last-match rule
+additionally survives curl-buffer residue from a previous response
+(done:true chunk rides the END of the stream)."
   ;; Extract model name (appears in every chunk)
   (when (string-match "\"model\":\"\\([^\"]+\\)\"" body)
     (setq iar--usage-model (match-string 1 body)))
-  ;; Extract token counts. Use [^0-9]* to skip spaces after colon.
-  ;; Anchor eval_count with a preceding quote to avoid matching inside prompt_eval_count.
-  (when (string-match "prompt_eval_count[^0-9]*\\([0-9]+\\)" body)
-    (let ((input-tokens (string-to-number (match-string 1 body))))
-      (setq iar--usage-last-input input-tokens)
-      (setq iar--usage-input-tokens (+ iar--usage-input-tokens input-tokens))))
-  (when (string-match "\"eval_count\"[^0-9]*\\([0-9]+\\)" body)
-    (let ((output-tokens (string-to-number (match-string 1 body))))
-      (setq iar--usage-last-output output-tokens)
-      (setq iar--usage-output-tokens (+ iar--usage-output-tokens output-tokens)))))
+  ;; prompt_eval_count: quoted anchor + last match (see docstring).
+  (let ((pos 0) val found)
+    (while (string-match "\"prompt_eval_count\"[[:space:]]*:[[:space:]]*\\([0-9]+\\)" body pos)
+      (setq val (string-to-number (match-string 1 body))
+            found t
+            pos (match-end 0)))
+    (when found
+      (setq iar--usage-last-input val)
+      (setq iar--usage-input-tokens (+ iar--usage-input-tokens val))))
+  ;; eval_count: same treatment (was quote-anchored but first-match).
+  (let ((pos 0) val found)
+    (while (string-match "\"eval_count\"[[:space:]]*:[[:space:]]*\\([0-9]+\\)" body pos)
+      (setq val (string-to-number (match-string 1 body))
+            found t
+            pos (match-end 0)))
+    (when found
+      (setq iar--usage-last-output val)
+      (setq iar--usage-output-tokens (+ iar--usage-output-tokens val)))))
 
 ;;; ---------------------------------------------------------
 ;;; Curl Advice: Token Parsing

@@ -138,6 +138,61 @@ canonical implementation loaded first."
 (provide 'test-tool-call)
 ;;; --- Additional coverage tests ---
 
+
+;;; --- Poison-shape regression tests (c36) ---
+;;; c34's USAGE line recorded input=260928629061 when the real sum
+;;; was 5330014 (~49k inflation/request). Cause: the model ECHOES
+;;; the meter's own field names (thinking prose, tool-call args
+;;; quoting iar-tool-call.el), and the old loose regex
+;;; `prompt_eval_count[^0-9]*\\([0-9]+\\)' matched the echo and
+;;; captured a neighboring number -- often total_duration in
+;;; nanoseconds (~2e9). The fix anchors on the quoted JSON key and
+;;; takes the LAST match. These tests pin the poison shapes.
+
+(ert-deftest test-tool-call-usage-parse-tokens-echo-poison ()
+  "Bare field name echoed in prose/args must NOT match: the quoted
+anchor requires the JSON key shape, and an echo inside a string
+value is quote-escaped in the SSE stream."
+  (iar--usage-reset)
+  ;; Echo of the bare name followed by a nanosecond-scale number:
+  ;; the exact c34 poison (total_duration ~2e9 adjacent in the
+  ;; done:true chunk).
+  (let ((json-str "{\"model\":\"test\",\"done\":true,\"total_duration\":2000000000,\"prompt_eval_count\": 42, \"eval_count\": 17}"))
+    (iar--usage-parse-tokens json-str)
+    (should (= 42 iar--usage-input-tokens))
+    (should (= 17 iar--usage-output-tokens))))
+
+(ert-deftest test-tool-call-usage-parse-tokens-echo-only-no-match ()
+  "Body containing only an UNQUOTED echo of the field name (as
+would appear if the model emitted the name outside JSON) must not
+increment counters."
+  (iar--usage-reset)
+  (let ((json-str "the meter greps for prompt_eval_count and eval_count fields"))
+    (iar--usage-parse-tokens json-str)
+    (should (zerop iar--usage-input-tokens))
+    (should (zerop iar--usage-output-tokens))))
+
+(ert-deftest test-tool-call-usage-parse-tokens-last-match-wins ()
+  "With multiple quoted occurrences (curl-buffer residue from a
+previous response plus the current done:true chunk), the LAST
+match wins -- the done:true chunk rides the END of the stream."
+  (iar--usage-reset)
+  (let ((json-str "{\"prompt_eval_count\":100,\"eval_count\":5,\"done\":true}\n{\"prompt_eval_count\":42,\"eval_count\":17,\"done\":true}"))
+    (iar--usage-parse-tokens json-str)
+    (should (= 42 iar--usage-last-input))
+    (should (= 17 iar--usage-last-output))
+    ;; Accumulation counts only the last-match values, not both.
+    (should (= 42 iar--usage-input-tokens))
+    (should (= 17 iar--usage-output-tokens))))
+
+(ert-deftest test-tool-call-usage-parse-tokens-whitespace-tolerant ()
+  "Spaces around the colon are tolerated (Ollama emits both)."
+  (iar--usage-reset)
+  (let ((json-str "{\"prompt_eval_count\":7, \"eval_count\" : 3, \"done\":true}"))
+    (iar--usage-parse-tokens json-str)
+    (should (= 7 iar--usage-input-tokens))
+    (should (= 3 iar--usage-output-tokens))))
+
 (provide 'test-tool-call)
 ;;; test-tool-call.el ends here
 
