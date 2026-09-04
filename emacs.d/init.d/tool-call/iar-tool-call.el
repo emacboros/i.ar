@@ -242,7 +242,9 @@ unparseable -- two epochs' lines glued into one (c45/c46 finding)."
 (defun iar--usage-write-log ()
   "Write usage summary to audit/<agent>/USAGE.log.
 Best-effort: errors are demoted to messages (kill-emacs-hook must
-never fail).
+never fail). Returns t if the line was written, nil if the write
+failed (the caller cannot otherwise tell -- append-to-file returns
+nil on success too).
 Newline guard: the file is checked for a trailing newline BEFORE the
 append, so a restored/glued file cannot fuse the next epoch's line
 onto its last one (c45/c46: the 04:09:09 line was glued onto the
@@ -265,10 +267,12 @@ orphaned 02:33:26 close-write)."
                             (plist-get totals :output-tokens)
                             (plist-get totals :total-tokens)
                             (plist-get totals :model)))
-            (append-to-file (point-min) (point-max) log-path))))
+            (append-to-file (point-min) (point-max) log-path))
+            t))
     (error
      (message "Warning: usage log write failed: %s"
-              (error-message-string err)))))
+              (error-message-string err))
+     nil)))
 
 (defun iar--usage-parse-tokens (body)
   "Parse token counts from response BODY.
@@ -394,9 +398,12 @@ Called from the cycle/one-shot exit path BEFORE kill-emacs so the
 write lands while the cycle's own commit can still capture it.
 Idempotent with the kill-emacs-hook write: both append one line; the
 second is a duplicate with a later timestamp, parseable and
-harmless. Best-effort: never signals (exit path must not break)."
+harmless. Best-effort: never signals (exit path must not break).
+Returns t if the line was written, nil if the write failed --
+the honest return value is the point: a belt that reports success
+on a failed write is a hollow success (c55)."
   (condition-case err
-      (progn (iar--usage-write-log) t)
+      (if (iar--usage-write-log) t nil)
     (error
      (message "Warning: pre-exit usage write failed: %s"
               (error-message-string err))
