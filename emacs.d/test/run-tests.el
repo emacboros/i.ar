@@ -145,6 +145,30 @@
 ;; When coverage is active, skip reload_os tests. reload_os re-evaluates
 ;; init.el which re-instruments all source files through undercover's
 ;; file handler, wiping accumulated frequency counts to zero.
+;; Stowaway guard: a deftest nested inside another test's body (paren
+;; imbalance) registers nothing and runs never, while the suite stays
+;; green -- the exact failure class of test-fs.el commit 87581d8
+;; (multibyte test swallowed, July 2026). Detection: compare the
+;; LINE-START count of "(ert-deftest" occurrences (immune to paren
+;; imbalance, since it does not parse) against the registered test
+;; list. A reader-walk count cannot work here: with the imbalance the
+;; reader also drops the nested form, and both counts agree at the
+;; wrong number (verified by negative test this cycle).
+(let ((static-count 0)
+      (registered-count (length (ert-select-tests t t))))
+  (let ((test-dir (expand-file-name "test" user-emacs-directory)))
+    (dolist (file (directory-files test-dir t "^test-.*\\.el\\'"))
+      (with-temp-buffer
+        (insert-file-contents file)
+        (goto-char (point-min))
+        (setq static-count (+ static-count
+                              (count-matches "^(ert-deftest"))))))
+  (unless (= static-count registered-count)
+    (message "STOWAWAY GUARD: line-start deftest count %d != registered %d -- a deftest is nested inside another form (paren imbalance?). Failing loud."
+             static-count registered-count)
+    (kill-emacs 1))
+  (message "Stowaway guard: static %d == registered %d, OK" static-count registered-count))
+
 (let ((selector
        (if (undercover-enabled-p)
            '(not (or (tag :reload) "test-reload-os-rebuilds-tools"
