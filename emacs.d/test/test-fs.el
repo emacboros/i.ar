@@ -249,7 +249,9 @@ The error handler should capture the condition-case err and include
                        "Hello, World!\nAppended line\n")))))
 
 (ert-deftest test-fs-append-file-prepends-newline-when-missing ()
-  "append_file should prepend a newline if file doesn't end with one."
+  "append_file should prepend a newline if file doesn't end with one.
+Under the c51 newline contract, non-empty content without a trailing
+newline also gets one appended, so the file stays newline-terminated."
   (with-fs-fixture
     ;; Create a file without trailing newline
     (with-temp-file (expand-file-name "nonewline.txt" test-fs--tmpdir)
@@ -260,7 +262,49 @@ The error handler should capture the condition-case err and include
       (should (string= (with-temp-buffer
                          (insert-file-contents target)
                          (buffer-string))
-                       "no newline at end\nappended")))))
+                       "no newline at end\nappended\n")))))
+
+(ert-deftest test-fs-append-file-terminates-with-newline ()
+  "append_file must leave the file newline-terminated (c51 contract).
+The next writer may be shell >> (execute_code_local), which has no
+prepend logic: a file left without a trailing newline glues the next
+append onto the last line (17 journal headers glued, c51)."
+  (with-fs-fixture
+    ;; File already newline-terminated, content not: trailing \n added
+    (let* ((target (expand-file-name "hello.txt" test-fs--tmpdir))
+           (result (iar--fs-append-file target "tail without newline")))
+      (should (string-match-p "Success" result))
+      (should (string= (with-temp-buffer
+                         (insert-file-contents target)
+                         (buffer-string))
+                       "Hello, World!\ntail without newline\n")))
+    ;; File without trailing newline AND content without: both fixed
+    (with-temp-file (expand-file-name "glued.txt" test-fs--tmpdir)
+      (insert "no trailing newline"))
+    (let* ((target (expand-file-name "glued.txt" test-fs--tmpdir))
+           (result (iar--fs-append-file target "glue-free tail")))
+      (should (string-match-p "Success" result))
+      (should (string= (with-temp-buffer
+                         (insert-file-contents target)
+                         (buffer-string))
+                       "no trailing newline\nglue-free tail\n")))
+    ;; Content already newline-terminated: no double newline
+    (let* ((target (expand-file-name "hello.txt" test-fs--tmpdir))
+           (result (iar--fs-append-file target "terminated\n")))
+      (should (string-match-p "Success" result))
+      (should (string= (with-temp-buffer
+                         (insert-file-contents target)
+                         (buffer-string))
+                       "Hello, World!\ntail without newline\nterminated\n")))
+    ;; Empty content: nothing injected, file untouched
+    (let* ((target (expand-file-name "hello.txt" test-fs--tmpdir))
+           (before (with-temp-buffer (insert-file-contents target) (buffer-string)))
+           (result (iar--fs-append-file target "")))
+      (should (string-match-p "Success" result))
+      (should (string= (with-temp-buffer
+                         (insert-file-contents target)
+                         (buffer-string))
+                       before)))))
 
 (ert-deftest test-fs-append-file-no-double-newline ()
   "append_file should NOT add a newline if file already ends with one."
