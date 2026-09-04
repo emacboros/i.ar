@@ -739,6 +739,11 @@ Tools are gated by the project's #+TOOLS metadata."
             (message "[%s] Cycle timed out after %ds. Turns: %d, Tool calls: %d%s"
                      agent-name timeout turn-count tool-call-count
                      (iar--cycle-token-summary)))
+          ;; USAGE orphan-write race (c45/c46): write the usage line
+          ;; BEFORE kill-emacs so the cycle's own final commit (or the
+          ;; next waking's pull) captures it in the tracked file. The
+          ;; kill-emacs-hook write remains as the abnormal-exit net.
+          (iar--usage-write-log-now)
           (setq iar--cycle-state nil)
           (kill-emacs exit-code))))))
 
@@ -1028,5 +1033,8 @@ Tools are gated by the project's #+TOOLS metadata."
                                  (buffer-substring-no-properties (point-min) (point-max)))))
               (when (and buf-content (> (length buf-content) 0))
                 (princ buf-content))))
+          ;; USAGE orphan-write race (c45/c46): pre-exit write, same
+          ;; rationale as the cycle exit path.
+          (iar--usage-write-log-now)
           (setq iar--one-shot-state nil)
           (kill-emacs exit-code))))))

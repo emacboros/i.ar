@@ -372,3 +372,32 @@ Idempotent: removes existing advice before adding."
 (iar--tool-call-setup)
 
 (provide 'iar-tool-call)
+;;; ---------------------------------------------------------
+;;; USAGE orphan-write race (c45/c46) -- belt #2: pre-exit write
+;;; ---------------------------------------------------------
+;; The kill-emacs-hook write is ORPHANED by construction: it lands
+;; after the cycle's final commit, so the tracked USAGE.log is one
+;; commit away from silent erasure (c40's 02:33:26 line was erased by
+;; c41's memory-pass commit publishing a pre-write snapshot). Belt #1
+;; is the newline guard above (no glue). Belt #2 writes the line
+;; BEFORE kill-emacs, from iar-run-cycle/one-shot's exit path, where
+;; the cycle's own final commit (or the next waking's pull) can
+;; capture it. The kill-emacs-hook write remains as a safety net for
+;; abnormal exits (crash, SIGKILL of a hung emacs): its write is
+;; idempotent in effect (one extra line) and the newline guard keeps
+;; it parseable. Belt #3 (iar.sh parsing "Tokens:" stdout) is the
+;; interactive-session option; not needed if belt #2 holds.
+
+(defun iar--usage-write-log-now ()
+  "Write the usage line NOW (pre-exit), not at kill-emacs time.
+Called from the cycle/one-shot exit path BEFORE kill-emacs so the
+write lands while the cycle's own commit can still capture it.
+Idempotent with the kill-emacs-hook write: both append one line; the
+second is a duplicate with a later timestamp, parseable and
+harmless. Best-effort: never signals (exit path must not break)."
+  (condition-case err
+      (progn (iar--usage-write-log) t)
+    (error
+     (message "Warning: pre-exit usage write failed: %s"
+              (error-message-string err))
+     nil)))
