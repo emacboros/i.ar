@@ -251,6 +251,48 @@
       (kill-buffer buf)
       (delete-directory tmpdir :recursive))))
 
+(ert-deftest test-reqlog-dump-parse-carries-tokens ()
+  "PARSE line carries :tokens counts when the backend reports usage.
+The c33 bias fix: token counts ride the done:true chunk (END of
+stream), so RESPONSE body_tail loses them for large outputs; the
+PARSE line sees info after the full stream was parsed."
+  (let* ((tmpdir (make-temp-file "reqlog-dump-tok-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar--current-agent-name "testagent")
+         (iar--current-project "testproject")
+         (iar-request-log-enabled t)
+         (iar-request-log-body-chars 500)
+         (iar-request-log-tail-chars 500)
+         (buf (generate-new-buffer " *test-dump-tok*"))
+         (proc (list 'fake-proc))
+         (info (list :buffer buf :model "m" :status 'success
+                     :tool-use nil :error nil
+                     :tokens '(:input 13249 :output 52)))
+         (fsm (gptel-make-fsm :info info)))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (insert "HTTP/1.1 200 OK\n\n{\"message\":\"hi\"}"))
+          (puthash proc 7 iar--reqlog-processes)
+          (cl-letf (((symbol-function 'process-buffer) (lambda (_p) buf))
+                    ((symbol-function 'alist-get)
+                     (lambda (key alist &optional _default _testfn _remove)
+                       (cdr (assq key alist)))))
+            (let ((gptel--request-alist (list (list proc fsm))))
+              (iar--reqlog-dump proc)))
+          (let ((path (expand-file-name
+                       "audit/testproject/testagent/REQUESTS.log" tmpdir)))
+            (should (file-exists-p path))
+            (with-temp-buffer
+              (insert-file-contents path)
+              (should (string-match-p "PARSE status=success" (buffer-string)))
+              (should (string-match-p
+                       "tokens_in=13249 tokens_out=52"
+                       (buffer-string))))))
+      (kill-buffer buf)
+      (delete-directory tmpdir :recursive))))
+
 (ert-deftest test-reqlog-dump-dead-buffer-skips-response ()
   "Dead process buffer: RESPONSE line skipped, no signal."
   (let* ((tmpdir (make-temp-file "reqlog-dump2-" t))
