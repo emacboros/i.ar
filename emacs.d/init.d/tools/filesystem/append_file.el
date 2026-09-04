@@ -3,6 +3,14 @@
 ;;; append_file tool for gptel
 ;; Appends text content to the end of an existing file.
 ;; Security: checks iar-file-guard before writing. Logs to audit log.
+;; Newline contract (c51): after ANY successful append, the file is
+;; newline-terminated. append_file prepends a newline when the file
+;; lacks one AND guarantees a trailing newline on non-empty content.
+;; Rationale: shell >> (execute_code_local) has no prepend logic, so
+;; a file left without a trailing newline GLUES the next shell append
+;; onto the last line (7 journal headers glued, continuo c2-c39 +
+;; aria c93-c11). append_file is the house writer; it must leave the
+;; file in a state any writer can extend safely.
 
 (require 'iar-tool-call)
 (require 'iar-file-guard)
@@ -13,6 +21,8 @@
 If the file is open in an Emacs buffer, appends to that buffer and saves.
 Otherwise, appends directly to the file on disk.
 If the file exists and does not end with a newline, one is prepended.
+Non-empty CONTENT without a trailing newline gets one appended, so the
+file is always newline-terminated after a successful append.
 If the file does not exist, it is created.  Parent directories are
 created if needed, matching `iar--fs-write-file' behavior.
 Returns a string starting with \\='Success:\\=' or \\='Error:\\='."
@@ -41,7 +51,10 @@ Returns a string starting with \\='Success:\\=' or \\='Error:\\='."
                                                            (max (point-min) (1- (point-max)))
                                                            (point-max))))
                           (insert "\n"))
-                        (insert content))
+                        (insert (if (and (> (length content) 0)
+                                         (not (string-suffix-p "\n" content)))
+                                    (concat content "\n")
+                                  content)))
                       (iar--with-suppressed-save-hooks
                         (save-buffer))
                       (format "Success: Content appended to '%s'" expanded-path))))
@@ -57,7 +70,12 @@ Returns a string starting with \\='Success:\\=' or \\='Error:\\='."
                                     "\n"))
                               (error ""))
                           "")))
-                  (write-region (concat prefix content) nil expanded-path t 'silent)
+                  (write-region (concat prefix content
+                                        (if (and (> (length content) 0)
+                                                 (not (string-suffix-p "\n" content)))
+                                            "\n"
+                                          ""))
+                                nil expanded-path t 'silent)
                   (format "Success: Content appended to '%s'" expanded-path))))
           (error (format "Error: Failed to append to '%s'. Emacs says: %s"
                          expanded-path (error-message-string err))))))))
@@ -65,7 +83,7 @@ Returns a string starting with \\='Success:\\=' or \\='Error:\\='."
 (iar-tool-register
  (gptel-make-tool
   :name "append_file"
-  :description "Append text to end of file. Prepends newline if needed."
+  :description "Append text to end of file. Prepends newline if needed; guarantees the file ends with a newline after the append."
   :args (list '(:name "filepath" :type "string" :description "Absolute path to the file.")
               '(:name "content" :type "string" :description "The text content to add to the end of the file."))
   :function #'iar--fs-append-file))
