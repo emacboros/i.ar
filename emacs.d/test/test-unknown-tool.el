@@ -67,9 +67,19 @@ stage.  This provides a cleaner error message to the model."
                :info info)))
     ;; The FSM should not crash when encountering an unknown tool name.
     (setq test-unknown-tool--callback-result nil)
-    (condition-case _err
-        (gptel--handle-tool-use fsm)
-      (error nil))
+    ;; Stub the request dispatcher: the TOOL->WAIT transition's WAIT
+    ;; handler (gptel--handle-wait) would otherwise spawn a REAL curl
+    ;; process to localhost:11434. Its sentinel fires asynchronously,
+    ;; ~1s later -- during a LATER test (the c49/c50 scar: it fired
+    ;; inside test-usage-newline-guard-noop-when-present's sleep-for
+    ;; and killed the suite at 977/1027 with "markerp, nil"). The FSM
+    ;; recovery under test ends at WAIT; the network layer is not the
+    ;; subject here.
+    (cl-letf (((symbol-function 'gptel-curl-get-response) #'ignore)
+              ((symbol-function 'gptel--url-get-response) #'ignore))
+      (condition-case _err
+          (gptel--handle-tool-use fsm)
+        (error nil)))
     ;; In gptel 20260704.707, unknown tools are handled gracefully:
     ;; - FSM transitions from TOOL to WAIT state
     ;; - :result is set on the tool-call with an error message
