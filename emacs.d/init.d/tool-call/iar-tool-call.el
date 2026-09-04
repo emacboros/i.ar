@@ -211,10 +211,42 @@ Also runs post-tool-call audit logging after the original function."
                          0)
         :model (or iar--usage-model "nil")))
 
+(defun iar--ensure-trailing-newline (path)
+  "Ensure the file at PATH ends with a newline byte.
+No-op when the file does not exist or is empty.  Returns t when the
+file was modified, nil otherwise.  Best-effort: a missing/unreadable
+file is not an error here -- the caller decides what to do.
+
+Why this exists: USAGE.log is appended to by iar--usage-write-log.
+If the file on disk lacks a trailing newline (e.g. it was restored
+from a git snapshot whose last line predates the newline guard), the
+next append CONCATENATES onto the last line and the meter becomes
+unparseable -- two epochs' lines glued into one (c45/c46 finding)."
+  (condition-case err
+      (when (and (file-exists-p path)
+                 (> (nth 7 (file-attributes path)) 0))
+        (let ((last-byte
+               (with-temp-buffer
+                 (insert-file-contents-literally path)
+                 (buffer-substring-no-properties
+                  (max (point-min) (- (point-max) 1))
+                  (point-max)))))
+          (unless (string-equal last-byte "\n")
+            (append-to-file "\n" nil path)
+            t)))
+    (error
+     (message "Warning: newline guard failed for %s: %s"
+              path (error-message-string err))
+     nil)))
+
 (defun iar--usage-write-log ()
   "Write usage summary to audit/<agent>/USAGE.log.
 Best-effort: errors are demoted to messages (kill-emacs-hook must
-never fail)."
+never fail).
+Newline guard: the file is checked for a trailing newline BEFORE the
+append, so a restored/glued file cannot fuse the next epoch's line
+onto its last one (c45/c46: the 04:09:09 line was glued onto the
+orphaned 02:33:26 close-write)."
   (condition-case err
       (let* ((agent (or (iar--get-agent-name) "unknown"))
              (project (or (iar--current-project-name) "nil"))
@@ -223,6 +255,7 @@ never fail)."
                        (expand-file-name iar-audit-path iar-personalization-path)))
              (log-path (expand-file-name "USAGE.log" log-dir)))
         (make-directory log-dir t)
+        (iar--ensure-trailing-newline log-path)
         (let ((totals (iar--usage-totals)))
           (with-temp-buffer
             (insert (format "[%s] requests=%d input=%d output=%d total=%d model=%s\n"
