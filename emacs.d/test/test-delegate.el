@@ -166,7 +166,8 @@ The error from assembly (iar--read-personality) is caught and returned via callb
     (set completed-sym nil)
     (kill-buffer dead-buf)
     (iar--delegate-timeout-handler
-     dead-buf (lambda (r) (setq result r)) "testagent" completed-sym 0 30)
+     dead-buf (lambda (r) (setq result r)) "testagent" completed-sym 0 30
+     nil nil)
     (should result)
     (should (string-match-p "killed before completion" result))))
 
@@ -179,7 +180,8 @@ The error from assembly (iar--read-personality) is caught and returned via callb
     (unwind-protect
          (progn
            (iar--delegate-timeout-handler
-            buf (lambda (r) (setq result r)) "testagent" completed-sym 0 30)
+            buf (lambda (r) (setq result r)) "testagent" completed-sym 0 30
+            nil nil)
            (should (null result)))
       (when (buffer-live-p buf) (kill-buffer buf)))))
 
@@ -204,7 +206,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns)))
+                 iar-delegate-max-turns nil nil)))
         (funcall fn 8 (point-max)))
       (should result)
       (should (string-match-p "response text" result))
@@ -229,7 +231,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns)))
+                 iar-delegate-max-turns nil nil)))
         (funcall fn 8 (point-max)))
       (should (null result))
       (should (null (symbol-value completed-sym)))
@@ -253,7 +255,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  (lambda (r) (setq result r))
                  "testagent"
                  completed-sym timer-sym 600
-                 tools-called-sym turn-count-sym 15)))
+                 tools-called-sym turn-count-sym 15 nil nil)))
         (funcall fn 8 (point-max)))
       (should result)
       (should (string-match-p "max text-only turns" result))
@@ -278,7 +280,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns)))
+                 iar-delegate-max-turns nil nil)))
         (funcall fn 8 8))
       (should result)
       (should (string-match-p "empty response" result))
@@ -303,7 +305,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns)))
+                 iar-delegate-max-turns nil nil)))
         (funcall fn 8 (point-max)))
       (should (null result)))))
 
@@ -471,7 +473,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns)))
+                 iar-delegate-max-turns nil nil)))
         (funcall fn nil nil))
       (should result)
       (should (string-match-p "empty response" result))
@@ -496,7 +498,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns)))
+                 iar-delegate-max-turns nil nil)))
         (funcall fn 20 5))
       (should result)
       (should (string-match-p "empty response" result))
@@ -521,7 +523,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns)))
+                 iar-delegate-max-turns nil nil)))
         (funcall fn "not-a-number" 10))
       (should result)
       (should (string-match-p "empty response" result))
@@ -553,7 +555,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                             "testagent"
                             completed-sym timer-sym 600
                             tools-called-sym turn-count-sym
-                            iar-delegate-max-turns)))
+                            iar-delegate-max-turns nil nil)))
                    (funcall fn 8 (point-max))))
                ;; Cancel the real timer to prevent leak (cancel-timer was mocked above)
                (cancel-timer real-timer))
@@ -586,7 +588,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                             buf (lambda (r) (setq result r))
                             "testagent"
                             completed-sym timer-sym 600
-                            tools-called-sym turn-count-sym 15)))
+                            tools-called-sym turn-count-sym 15 nil nil)))
                    (funcall fn 8 (point-max))))
                ;; Cancel the real timer to prevent leak (cancel-timer was mocked above)
                (cancel-timer real-timer))
@@ -696,7 +698,7 @@ but no tools were called.  This handles simple tasks that need no tools."
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns)))
+                 iar-delegate-max-turns nil nil)))
         (funcall fn 8 (point-max)))
       (should result)
       (should (string-match-p "the answer is 42" result))
@@ -724,7 +726,7 @@ when no tools were called, not the full response."
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns)))
+                 iar-delegate-max-turns nil nil)))
         (funcall fn 8 (point-max)))
       (should result)
       ;; Should contain the concise summary
@@ -751,7 +753,7 @@ when no tools were called, not the full response."
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns)))
+                 iar-delegate-max-turns nil nil)))
         (funcall fn 8 (point-max)))
       (should (null result))
       (should (null (symbol-value completed-sym)))

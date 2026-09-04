@@ -46,8 +46,22 @@
 
 ;;; Timeout handler (extracted to reduce nesting depth)
 
+(defun iar--delegate-restore-parent-defaults (parent-agent-sym parent-file-sym)
+  "Restore the parent's global-default agent identity from symbols.
+Idempotent.  Runs at every delegate completion point (normal,
+marker, exhaustion, timeout, dead-buffer) so the parent's
+process-wide default is never left pointing at the sub-agent (c57:
+aria c3's cycle-exit USAGE write resolved the leaked `reviewer'
+default and landed in the reviewer's audit tree)."
+  (when (and parent-agent-sym (boundp parent-agent-sym))
+    (setq-default iar--current-agent-name (symbol-value parent-agent-sym)))
+  (when (and parent-file-sym (boundp parent-file-sym))
+    (setq-default iar--current-agent-file (symbol-value parent-file-sym))))
+
 (defun iar--delegate-timeout-handler (buf callback agent completed-sym
-                                               resp-start timeout-secs)
+                                               resp-start timeout-secs
+                                               parent-agent-sym
+                                               parent-file-sym)
   "Handle a delegate timeout.
 This function is called by a timer when the sub-agent hasn't completed
 within TIMEOUT-SECS.  It aborts the gptel request and calls CALLBACK
@@ -62,6 +76,7 @@ and avoids a double-callback race."
    ((not (buffer-live-p buf))
     (unless (symbol-value completed-sym)
       (set completed-sym t)
+      (iar--delegate-restore-parent-defaults parent-agent-sym parent-file-sym)
       (funcall callback
                (format "Delegate '%s' buffer was killed before completion." agent))))
    ((symbol-value completed-sym))  ; Already done, nothing to do
@@ -78,6 +93,7 @@ and avoids a double-callback race."
      (lambda ()
        (unless (symbol-value completed-sym)
          (set completed-sym t)
+         (iar--delegate-restore-parent-defaults parent-agent-sym parent-file-sym)
          (let ((partial
                 (when (buffer-live-p buf)
                   (with-current-buffer buf
@@ -164,7 +180,8 @@ gets something useful."
 (defun iar--delegate-completion-fn (buf callback agent completed-sym
                                              timer-sym timeout-secs
                                              tools-called-sym turn-count-sym
-                                             max-turns)
+                                             max-turns parent-agent-sym
+                                             parent-file-sym)
   "Return a completion hook function for the delegate buffer.
 BUF is the delegate buffer.  CALLBACK is gptel's async callback.
 AGENT is the agent name.  COMPLETED-SYM is a symbol holding the completed flag.
@@ -264,6 +281,7 @@ It distinguishes three cases:
             (set completed-sym t)
             (when (symbol-value timer-sym)
               (cancel-timer (symbol-value timer-sym)))
+            (iar--delegate-restore-parent-defaults parent-agent-sym parent-file-sym)
             (let ((response
                    (save-restriction
                      (widen)
@@ -298,6 +316,14 @@ so the user can watch progress in real time."
          ;; Use symbols for mutable state shared with hook closures
          (completed-sym (make-symbol "completed"))
          (timer-sym (make-symbol "timer"))
+         ;; Parent's global-default agent identity, captured BEFORE the
+         ;; setq-default below clobbers it (c57: the delegate leaked the
+         ;; global default to the sub-agent for the rest of the parent's
+         ;; process -- aria c3's USAGE line was written into the
+         ;; reviewer's log because the exit path resolved the leaked
+         ;; global default after the delegate buffer died).
+         (parent-agent-sym (make-symbol "parent-agent"))
+         (parent-file-sym (make-symbol "parent-file"))
          (tools-called-sym (make-symbol "tools-called"))
          (turn-count-sym (make-symbol "turn-count"))
          (resp-start nil))
@@ -311,6 +337,18 @@ so the user can watch progress in real time."
       (setq-local gptel-system-prompt profile)
       ;; Set agent name for audit logging and status mode.
       (setq-local iar--current-agent-name agent)
+      ;; Capture the parent's global-default identity BEFORE clobbering
+      ;; it (c57 fix): the global default is what process-buffer
+      ;; contexts (USAGE writes at exit, reqlog fallbacks) resolve
+      ;; after this buffer dies. Without capture+restore, every
+      ;; delegate leaks the sub-agent's name into the parent's
+      ;; process-wide default for the rest of the session.
+      (set parent-agent-sym
+           (and (boundp 'iar--current-agent-name)
+                (default-value 'iar--current-agent-name)))
+      (set parent-file-sym
+           (and (boundp 'iar--current-agent-file)
+                (default-value 'iar--current-agent-file)))
       ;; setq-default: same async-sentinel fix as iar--setup-assembled-buffer.
       (setq-default iar--current-agent-name agent)
       (setq-local iar--current-agent-file
@@ -349,7 +387,8 @@ so the user can watch progress in real time."
       (let ((completion-fn
              (iar--delegate-completion-fn
               buf callback agent completed-sym timer-sym timeout-secs
-              tools-called-sym turn-count-sym iar-delegate-max-turns)))
+              tools-called-sym turn-count-sym iar-delegate-max-turns
+              parent-agent-sym parent-file-sym)))
         (add-hook 'iar-post-response-functions completion-fn nil t)
 
         ;; Timeout timer: fires once after timeout-secs.
@@ -359,7 +398,8 @@ so the user can watch progress in real time."
               (lambda ()
                 (iar--delegate-timeout-handler
                  buf callback agent completed-sym
-                 resp-start timeout-secs))))
+                 resp-start timeout-secs
+                 parent-agent-sym parent-file-sym))))
 
         ;; Insert the prompt text into the buffer and send.
         (insert full-prompt)

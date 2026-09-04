@@ -743,7 +743,12 @@ Tools are gated by the project's #+TOOLS metadata."
           ;; BEFORE kill-emacs so the cycle's own final commit (or the
           ;; next waking's pull) captures it in the tracked file. The
           ;; kill-emacs-hook write remains as the abnormal-exit net.
-          (iar--usage-write-log-now)
+          ;; Bound to cycle-buf: the write resolves the agent from the
+          ;; current buffer, and after a delegate ran, the current
+          ;; buffer at exit can be the delegate's (c57: aria c3's
+          ;; USAGE line landed in the reviewer's log).
+          (with-current-buffer cycle-buf
+            (iar--usage-write-log-now))
           (setq iar--cycle-state nil)
           (kill-emacs exit-code))))))
 
@@ -1034,7 +1039,9 @@ Tools are gated by the project's #+TOOLS metadata."
               (when (and buf-content (> (length buf-content) 0))
                 (princ buf-content))))
           ;; USAGE orphan-write race (c45/c46): pre-exit write, same
-          ;; rationale as the cycle exit path.
-          (iar--usage-write-log-now)
+          ;; rationale as the cycle exit path. Bound to os-buf for the
+          ;; same c57 reason (agent resolution from current buffer).
+          (with-current-buffer os-buf
+            (iar--usage-write-log-now))
           (setq iar--one-shot-state nil)
           (kill-emacs exit-code))))))
