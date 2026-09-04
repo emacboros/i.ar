@@ -297,23 +297,38 @@ still readable."
                                     (iar--reqlog-cap body
                                                      iar-request-log-body-chars)))))
           (when info
-            (let ((tool-use (plist-get info :tool-use))
-                  (errdata (plist-get info :error))
-                  (status (plist-get info :status))
-                  ;; Terminal done_reason (stop/length/load/error).
-                  ;; Captured by the fork's streaming parser since
-                  ;; 970da80; length = truncated generation (num_predict
-                  ;; hit or watchdog kill). Without this, a truncated
-                  ;; response is indistinguishable from a complete one
-                  ;; -- the Aevum lesson (run 1, ticks 37+).
-                  (stop (plist-get info :stop-reason)))
+            (let* ((tool-use (plist-get info :tool-use))
+                   (errdata (plist-get info :error))
+                   (status (plist-get info :status))
+                   ;; Terminal done_reason (stop/length/load/error).
+                   ;; Captured by the fork's streaming parser since
+                   ;; 970da80; length = truncated generation (num_predict
+                   ;; hit or watchdog kill). Without this, a truncated
+                   ;; response is indistinguishable from a complete one
+                   ;; -- the Aevum lesson (run 1, ticks 37+).
+                   (stop (plist-get info :stop-reason))
+                   ;; Token counts from the fork's Ollama parser
+                   ;; (:tokens = last request's counts, set on the
+                   ;; done:true chunk). Logged here because the
+                   ;; RESPONSE body_tail is capped at ~4k chars and
+                   ;; the done:true chunk rides the END of the
+                   ;; stream: large-output requests lose their token
+                   ;; counts in RESPONSE (the c33 instrument-bias finding).
+                   ;; The PARSE line sees `info' after the full stream
+                   ;; was parsed, so the counts are complete here
+                   ;; regardless of output size.
+                   (tokens (plist-get info :tokens))
+                   (tok-in (and (plistp tokens) (plist-get tokens :input)))
+                   (tok-out (and (plistp tokens) (plist-get tokens :output))))
               (iar--reqlog-append
-               "REQ %s PARSE status=%s tools=%d specs=%s error=%s stop=%s"
+               "REQ %s PARSE status=%s tools=%d specs=%s error=%s stop=%s tokens_in=%s tokens_out=%s"
                id (or status "?")
                (if (listp tool-use) (length tool-use) 0)
                (iar--reqlog-tool-specs tool-use)
                (or errdata "nil")
-               (or stop "nil"))))))
+               (or stop "nil")
+               (or tok-in "NA")
+               (or tok-out "NA"))))))
     (error
      (message "[request-log] dump failed: %s"
               (error-message-string err)))))

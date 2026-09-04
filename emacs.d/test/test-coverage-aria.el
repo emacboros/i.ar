@@ -241,7 +241,13 @@
               (should (string-match-p "RESPONSE http=200" (buffer-string)))
               (should (string-match-p "body_tail=" (buffer-string)))
               (should (string-match-p "PARSE status=success" (buffer-string)))
-              (should (string-match-p "tools=0" (buffer-string))))))
+              (should (string-match-p "tools=0" (buffer-string)))
+              ;; No :tokens in info: PARSE line still well-formed with
+              ;; NA placeholders (the c33 bias fix must not break the
+              ;; no-usage backends).
+              (should (string-match-p
+                       "stop=nil tokens_in=NA tokens_out=NA"
+                       (buffer-string))))))
       (kill-buffer buf)
       (delete-directory tmpdir :recursive))))
 
