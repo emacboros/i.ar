@@ -135,6 +135,31 @@ too -- the landing IS the record."
                        (list :name "read_file" :args nil))))
       (kill-buffer buf))))
 
+(ert-deftest test-one-shot-cap-warns-once-at-budget ()
+  "The warn branch dispatches to one-shot state: blocks ONE
+non-memory call with the budget notice (call not lost, model
+retries), marks :cap-warned, does NOT complete the run. Pins the
+shared warn path on the one-shot side -- the cycle side is pinned
+in test-invisible-cycle-fences.el (c39 coverage gap)."
+  (let ((buf (get-buffer-create "*test-oneshot-capwarn*")))
+    (unwind-protect
+        (let ((iar--cycle-state nil)
+              (iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
+          (setf (plist-get iar--one-shot-state :tool-call-count)
+                (1- iar-cycle-tool-call-warn))
+          (let ((result (iar--cycle-tool-call-cap
+                         (list :name "execute_code_local" :args nil))))
+            (should (plist-get result :block))
+            (should (string-match-p "budget warning" (plist-get result :block)))
+            (should (plist-get iar--one-shot-state :cap-warned))
+            (should-not (plist-get iar--one-shot-state :completed)))
+          ;; second call passes through (warn fires once)
+          (setf (plist-get iar--one-shot-state :tool-call-count)
+                iar-cycle-tool-call-warn)
+          (should-not (iar--cycle-tool-call-cap
+                       (list :name "read_file" :args nil))))
+      (kill-buffer buf))))
+
 (ert-deftest test-one-shot-breaker-arms-and-ends ()
   "Context breaker dispatches to one-shot: first fire arms (grace
 round-trip), second fire ends the run (completed, exit 1)."
