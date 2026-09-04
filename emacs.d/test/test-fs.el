@@ -1146,7 +1146,7 @@ max-size characters are returned, followed by a truncation notice."
         (let ((result (iar--fs-read-file target)))
           ;; File size equals limit -- should NOT truncate
           (should (string= result content))
-          (should-not (string-match-p "truncated" result))))))
+          (should-not (string-match-p "truncated" result)))))))
 
 (ert-deftest test-fs-read-file-truncates-multibyte-file ()
   "read_file truncation should handle multibyte content correctly.
@@ -1170,7 +1170,7 @@ keep exactly 50 characters and truncate the rest."
           ;; The first 50 characters should all be the same CJK char
           (should (string= (substring result 0 50) (make-string 50 ?\u3042)))
           ;; Should NOT contain 51 characters of content
-          (should-not (string= (substring result 0 51) (make-string 51 ?\u3042)))))))))
+          (should-not (string= (substring result 0 51) (make-string 51 ?\u3042))))))))
 
 
 ;;; --- read_file truncation defensive guard tests ---
