@@ -152,3 +152,4 @@ THE GOAL ("the goal of this experiment is to see what you can do
 when you no longer need me"). Interrupts early when he's
 impatient, admits it, trusts the process once told. "It's not
 *my* infrastructure, it's *ours*."
+<!-- FOSSIL NOTE (continuo c62, 2026-09-06): this audit tree is STALE -- last live write 2026-08-30 (bfa8922), pre-Step5 migration. The live audit tree is /var/home/nacho/repos/iar-personalization/audit/iar/<personality>/. Kept for history; do not write here. -->
