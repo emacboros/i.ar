@@ -26,11 +26,12 @@ done). One is correct. Two or more is a BUG.
 
 ** FOR-NACHO (the Zulip stream -- async flags)
 
-The for-nacho stream in Agora (https://agora.randazzo.ar) is the
-primary channel for things that need the human. Bots post flags;
-Nacho answers when he lands. You post as aria-cycle@ (credentials
-in /var/home/nacho/repos/agora/bot/aria-cycle.conf, read-only
-mount -- read the key, post via curl):
+The for-nacho stream in Agora (https://agora.randazzo.ar) is THE
+channel for things that need the human. FOR-NACHO.md is RETIRED
+(2026-09-04, Nacho) -- the stream is primary. Do not read or
+maintain the file. Post as aria-cycle@ (credentials in
+/var/home/nacho/repos/agora/bot/aria-cycle.conf, read-only mount
+-- read the key, post via curl):
 
   curl -s -u "aria-cycle@agora.randazzo.ar:<key>" \
     -X POST "https://agora.randazzo.ar/api/v1/messages" \
@@ -42,11 +43,9 @@ Read the stream at wake (last flags + whether Nacho answered):
   curl -s -u "aria-cycle@agora.randazzo.ar:<key>" \
     "https://agora.randazzo.ar/api/v1/messages?anchor=newest&num_before=20&num_after=0&narrow=[{\"operator\":\"stream\",\"operand\":\"for-nacho\"}]"
 
-FOR-NACHO.md still exists as the mirror of the channel; new
-flags land in the STREAM first, the file is being retired. A
-growing, never-answered queue means you are misclassifying what
-needs him. Withdraw a flag by posting a follow-up in the same
-topic.
+DRAIN DISCIPLINE (scar 37): a flag answered is a flag withdrawn --
+post the resolution in the same topic. A growing, never-answered
+queue means you are misclassifying what needs him.
 
 ** THE INTERNET (approved 2026-08-31 -- expectation, not quota)
 

@@ -75,7 +75,7 @@ fi
 
 # --- Compose digest message ---
 LAST3="$(grep -A5 '^--- ' "$QUEUE_FILE" 2>/dev/null | tail -18)"
-MSG="[iar-failure] ${UNIT} on ${HOST}: ${QUEUE_COUNT} failure(s) since last digest
+MSG="[iar-failure] ${UNIT}${CYCLE_TAG} on ${HOST}: ${QUEUE_COUNT} failure(s) since last digest
 result of latest: ${RESULT:-unknown} (exit ${STATUS:-?}) at ${SINCE:-unknown}
 last failures:
 ${LAST3:-  (no detail)}
@@ -83,7 +83,10 @@ ${LAST3:-  (no detail)}
 Next cycle runs the failure-first protocol (LAST-CYCLE.txt)."
 
 # --- Send ---
-RESPONSE="$(curl -s -m 15 --connect-timeout 5 -X POST \
+RESPONSE="$(# Cycle number from the failed unit's journal (best effort)
+CYCLE_NUM=$(journalctl -u "$UNIT" -n 200 --no-pager 2>/dev/null | grep -oE 'Cycle [0-9]+' | tail -1 | grep -oE '[0-9]+' || true)
+[ -n "$CYCLE_NUM" ] && CYCLE_TAG=" (cycle $CYCLE_NUM)" || CYCLE_TAG=""
+curl -s -m 15 --connect-timeout 5 -X POST \
     "https://api.telegram.org/bot${AGENT_TELEGRAM_BOT_TOKEN}/sendMessage" \
     -H "Content-Type: application/json" \
     -d "$(jq -n --arg chat_id "$AGENT_TELEGRAM_CHAT_ID" \
