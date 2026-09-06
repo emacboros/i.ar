@@ -5,23 +5,34 @@
 
 (ert-deftest test-fence-breaker-text-arms-on-first-over-limit-continue ()
   "A text-only turn at over-limit context arms the breaker and
-blocks the continue re-send -- the pre-tool-call breaker never sees
-prose turns; without this the runaway re-sends 800k chars per turn
-until max-turns."
-  (let ((buf (get-buffer-create "*test-breaker-text1*")))
+ALLOWS the continue re-send (grace round-trip for the summary) --
+the pre-tool-call breaker never sees prose turns; without this the
+runaway re-sends 800k chars per turn until max-turns. The arm must
+not block the re-send: blocking suppresses the very response that
+would carry the summary and leaves the run idle until timeout (the
+c67 zombie, 13m48s dead air)."
+  (let ((buf (get-buffer-create "*test-breaker-text1*"))
+        (sent nil))
     (unwind-protect
         (let ((iar-cycle-context-limit-chars 100)
               (iar--cycle-state (iar--cycle-make-state "test" buf "Continue." 40))
               (iar--one-shot-state nil)
               (iar--cycle-error-strikes 0))
           (with-current-buffer buf (insert (make-string 200 ?x)))
-          (with-current-buffer buf
-            (let ((start (point)))
-              (insert "prose response, no sentinel")
-              (iar--cycle-post-response-handler start (point))))
+          ;; Stub gptel-send: the arm must ALLOW the re-send, so the
+          ;; handler proceeds to gptel-send. In batch a real send
+          ;; pollutes the process-filter state of later tests.
+          (cl-letf (((symbol-function 'gptel-send)
+                     (lambda () (setq sent t))))
+            (with-current-buffer buf
+              (let ((start (point)))
+                (insert "prose response, no sentinel")
+                (iar--cycle-post-response-handler start (point)))))
           (should (plist-get iar--cycle-state :breaker-fired))
           ;; Not ended yet: grace round-trip granted
-          (should-not (plist-get iar--cycle-state :completed)))
+          (should-not (plist-get iar--cycle-state :completed))
+          ;; The re-send was allowed (grace round-trip proceeds)
+          (should sent))
       (kill-buffer buf))))
 
 (ert-deftest test-fence-breaker-text-ends-run-on-second-continue ()
@@ -34,15 +45,18 @@ over-limit context ends the run (completed, exit 1)."
               (iar--one-shot-state nil)
               (iar--cycle-error-strikes 0))
           (with-current-buffer buf (insert (make-string 200 ?x)))
-          (with-current-buffer buf
-            (let ((start (point)))
-              (insert "prose response 1")
-              (iar--cycle-post-response-handler start (point))))
-          ;; Second text turn, still over limit
-          (with-current-buffer buf
-            (let ((start (point)))
-              (insert "prose response 2")
-              (iar--cycle-post-response-handler start (point))))
+          ;; Stub gptel-send: the arm now ALLOWS the re-send, so the
+          ;; handler proceeds to gptel-send on the first (arm) turn.
+          (cl-letf (((symbol-function 'gptel-send) (lambda ())))
+            (with-current-buffer buf
+              (let ((start (point)))
+                (insert "prose response 1")
+                (iar--cycle-post-response-handler start (point))))
+            ;; Second text turn, still over limit -> ends run
+            (with-current-buffer buf
+              (let ((start (point)))
+                (insert "prose response 2")
+                (iar--cycle-post-response-handler start (point)))))
           (should (plist-get iar--cycle-state :completed))
           (should (= 1 (plist-get iar--cycle-state :exit-code))))
       (kill-buffer buf))))
@@ -83,11 +97,13 @@ run -- one flag, two gates."
           ;; Tool-call breaker arms it
           (should (iar--cycle-context-breaker
                    (list :name "execute_code_local" :args '(:command "ls"))))
-          ;; Text-only continue: shared flag -> ends run
-          (with-current-buffer buf
-            (let ((start (point)))
-              (insert "prose response")
-              (iar--cycle-post-response-handler start (point))))
+          ;; Text-only continue: shared flag -> ends run. Stub
+          ;; gptel-send: the arm path (if reached) would re-send.
+          (cl-letf (((symbol-function 'gptel-send) (lambda ())))
+            (with-current-buffer buf
+              (let ((start (point)))
+                (insert "prose response")
+                (iar--cycle-post-response-handler start (point)))))
           (should (plist-get iar--cycle-state :completed))
           (should (= 1 (plist-get iar--cycle-state :exit-code))))
       (kill-buffer buf))))
@@ -97,3 +113,37 @@ run -- one flag, two gates."
   (let ((iar--cycle-state nil)
         (iar--one-shot-state nil))
     (should-not (iar--cycle-breaker-text-check nil))))
+
+(ert-deftest test-fence-breaker-text-arm-then-tool-fire ()
+  "Differential test for the c67 flag-loss path: arm the breaker via
+the TEXT-CHECK (post-response continue branch), then fire the TOOL-CALL
+breaker. c67's arm at 17:44:55 was the text-check arm; REQ-58's tool
+call should have ended the run but did not (17 more calls ran). This
+pins the shared-flag contract in the exact direction c67 exercised:
+text arm -> tool fire must end the run."
+  (let ((buf (get-buffer-create "*test-breaker-text5*")))
+    (unwind-protect
+        (let ((iar-cycle-context-limit-chars 100)
+              (iar--cycle-state (iar--cycle-make-state "test" buf "Continue." 40))
+              (iar--one-shot-state nil)
+              (iar--cycle-error-strikes 0))
+          (with-current-buffer buf (insert (make-string 200 ?x)))
+          ;; Text-check arms the breaker (c67 17:44:55 path). The arm
+          ;; now ALLOWS the re-send, so the handler calls gptel-send
+          ;; -- stub it to avoid a live process in batch.
+          (cl-letf (((symbol-function 'gptel-send) (lambda ())))
+            (with-current-buffer buf
+              (let ((start (point)))
+                (insert "prose response")
+                (iar--cycle-post-response-handler start (point))))
+            (should (plist-get iar--cycle-state :breaker-fired))
+            (should-not (plist-get iar--cycle-state :completed))
+            ;; Tool-call breaker fires next (c67 REQ-58 path): shared
+            ;; flag must end the run.
+            (let ((result (iar--cycle-context-breaker
+                           (list :name "execute_code_local" :args '(:command "ls")))))
+              (should result)
+              (should (plist-get result :block))
+              (should (plist-get iar--cycle-state :completed))
+              (should (= 1 (plist-get iar--cycle-state :exit-code))))))
+      (kill-buffer buf))))

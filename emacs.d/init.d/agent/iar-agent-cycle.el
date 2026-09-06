@@ -460,12 +460,17 @@ over-limit context every round-trip and was bounded only by
 max-turns -- the exact burn shape the breaker was built to kill.
 Called from the handler's continue branch BEFORE the re-send.
 Same contract as the tool-call breaker: first over-limit continue
-arms the breaker (:breaker-fired) and blocks the re-send -- the
-model gets its grace round-trip as the NEXT response; any further
-continue at over-limit ends the run (completed, exit 1). The flag
-is shared with the tool-call breaker: armed by either hook, the
-next over-limit action of either kind ends the run.
-Returns non-nil when the re-send is blocked."
+arms the breaker (:breaker-fired) and ALLOWS the re-send -- the
+model gets its grace round-trip to write the summary as text; any
+further continue at over-limit ends the run (completed, exit 1).
+The flag is shared with the tool-call breaker: armed by either
+hook, the next over-limit action of either kind ends the run.
+Returns non-nil when the re-send is blocked (second fire only).
+The arm branch returns nil so the continue re-send goes through:
+before 2026-09-06 the arm returned a :block, which the handler
+treated as 'blocked, don't re-send' -- suppressing the very
+response that would carry the summary and leaving the run idle
+until timeout (c67 zombie: 13m48s dead air after the arm)."
   (let ((size (iar--cycle-context-over-limit-p state)))
     (when size
       (let ((agent (plist-get state :agent)))
@@ -481,11 +486,12 @@ Returns non-nil when the re-send is blocked."
           (iar--fence-state-writeback state)
           (message "[%s] Context circuit breaker armed (text-only continue): %d chars (limit %d)"
                    agent size iar-cycle-context-limit-chars)
-          (list :block
-                (format "Context circuit breaker: this run's context exceeds %d chars (~%d tokens). Every further round-trip re-sends the entire context. Do NOT call any more tools. %s"
-                        iar-cycle-context-limit-chars
-                        (/ iar-cycle-context-limit-chars 4)
-                        (iar--fence-summary-instruction))))))))
+          ;; Return nil: ALLOW the continue re-send. The model gets
+          ;; its grace round-trip to write the summary. (Before
+          ;; 2026-09-06 this returned a :block, which the handler
+          ;; read as 'don't re-send' -- the summary was never written
+          ;; and the run idled until timeout: the c67 zombie.)
+          nil)))))
 
 (defun iar--cycle-post-response-handler (start end)
   "Post-response handler for cycle. START and END are buffer positions
@@ -545,8 +551,11 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
               ;; No completion signal, under turn limit -- continue.
               ;; Breaker check FIRST: a text-only runaway at over-limit
               ;; context must not re-send (the pre-tool-call breaker
-              ;; never sees prose turns). Same contract: arm once, then
-              ;; end the run on the next over-limit continue.
+              ;; never sees prose turns). Same contract: arm once and
+              ;; ALLOW the re-send (grace round-trip for the summary),
+              ;; then end the run on the next over-limit continue. The
+              ;; text-check returns nil on arm (re-send proceeds) and
+              ;; non-nil on second fire (blocked).
               (cond
                ((iar--cycle-breaker-text-check iar--cycle-state)
                 (message "[%s] Context breaker blocked the continue re-send" agent))
