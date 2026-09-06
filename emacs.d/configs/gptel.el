@@ -38,6 +38,7 @@
                                    "mistral-medium-3.5:128b"
                                    "nemotron-3-super:120b"
                                    "nemotron-3-ultra:cloud"
+                                   "deepseek-v4-flash:cloud"
                                    "deepseek-v4-pro:cloud"
                                    "glm-5.3:cloud"
                                    "glm-5.3-flash:cloud")
