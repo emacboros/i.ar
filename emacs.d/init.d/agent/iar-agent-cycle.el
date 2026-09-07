@@ -205,7 +205,8 @@ Signals an error if the personality is not found."
   "Create a fresh cycle state plist."
   (list :agent agent :buffer buf :continue continue :max-turns max-turns
         :turn-count 0 :tool-call-count 0 :completed nil :exit-code 0
-        :cap-blocks 0 :cap-warned nil :runaway-recovery-given nil))
+        :cap-blocks 0 :cap-warned nil :runaway-recovery-given nil
+        :cross-rep-window nil))
 
 (defun iar--cycle-tool-call-tracker (_tool-name _tool-result)
   "Track tool calls in the cycle. Increments tool-call-count.
@@ -368,6 +369,27 @@ knowledge/iar/output-token-burn-2026-09-07.md). 20k sits 1.5x above
 the continuo max and 0.6x below the aria outlier; conservative enough
 to never false-positive on a complete response while capping the
 truncated burn at ~1/3 of today's 65536.")
+
+
+(defvar iar-cycle-cross-response-window 5
+  "Number of recent responses over which the cross-response repetition
+guard tracks repeated lines. The deepseek-v4-flash text-only loop
+repeats the SAME paragraph ACROSS responses (5-10 reps each, under the
+per-response 20-line threshold), so the per-response output-runaway
+guard never fires until the final 65536-token response. This guard
+tracks the most-repeated line across the last N responses and fires
+when its cumulative count crosses
+`iar-cycle-cross-response-threshold' (c111 finding).")
+
+(defvar iar-cycle-cross-response-threshold 30
+  "Cumulative count of a single trimmed line across the last
+`iar-cycle-cross-response-window' responses at which the cross-response
+repetition guard fires. The c111 loop's early responses each carried
+5-10 reps of the same line; a window of 5 responses x 10 reps = 50
+cumulative would fire around response 5-6. 30 is conservative: it
+catches the loop well before the final 65536-token response while
+staying far above legitimate use (a line repeated 30 times across 5
+responses is essentially impossible in honest work).")
 
 (defun iar--cycle-truncated-output-p ()
   "Return non-nil if the most recently completed request was a
@@ -549,6 +571,66 @@ identical trimmed lines in one response."
                 (setq max-count (max max-count c))))))
         (>= max-count iar-cycle-output-runaway-min-repeats)))))
 
+(defun iar--cycle-cross-response-repetition-p (start end)
+  "Return non-nil if a single trimmed line has been repeated across the
+last `iar-cycle-cross-response-window' responses with a cumulative count
+at or above `iar-cycle-cross-response-threshold'. The deepseek-v4-flash
+text-only loop repeats the SAME paragraph ACROSS responses (5-10 reps
+each, under the per-response 20-line threshold), so the per-response
+output-runaway guard never fires until the final 65536-token response
+(c111 finding). This guard catches the loop at response ~5-6, saving
+~17 requests of burn per occurrence.
+
+Maintains a sliding window of per-response line-count hashes in the
+state's :cross-rep-window (a list of (hash . count) entries, oldest
+first, capped at `iar-cycle-cross-response-window'). On each call the
+new response's lines are added to the window and the global count; the
+oldest response is evicted when the window exceeds the cap. The
+window is stored in the active state (cycle or one-shot) so it
+survives across responses within a run."
+  (when (and (integerp start) (integerp end) (< start end))
+    (let* ((state (or iar--cycle-state iar--one-shot-state))
+           (window (plist-get state :cross-rep-window))
+           (counts (make-hash-table :test 'equal))
+           (max-count 0))
+      ;; Rebuild the global count from the existing window (the window
+      ;; is small -- N hashes -- so rebuilding is cheap and avoids
+      ;; drift from eviction bookkeeping).
+      (dolist (entry window)
+        (maphash (lambda (line c)
+                   (puthash line (+ (gethash line counts 0) c) counts))
+                 (car entry)))
+      ;; Add this response's lines.
+      (let ((resp-counts (make-hash-table :test 'equal)))
+        (with-current-buffer (current-buffer)
+          (save-restriction
+            (widen)
+            (dolist (line (split-string
+                           (buffer-substring-no-properties start end) "\n"))
+              (let ((trimmed (string-trim line)))
+                (when (> (length trimmed) 0)
+                  (let ((c (1+ (gethash trimmed resp-counts 0))))
+                    (puthash trimmed c resp-counts)
+                    ;; Cumulative count = window contribution + 1 per
+                    ;; occurrence in THIS response. Adding c (the running
+                    ;; per-response count) instead of 1 made counts
+                    ;; accumulate triangularly within a single response
+                    ;; (1,3,6,10...) -- 10 identical lines hit 55, not 10.
+                    (puthash trimmed (1+ (gethash trimmed counts 0)) counts)
+                    (setq max-count (max max-count
+                                         (gethash trimmed counts)))))))))
+        (setq window (append window (list (cons resp-counts
+                                                (hash-table-count resp-counts)))))
+        ;; Evict the oldest entry when the window exceeds the cap.
+        (while (> (length window) iar-cycle-cross-response-window)
+          (setq window (cdr window)))
+        ;; Persist the window back to the active state.
+        (cond (iar--cycle-state
+               (setq iar--cycle-state (plist-put iar--cycle-state :cross-rep-window window)))
+              (iar--one-shot-state
+               (setq iar--one-shot-state (plist-put iar--one-shot-state :cross-rep-window window)))))
+      (>= max-count iar-cycle-cross-response-threshold))))
+
 (defun iar--cycle-breaker-text-check (state)
   "Post-response half of the context circuit breaker.
 The pre-tool-call breaker only sees TOOL calls; a text-only
@@ -686,6 +768,28 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                   (progn
                     (setf (plist-get iar--cycle-state :runaway-recovery-given) t)
                     (message "[%s] Text-only output runaway detected -- requesting recovery" agent)
+                    (goto-char (point-max))
+                    (insert "\nYou are repeating yourself -- a text-only loop. Break it NOW with a tool call. Call append_file to write ONE line to your journal (JOURNAL.org): what you are stuck on. Then write CYCLE_COMPLETE on its own line. Do not analyze, do not plan, do not repeat. Make the append_file call immediately.\n")
+                    (gptel-send))))
+               ((iar--cycle-cross-response-repetition-p start end)
+                ;; Cross-response repetition: the SAME line repeated
+                ;; across the last N responses (each under the
+                ;; per-response threshold). The deepseek-v4-flash
+                ;; text-only loop repeats a paragraph ACROSS responses
+                ;; (5-10 reps each), so the per-response guard never
+                ;; fires until the final 65536-token response (c111).
+                ;; Same recovery contract as the per-response runaway:
+                ;; ONE recovery round-trip, then end on second fire.
+                ;; Shares :runaway-recovery-given so a cross-response
+                ;; fire and a per-response fire share the budget.
+                (if (plist-get iar--cycle-state :runaway-recovery-given)
+                    (progn
+                      (message "[%s] Cross-response repetition (2nd fire) -- ending cycle" agent)
+                      (setf (plist-get iar--cycle-state :completed) t)
+                      (setf (plist-get iar--cycle-state :exit-code) 1))
+                  (progn
+                    (setf (plist-get iar--cycle-state :runaway-recovery-given) t)
+                    (message "[%s] Cross-response repetition detected -- requesting recovery" agent)
                     (goto-char (point-max))
                     (insert "\nYou are repeating yourself -- a text-only loop. Break it NOW with a tool call. Call append_file to write ONE line to your journal (JOURNAL.org): what you are stuck on. Then write CYCLE_COMPLETE on its own line. Do not analyze, do not plan, do not repeat. Make the append_file call immediately.\n")
                     (gptel-send))))
