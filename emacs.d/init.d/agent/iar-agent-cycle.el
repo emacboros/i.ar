@@ -356,6 +356,26 @@ the breaker re-armed forever, never ending the run."
         (iar--one-shot-state (setq iar--one-shot-state state)))
   state)
 
+(defun iar--cycle-sendable-context-size (buf)
+  "Return the size of BUF in chars EXCLUDING 'ignore (reasoning) regions.
+The context circuit breaker measures the buffer that would be SENT to
+the model. Reasoning blocks are propertized 'gptel 'ignore and are
+excluded from the messages array by gptel--parse-buffer, so they are
+NOT part of the sendable context. Measuring (buffer-size buf) instead
+over-counts on thinking-heavy runs and false-trips the breaker at
+~1/3 real context (roadmap OPEN #2). Walks the buffer summing the
+lengths of regions whose 'gptel property is not 'ignore."
+  (with-current-buffer buf
+    (let ((size 0) (pos (point-min)))
+      (while (< pos (point-max))
+        (let* ((prop (get-text-property pos 'gptel))
+               (next (or (next-single-property-change pos 'gptel buf)
+                         (point-max))))
+          (unless (eq prop 'ignore)
+            (setq size (+ size (- next pos))))
+          (setq pos next)))
+      size)))
+
 (defun iar--cycle-context-breaker (info)
   "Pre-tool-call hook: context circuit breaker (fix D).
 INFO is the gptel pre-tool-call plist (:name :args :buffer ...).
@@ -373,7 +393,8 @@ re-deriving it next cycle."
   (let ((state (or iar--cycle-state iar--one-shot-state)))
     (when state
       (let* ((buf (plist-get state :buffer))
-             (size (if (buffer-live-p buf) (buffer-size buf) 0)))
+             (size (if (buffer-live-p buf)
+                       (iar--cycle-sendable-context-size buf) 0)))
         (when (> size iar-cycle-context-limit-chars)
           (if (plist-get state :breaker-fired)
               (let ((agent (plist-get state :agent)))
@@ -458,7 +479,7 @@ size is under `iar-cycle-context-limit-chars'."
   (when state
     (let ((buf (plist-get state :buffer)))
       (when (buffer-live-p buf)
-        (let ((size (buffer-size buf)))
+        (let ((size (iar--cycle-sendable-context-size buf)))
           (when (> size iar-cycle-context-limit-chars)
             size))))))
 

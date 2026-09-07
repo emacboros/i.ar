@@ -335,6 +335,74 @@ async sentinels (360-as-13 class, one-shot edition) and would
 double-count on top of the global registration."
   (should (memq #'iar--one-shot-tool-call-tracker iar-post-tool-call-functions)))
 
+
+(ert-deftest test-fence-sendable-size-excludes-ignore ()
+  "The sendable-context-size helper must EXCLUDE 'ignore (reasoning)
+regions. Regression for the breaker false-trip on thinking-heavy runs
+(roadmap OPEN #2): the breaker measured (buffer-size buf) which counts
+reasoning blocks that gptel--parse-buffer never sends."
+  (let ((buf (get-buffer-create "*test-sendable1*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (erase-buffer)
+          (insert "user: hello\n")
+          (insert (propertize "``` reasoning\n" 'gptel 'ignore 'keymap nil)
+                  (propertize "thinking here" 'gptel 'ignore 'front-sticky '(gptel))
+                  (propertize "\n```" 'gptel 'ignore 'keymap nil)
+                  "\n")
+          (insert "assistant reply\n")
+          (let ((total (buffer-size buf))
+                (sendable (iar--cycle-sendable-context-size buf)))
+            ;; The reasoning block is excluded from sendable size.
+            (should (< sendable total))
+            ;; Sendable = the user + assistant text plus the trailing plain
+            ;; newline after the reasoning block (that newline is not
+            ;; 'ignore, so it is sendable). The reasoning text itself is
+            ;; excluded.
+            (should (= sendable (+ (length "user: hello\n")
+                                   (length "assistant reply\n")
+                                   1)))))
+      (kill-buffer buf))))
+
+(ert-deftest test-fence-sendable-size-no-ignore-equals-buffer ()
+  "With no 'ignore regions, sendable size equals buffer size."
+  (let ((buf (get-buffer-create "*test-sendable2*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (erase-buffer)
+          (insert "plain text without reasoning\n")
+          (should (= (buffer-size buf)
+                     (iar--cycle-sendable-context-size buf))))
+      (kill-buffer buf))))
+
+(ert-deftest test-fence-breaker-uses-sendable-size ()
+  "The breaker must measure SENDABLE context, not raw buffer size:
+a buffer whose reasoning ('ignore) regions push the raw size over the
+limit but whose sendable size is under it must NOT trip the breaker."
+  (let ((buf (get-buffer-create "*test-fence-breaker-sendable*")))
+    (unwind-protect
+        (let ((iar-cycle-context-limit-chars 100)
+              (iar--cycle-state (iar--cycle-make-state "test" buf nil 40))
+              (iar--one-shot-state nil))
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "user: hello\n")
+            ;; A large reasoning block pushes raw size over 100, but
+            ;; sendable (user text only) stays under.
+            (insert (propertize "``` reasoning\n" 'gptel 'ignore 'keymap nil)
+                    (propertize (make-string 200 ?x) 'gptel 'ignore 'front-sticky '(gptel))
+                    (propertize "\n```" 'gptel 'ignore 'keymap nil)
+                    "\n"))
+          ;; Raw buffer is over the limit, but sendable is under.
+          (should (> (buffer-size buf) iar-cycle-context-limit-chars))
+          (should (< (iar--cycle-sendable-context-size buf)
+                     iar-cycle-context-limit-chars))
+          ;; Breaker must NOT fire.
+          (should-not (iar--cycle-context-breaker
+                       (list :name "execute_code_local" :args '(:command "ls"))))
+          (should-not (plist-get iar--cycle-state :breaker-fired)))
+      (kill-buffer buf))))
+
 ;;; --- Fix D: context circuit breaker ---
 
 (ert-deftest test-fence-breaker-arms-on-first-fire ()
