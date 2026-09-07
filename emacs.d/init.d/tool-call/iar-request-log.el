@@ -126,6 +126,29 @@ messages capture both. Returns \"nil\" when absent, and
                            iar-request-log-tail-chars)))
     (error "unserializable")))
 
+
+(defun iar--reqlog-roles (messages n)
+  "Return the :role of the last N MESSAGES as a comma-joined string.
+MESSAGES is the :messages vector from request data. Roles are the
+gptel message roles (user/assistant/tool). This is the cheap,
+permanent instrument for the +N msgs anomaly: the START line records
+the last-N role sequence so a census can see whether extra messages
+are front-sticky (property-bleed) or tool-region duplication without
+re-reading the full payload. Returns \"nil\" when absent, a
+question-mark for a message with no :role. Never signals."
+  (condition-case nil
+      (if (or (not (vectorp messages)) (zerop (length messages)))
+          "nil"
+        (let* ((len (length messages))
+               (start (max 0 (- len n)))
+               (roles (cl-loop for i from start below len
+                               for m = (aref messages i)
+                               collect (if (plistp m)
+                                           (or (plist-get m :role) "?")
+                                         "?"))))
+          (mapconcat #'identity roles ",")))
+    (error "nil")))
+
 (defun iar--reqlog-tool-specs (tool-use)
   "Format TOOL-USE specs for the log: name(args) per spec, capped.
 TOOL-USE is the list of call-spec plists gptel extracted (after the
@@ -259,8 +282,9 @@ live -- process buffers and later events cannot resolve it."
                                   iar--current-agent-name)
                              (default-value 'iar--current-agent-name)))
                     "unknown"))
-          (iar--reqlog-append "REQ %s START backend=%s model=%s msgs=%d tail=%s"
+          (iar--reqlog-append "REQ %s START backend=%s model=%s msgs=%d roles=%s tail=%s"
                               id (or backend "?") (or model "?") count
+                              (iar--reqlog-roles messages 6)
                               (iar--reqlog-payload-tail messages))
           (dolist (entry gptel--request-alist)
             (when (eq (cadr entry) fsm)

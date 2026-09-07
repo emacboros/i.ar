@@ -83,6 +83,44 @@
     (should (stringp out))
     (should (member out '("unserializable" "nil")))))
 
+
+;;; --- roles (the +N msgs instrument) ---
+
+(ert-deftest test-reqlog-roles-nil-messages ()
+  "nil / empty messages: the string \"nil\"."
+  (should (equal (iar--reqlog-roles nil 6) "nil"))
+  (should (equal (iar--reqlog-roles (vector) 6) "nil")))
+
+(ert-deftest test-reqlog-roles-last-n ()
+  "Last N roles, comma-joined, in order."
+  (let* ((msgs (vector (list :role "user" :content "m1")
+                       (list :role "assistant" :content "m2")
+                       (list :role "tool" :content "m3")
+                       (list :role "user" :content "m4")))
+         (out (iar--reqlog-roles msgs 3)))
+    (should (equal out "assistant,tool,user"))))
+
+(ert-deftest test-reqlog-roles-fewer-than-n ()
+  "Fewer messages than N: all roles returned."
+  (let* ((msgs (vector (list :role "user" :content "m1")
+                       (list :role "assistant" :content "m2")))
+         (out (iar--reqlog-roles msgs 6)))
+    (should (equal out "user,assistant"))))
+
+(ert-deftest test-reqlog-roles-missing-role ()
+  "Message without :role: \"?\" placeholder."
+  (let* ((msgs (vector (list :content "no-role")
+                       (list :role "user" :content "m2")))
+         (out (iar--reqlog-roles msgs 2)))
+    (should (equal out "?,user"))))
+
+(ert-deftest test-reqlog-roles-degenerate-no-signal ()
+  "Non-vector / non-plist messages: no signal."
+  (should (equal (iar--reqlog-roles "junk" 6) "nil"))
+  (let* ((msgs (vector "raw" (list :role "user" :content "m2")))
+         (out (iar--reqlog-roles msgs 2)))
+    (should (equal out "?,user"))))
+
 ;;; --- tool specs ---
 
 (ert-deftest test-reqlog-tool-specs-none ()
