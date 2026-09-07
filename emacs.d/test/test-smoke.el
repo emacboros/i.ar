@@ -73,8 +73,8 @@ prefix, not the filename)."
   "Expected personality files should exist under agents.d/personalities/."
   :tags '(smoke)
   (let ((pers-dir (expand-file-name "agents.d/personalities" user-emacs-directory))
-        (expected-personalities '("colin" "darwin" "davinci"
-                                  "gardener" "librarian" "mirror")))
+        (expected-personalities '("darwin" "gardener" "librarian"
+                                  "mirror")))
     (dolist (pers expected-personalities)
       (let ((pers-path (expand-file-name (format "%s.org" pers) pers-dir)))
         (should (file-exists-p pers-path))))))

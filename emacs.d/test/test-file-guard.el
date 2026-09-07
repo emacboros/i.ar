@@ -93,7 +93,7 @@
   "write_file should be blocked for cycle .org files."
   (with-fg-fixture
     (should (stringp (iar--guard-check-write
-                      "/root/.emacs.d/agents.d/cycles/self_modification.org")))))
+                      "/root/.emacs.d/agents.d/cycles/aria_daily.org")))))
 
 ;;; --- Always-protected paths: base_context.org ---
 

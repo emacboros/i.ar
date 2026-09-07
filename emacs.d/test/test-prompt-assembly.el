@@ -392,10 +392,10 @@ set as interactive mode (DIGEST + LOGS + JOURNAL)."
 
 (ert-deftest test-assembly-assemble-with-containers ()
   "iar--assemble-prompt should include containers block when project has containers."
-  (let ((result (iar--assemble-prompt "interactive" "test" "test")))
+  (let ((result (iar--assemble-prompt "interactive" "aria" "life-org")))
     (should (plistp result))
     (should (plist-get result :containers))
-    (should (member "pentest" (plist-get result :containers)))))
+    (should (member "life-org" (plist-get result :containers)))))
 
 (ert-deftest test-assembly-assemble-delegated-mode ()
   "iar--assemble-prompt should work with delegated archetype."

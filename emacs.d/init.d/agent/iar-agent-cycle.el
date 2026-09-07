@@ -35,11 +35,13 @@
   "Maximum number of LLM response turns before forcing cycle end.")
 
 (defconst iar-personality-cycle-map
-  '(("darwin" . "self_modification")
-    ("gardener" . "monitoring")
-    ("librarian" . "documentation_sync")
-    ("test-continuous" . "test_continuous")
-    ("aria" . "aria_daily")
+  ;; darwin/gardener/librarian had autonomous cycle prompts
+  ;; (self_modification/monitoring/documentation_sync) -- removed in
+  ;; the 2026-09-07 cleanup: the trio's loops were never deployed on
+  ;; this infra. The personalities remain for interactive use; a
+  ;; --loop invocation without :cycle now fails loud (prompt not
+  ;; found), which is the honest behavior.
+  '(("aria" . "aria_daily")
     ("continuo" . "continuo_daily"))
   "Mapping from personality names to default cycle files.
 Used when :cycle is not explicitly provided to iar-run-cycle.")

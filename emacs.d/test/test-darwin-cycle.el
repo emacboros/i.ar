@@ -256,7 +256,7 @@
 
 (ert-deftest test-cycle-load-cycle-prompt-success ()
   "iar--cycle-load-cycle-prompt should load existing cycle."
-  (let ((result (iar--cycle-load-cycle-prompt "self_modification")))
+  (let ((result (iar--cycle-load-cycle-prompt "aria_daily")))
     (should (stringp result))
     (should (> (length result) 0))))
 
@@ -265,9 +265,9 @@
   (should-error (iar--cycle-load-cycle-prompt "nonexistent_cycle")
                 :type 'error))
 
-(ert-deftest test-cycle-for-personality-darwin ()
-  "iar--cycle-for-personality should return self_modification for darwin."
-  (should (string= "self_modification" (iar--cycle-for-personality "darwin"))))
+(ert-deftest test-cycle-for-personality-aria ()
+  "iar--cycle-for-personality should return aria_daily for aria."
+  (should (string= "aria_daily" (iar--cycle-for-personality "aria"))))
 
 (ert-deftest test-cycle-for-personality-unknown ()
   "iar--cycle-for-personality should return nil for unknown personality."

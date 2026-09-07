@@ -28,9 +28,9 @@
 
 (ert-deftest test-agent-read-profile-no-includes ()
   "iar--read-personality should work for any personality."
-  (let ((content (iar--read-personality "colin")))
+  (let ((content (iar--read-personality "bessie")))
     (should (stringp content))
-    (should (string-match-p "Colin" content))))
+    (should (string-match-p "Bessie" content))))
 
 (ert-deftest test-agent-read-profile-missing-file ()
   "iar--read-personality should signal error for missing personality."
@@ -126,7 +126,7 @@ Mocks completing-read to select the first personality and verifies assembly."
     (should (listp names))
     (should (member "mirror" names))
     (should (member "darwin" names))
-    (should (member "colin" names))
+    (should (member "bessie" names))
     (should-not (member "mirror.org" names))))
 
 (ert-deftest test-agent-load-agent-errors-no-valid-agents ()
