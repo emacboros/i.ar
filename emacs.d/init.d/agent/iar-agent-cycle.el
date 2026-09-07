@@ -635,7 +635,7 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                     (setf (plist-get iar--cycle-state :runaway-recovery-given) t)
                     (message "[%s] Text-only output runaway detected -- requesting recovery" agent)
                     (goto-char (point-max))
-                    (insert "\nYou appear to be repeating yourself without making progress. Stop analyzing. Pick ONE concrete action from your roadmap or task list and do it now, or write CYCLE_COMPLETE on its own line to end the cycle.\n")
+                    (insert "\nYou are repeating yourself -- a text-only loop. Break it NOW with a tool call. Call append_file to write ONE line to your journal (JOURNAL.org): what you are stuck on. Then write CYCLE_COMPLETE on its own line. Do not analyze, do not plan, do not repeat. Make the append_file call immediately.\n")
                     (gptel-send))))
                ((iar--cycle-breaker-text-check iar--cycle-state)
                 (message "[%s] Context breaker blocked the continue re-send" agent))
