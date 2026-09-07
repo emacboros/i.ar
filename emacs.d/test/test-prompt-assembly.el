@@ -7,9 +7,23 @@
 (require 'subr-x)
 
 ;; Load dependencies
+(require 'gptel-request)
 (require 'iar-utils)
 (require 'iar-project-parser)
 (require 'iar-prompt-assembly)
+
+;; Batch-mode environment: gptel-tools is normally populated by init.el
+;; (interactive). Tests calling iar--assemble-prompt assert :tools is
+;; non-nil, so provide a minimal fake registry here.
+(defvar gptel-tools nil)
+(unless gptel-tools
+  (setq gptel-tools
+        (list (gptel-make-tool :name "read_file" :function #'identity
+                               :description "test stub" :args nil)
+              (gptel-make-tool :name "execute_code_remote" :function #'identity
+                               :description "test stub" :args nil)
+              (gptel-make-tool :name "delegate" :function #'identity
+                               :description "test stub" :args nil))))
 (defvar iar-personalization-path nil)
 
 ;; Configs must be loaded
@@ -180,7 +194,7 @@ set as interactive mode (DIGEST + LOGS + JOURNAL)."
     (let ((tools (plist-get result :tools)))
       (should (listp tools))
       ;; Should not contain delegate tool
-      (should-not (cl-some (lambda (t) (equal (gptel-tool-name t) "delegate")) tools)))))
+      (should-not (cl-some (lambda (tool) (equal (gptel-tool-name tool) "delegate")) tools)))))
 ;;; --- Container injection and tool gating tests ---
 
 (ert-deftest test-assembly-format-containers-empty ()
@@ -217,8 +231,8 @@ set as interactive mode (DIGEST + LOGS + JOURNAL)."
          ;; Only read_file in #+TOOLS, but containers implies execute_code_remote
          (filtered (iar--filter-tools all-tools '("read_file") '("pentest"))))
     (should (= (length filtered) 2))
-    (should (cl-some (lambda (t) (equal (gptel-tool-name t) "execute_code_remote")) filtered))
-    (should (cl-some (lambda (t) (equal (gptel-tool-name t) "read_file")) filtered))))
+    (should (cl-some (lambda (tool) (equal (gptel-tool-name tool) "execute_code_remote")) filtered))
+    (should (cl-some (lambda (tool) (equal (gptel-tool-name tool) "read_file")) filtered))))
 
 (ert-deftest test-assembly-filter-tools-without-containers ()
   "filter-tools does NOT include execute_code_remote when containers is nil."
@@ -239,7 +253,7 @@ set as interactive mode (DIGEST + LOGS + JOURNAL)."
          (filtered (iar--filter-tools all-tools '("read_file" "execute_code_remote") '("pentest"))))
     (should (= (length filtered) 2))
     ;; Only one execute_code_remote
-    (should (= (cl-count-if (lambda (t) (equal (gptel-tool-name t) "execute_code_remote")) filtered) 1))))
+    (should (= (cl-count-if (lambda (tool) (equal (gptel-tool-name tool) "execute_code_remote")) filtered) 1))))
 
 ;;; --- DIGEST.md injection tests ---
 
@@ -435,7 +449,7 @@ which exists in the test environment's docs tree."
     (should (member "agora" (plist-get result :knowledge-labels)))
     ;; project's own labels still load (they carry trailing slashes
     ;; from iar.org's #+KNOWLEDGE line -- pre-existing quirk)
-    (should (member "iar-prod/" (plist-get result :knowledge-labels)))))
+    (should (member "iar/" (plist-get result :knowledge-labels)))))
 
 
 (ert-deftest test-assembly-extra-knowledge-dedupe ()
