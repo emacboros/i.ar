@@ -10,7 +10,7 @@ EMACS_ARGS=(
   --eval '(load "keybindings")' \
   --eval '(setq iar-archetypes-path "/root/i.ar/prompts/archetypes/"
         iar-personalities-path "/root/i.ar/prompts/personalities/")' \
-  --eval "(add-to-list 'load-path \"/root/.emacs.d/elpa/gptel-20260819.446\")"
+  --eval "(add-to-list 'load-path \"/root/i.ar/emacs.d/elpa/gptel-20260826.2228\")"
   --eval "(add-to-list 'load-path \"init.d/agent\")"
   --eval "(add-to-list 'load-path \"init.d/shared\")"
   --eval "(add-to-list 'load-path \"init.d/core\")"

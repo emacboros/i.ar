@@ -101,14 +101,36 @@ too -- the landing IS the record."
           (should (= 0 (plist-get iar--one-shot-state :cap-blocks))))
       (kill-buffer buf))))
 
+(ert-deftest test-one-shot-cap-hard-cap-grace-on-first-fire ()
+  "HARD cap FIRST fire grants ONE grace round-trip (c39 fix C):
+block message demands the landing, run NOT ended,
+:runaway-recovery-given set."
+  (let ((buf (get-buffer-create "*test-oneshot-cap3a*")))
+    (unwind-protect
+        (let ((iar--cycle-state nil)
+              (iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
+          (setf (plist-get iar--one-shot-state :tool-call-count)
+                iar-cycle-tool-call-cap)
+          (dotimes (_ (1- iar-cycle-tool-call-hard-cap))
+            (iar--cycle-tool-call-cap (list :name "read_file" :args nil)))
+          (let ((result (iar--cycle-tool-call-cap
+                         (list :name "read_file" :args nil))))
+            (should (plist-get result :block))
+            (should-not (plist-get iar--one-shot-state :completed))
+            (should (= 0 (plist-get iar--one-shot-state :exit-code)))
+            (should (plist-get iar--one-shot-state :runaway-recovery-given))))
+      (kill-buffer buf))))
+
 (ert-deftest test-one-shot-cap-hard-kill-after-ignored-blocks ()
-  "HARD cap ends a one-shot run too: completed, exit 1."
+  "HARD cap SECOND fire (grace already given) ends a one-shot run:
+completed, exit 1."
   (let ((buf (get-buffer-create "*test-oneshot-cap3*")))
     (unwind-protect
         (let ((iar--cycle-state nil)
               (iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
           (setf (plist-get iar--one-shot-state :tool-call-count)
                 iar-cycle-tool-call-cap)
+          (setf (plist-get iar--one-shot-state :runaway-recovery-given) t)
           (dotimes (_ (1- iar-cycle-tool-call-hard-cap))
             (iar--cycle-tool-call-cap (list :name "read_file" :args nil)))
           (let ((result (iar--cycle-tool-call-cap

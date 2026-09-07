@@ -32,6 +32,15 @@
 
 (require 'iar-utf8-scrub)
 (require 'gptel)
+;; c39 fix: the curl-layer request counter mirrors the count into the
+;; active cycle/one-shot state (owned by iar-agent-cycle.el). This
+;; file loads BEFORE iar-agent-cycle.el in init.el ordering, so the
+;; defvars here are the DEFINITIONS (defvar only binds when void --
+;; agent-cycle's later defvar is a no-op and never resets a live
+;; state). The state is nil outside cycles: the mirror is a no-op
+;; for interactive sessions and delegates.
+(defvar iar--cycle-state nil)
+(defvar iar--one-shot-state nil)
 (require 'cl-lib)
 (require 'subr-x)
 (require 'json)
@@ -338,7 +347,20 @@ the request counter. Best-effort: errors are demoted to messages."
                              (substring raw-content (+ header-end 2))
                            raw-content)))
               (iar--usage-parse-tokens body)
-              (cl-incf iar--usage-requests)))))
+              (cl-incf iar--usage-requests)
+              ;; c39 fix (2026-09-07): mirror the request count into
+              ;; the ACTIVE cycle/one-shot state. The turn guard
+              ;; counts final-responses only (post-response handler
+              ;; runs on DONE/ERRS/ABRT; the tool loop never reaches
+              ;; DONE), so it can never see a tool-call burn (17:03
+              ;; corpse: 126 requests, Turns: 1, zero record). The
+              ;; request counter is the honest burn unit: every
+              ;; round-trip (tool loop included) increments exactly
+              ;; once, from the curl layer where nothing is missed.
+              (when iar--cycle-state
+                (cl-incf (plist-get iar--cycle-state :request-count)))
+              (when iar--one-shot-state
+                (cl-incf (plist-get iar--one-shot-state :request-count)))))))
     (error
      (message "Warning: token parse from curl failed: %s"
               (error-message-string err)))))

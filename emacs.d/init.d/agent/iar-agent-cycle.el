@@ -204,8 +204,10 @@ Signals an error if the personality is not found."
 (defun iar--cycle-make-state (agent buf continue max-turns)
   "Create a fresh cycle state plist."
   (list :agent agent :buffer buf :continue continue :max-turns max-turns
-        :turn-count 0 :tool-call-count 0 :completed nil :exit-code 0
-        :cap-blocks 0 :cap-warned nil :runaway-recovery-given nil
+        :turn-count 0 :tool-call-count 0 :request-count 0
+        :completed nil :exit-code 0
+        :cap-blocks 0 :cap-warned nil :same-tool-warned nil
+        :tool-totals nil :runaway-recovery-given nil
         :cross-rep-window nil))
 
 (defun iar--cycle-tool-call-tracker (_tool-name _tool-result)
@@ -219,6 +221,15 @@ Guarded: no active state -> silent no-op."
   (when iar--cycle-state
     (cl-incf (plist-get iar--cycle-state :tool-call-count))))
 
+(defvar iar-cycle-same-tool-warn 40
+  "Same-tool TOTAL warning threshold (c39 fix B): block ONE call with
+a notice when a single tool has been called this many times in the
+current run. The c38 finding: 132 execute_code_local calls (a
+meter-reading burst) never tripped the chain guard -- varying commands
+reset the Jaccard counter faster than it accumulated. A per-tool TOTAL
+is immune to variation. 40 calls of one tool is a census, not a
+workflow. Fires once per run (:same-tool-warned); the warned call is
+retried, nothing is lost.")
 (defvar iar-cycle-tool-call-warn 60
   "Early-warning threshold for the tool-call cap (census option c,
 aria cycle 137 / continuo cycle 3). At this count the NEXT tool
@@ -293,7 +304,26 @@ sessions are not capped)."
     (when state
       (let* ((count (1+ (plist-get state :tool-call-count)))
              (agent (plist-get state :agent))
-             (tool-name (plist-get info :name)))
+             (tool-name (plist-get info :name))
+             ;; c39 fix B: same-tool TOTAL counter. The c38 finding:
+             ;; 132 execute_code_local calls (meter-reading burst)
+             ;; never tripped the chain guard because varying commands
+             ;; reset the Jaccard counter faster than it accumulated.
+             ;; A TOTAL per-tool counter is immune to variation: 40
+             ;; calls of the SAME tool is a census, not a workflow.
+             ;; The count lives in the state (:tool-totals alist) so
+             ;; it survives across calls like the other fence state.
+             (prev-same (cdr (assoc tool-name
+                                    (plist-get state :tool-totals))))
+             (same-count (1+ (or prev-same 0)))
+             (tool-totals (if prev-same
+                              (plist-get state :tool-totals)
+                            (append (plist-get state :tool-totals)
+                                    (list (cons tool-name 0))))))
+        ;; Record the increment in the state (every call, memory tools
+        ;; included -- the census is total).
+        (setcdr (assoc tool-name tool-totals) same-count)
+        (setq state (plist-put state :tool-totals tool-totals))
         (or (when (and (not (member tool-name '("append_file" "write_file" "write_subtask"
                                                 "write_roadmap" "git_commit" "send_telegram")))
                        (>= count iar-cycle-tool-call-warn)
@@ -309,6 +339,19 @@ sessions are not capped)."
           (list :block
                 (format "Tool-call budget warning: %d of %d tool calls used. You are at the edge of the cap. Batch your remaining work (one command carrying many operations), avoid enumeration walks, and converge this cycle. This call was NOT lost -- retry it. This warning fires once."
                         count iar-cycle-tool-call-cap)))
+        (when (and (not (member tool-name '("append_file" "write_file" "write_subtask"
+                                            "write_roadmap" "git_commit" "send_telegram")))
+                   (>= same-count iar-cycle-same-tool-warn)
+                   (< count iar-cycle-tool-call-warn)
+                   (not (plist-get state :same-tool-warned)))
+          ;; Same-tool total warning: block ONE call with the notice.
+          (setf (plist-get state :same-tool-warned) t)
+          (iar--fence-state-writeback state)
+          (message "[%s] Same-tool warning: %d calls to %s this cycle -- one call blocked with notice"
+                   agent same-count tool-name)
+          (list :block
+                (format "Same-tool warning: %d calls to %s this cycle. You are repeating one tool far past what a workflow needs -- batch (one command carrying many operations) or switch approach. This call was NOT lost -- retry it. This warning fires once."
+                        same-count tool-name)))
         (when (> count iar-cycle-tool-call-cap)
           (if (member tool-name '("append_file" "write_file" "write_subtask"
                                   "write_roadmap" "git_commit" "send_telegram"))
@@ -319,16 +362,45 @@ sessions are not capped)."
               (setf (plist-get state :cap-blocks) blocks)
               (if (>= blocks iar-cycle-tool-call-hard-cap)
                   ;; Runaway confirmed: model ignoring the landing
-                  ;; instruction. End it.
-                  (progn
-                    (message "[%s] Tool-call hard cap: %d ignored soft-cap blocks -- ending cycle"
-                             agent blocks)
-                    (setf (plist-get state :completed) t)
-                    (setf (plist-get state :exit-code) 1)
-                    (iar--fence-state-writeback state)
-                    (list :block
-                          (format "Tool-call hard cap reached (%d ignored blocks). The run is ending NOW. Do not call more tools."
-                                  blocks)))
+                  ;; instruction. c39 fix C (2026-09-07): the FIRST
+                  ;; hard-cap fire grants ONE grace round-trip -- the
+                  ;; landing prompt is inserted into the buffer and
+                  ;; re-sent, so the model can write its record as
+                  ;; text (memory tools still allowed). Port of the
+                  ;; truncated-output grace pattern (ee2da67) and the
+                  ;; timeout grace (iar-run-cycle). Shares
+                  ;; :runaway-recovery-given: one snap-out OR one
+                  ;; landing per cycle. The SECOND hard-cap fire ends
+                  ;; the cycle -- re-sending after two ignored
+                  ;; landings would burn another full context.
+                  (if (plist-get state :runaway-recovery-given)
+                      (progn
+                        (message "[%s] Tool-call hard cap: %d ignored soft-cap blocks (2nd fire) -- ending cycle"
+                                 agent blocks)
+                        (setf (plist-get state :completed) t)
+                        (setf (plist-get state :exit-code) 1)
+                        (iar--fence-state-writeback state)
+                        (list :block
+                              (format "Tool-call hard cap reached (%d ignored blocks). The run is ending NOW. Do not call more tools."
+                                      blocks)))
+                    ;; c39 fix C: FIRST hard-cap fire grants ONE grace
+                    ;; round-trip via the block message itself (the
+                    ;; model reads the block text as the tool result
+                    ;; and its next response is the landing -- no
+                    ;; gptel-send from inside a pre-tool-call hook,
+                    ;; which would fight the in-flight request
+                    ;; machinery). Shares :runaway-recovery-given with
+                    ;; the truncated-output and runaway guards: one
+                    ;; snap-out OR one landing per cycle. SECOND fire
+                    ;; ends the cycle.
+                    (progn
+                      (setf (plist-get state :runaway-recovery-given) t)
+                      (iar--fence-state-writeback state)
+                      (message "[%s] Tool-call hard cap: %d ignored soft-cap blocks -- requesting landing (grace round-trip)"
+                               agent blocks)
+                      (list :block
+                            (format "TOOL-CALL LIMIT REACHED (%d ignored soft-cap blocks). This blocked call is your LAST non-memory tool call. Stop all tool calls immediately (memory/record tools excepted: append_file, write_file, write_subtask, write_roadmap, git_commit, send_telegram). Write your summary NOW: what you did, what landed, what is next. Update your memory files. End with CYCLE_COMPLETE on its own line. If you call another non-memory tool, the run ENDS."
+                                    blocks))))
                 ;; Soft block: demand the landing, allow memory tools.
                 (message "[%s] Tool-call soft cap (%d) -- blocking tool, demanding summary (block %d/%d)"
                          agent iar-cycle-tool-call-cap blocks iar-cycle-tool-call-hard-cap)
@@ -699,6 +771,16 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
           ;; ---- SUCCESS PATH ----
           (setq iar--cycle-error-strikes 0)
           (cl-incf (plist-get iar--cycle-state :turn-count))
+          ;; c39 fix (2026-09-07): the turn guard counted only
+          ;; final-responses -- the increment lives in the
+          ;; post-response handler, which gptel's FSM runs only on
+          ;; DONE/ERRS/ABRT. The tool loop never reaches DONE, so
+          ;; every tool-heavy cycle reported Turns: 1 and the guard
+          ;; could never catch a tool-call burn (17:03 corpse: 126
+          ;; requests, Turns: 1, zero record). The REQUEST counter
+          ;; (incremented at the curl layer, iar-tool-call.el) is the
+          ;; honest burn unit; :turn-count remains the
+          ;; final-response count for the tombstone.
           ;; Log ONLY the new response region (not the whole buffer --
           ;; whole-buffer logging grows quadratically with turns)
           (ignore-errors
