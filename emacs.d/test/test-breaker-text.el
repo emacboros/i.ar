@@ -185,15 +185,29 @@ c-fail REQ-51 had 4612 identical 'Let me check the caller.' lines,
 (ert-deftest test-fence-output-runaway-ends-cycle ()
   "A text-only output runaway in the continue branch ends the cycle
 with exit 1 -- the c-fail REQ-51 shape must not re-send and burn
-another 65536-token output budget on the same loop."
-  (let ((buf (get-buffer-create "*test-runaway4*")))
+another 65536-token output budget on the same loop. First fire gives
+ONE recovery round-trip (the model is usually stuck in decision
+paralysis, not truly degraded); a SECOND fire ends the run."
+  (let ((buf (get-buffer-create "*test-runaway4*"))
+        (sent 0))
     (unwind-protect
         (let ((iar-cycle-context-limit-chars 100000)
               (iar--cycle-state (iar--cycle-make-state "test" buf "Continue." 40))
               (iar--one-shot-state nil)
               (iar--cycle-error-strikes 0))
           (with-current-buffer buf (insert (make-string 200 ?x)))
-          (cl-letf (((symbol-function 'gptel-send) (lambda ())))
+          ;; Stub gptel-send: the recovery prompt re-sends on first fire.
+          (cl-letf (((symbol-function 'gptel-send)
+                     (lambda () (cl-incf sent))))
+            (with-current-buffer buf
+              ;; First fire: recovery round-trip, cycle NOT ended.
+              (let ((start (point)))
+                (dotimes (_ 30) (insert "Let me check the caller.\n"))
+                (iar--cycle-post-response-handler start (point))))
+            (should (= 1 sent))
+            (should (plist-get iar--cycle-state :runaway-recovery-given))
+            (should-not (plist-get iar--cycle-state :completed))
+            ;; Second fire: cycle ends, exit 1.
             (with-current-buffer buf
               (let ((start (point)))
                 (dotimes (_ 30) (insert "Let me check the caller.\n"))

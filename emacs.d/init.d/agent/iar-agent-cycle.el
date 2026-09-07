@@ -186,13 +186,15 @@ Signals an error if the personality is not found."
 :completed   -- t when cycle is done
 :exit-code   -- 0 for CYCLE_COMPLETE, 1 for timeout/error,
 ;;               2 for LOOP_COMPLETE (task done, iar.sh stops the loop)
-:cap-blocks  -- tool calls blocked at the soft cap (hard-cap counter)")
+:cap-blocks  -- tool calls blocked at the soft cap (hard-cap counter)
+:runaway-recovery-given -- t once a text-only output runaway has been
+;;               given its one recovery round-trip (second fire ends the run)")
 
 (defun iar--cycle-make-state (agent buf continue max-turns)
   "Create a fresh cycle state plist."
   (list :agent agent :buffer buf :continue continue :max-turns max-turns
         :turn-count 0 :tool-call-count 0 :completed nil :exit-code 0
-        :cap-blocks 0 :cap-warned nil))
+        :cap-blocks 0 :cap-warned nil :runaway-recovery-given nil))
 
 (defun iar--cycle-tool-call-tracker (_tool-name _tool-result)
   "Track tool calls in the cycle. Increments tool-call-count.
@@ -615,13 +617,24 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
               (cond
                ((iar--cycle-output-runaway-p start end)
                 ;; Text-only output runaway: the model degraded into a
-                ;; repetition loop (repeated text, no tool call). End the
-                ;; run now -- re-sending would burn another 65536-token
+                ;; repetition loop (repeated text, no tool call). Give it
+                ;; ONE recovery round-trip -- a specific snap-out prompt
+                ;; (the model is usually stuck in decision paralysis, not
+                ;; truly degraded). If it repeats again (second fire),
+                ;; end the run -- re-sending would burn another 65536-token
                 ;; output budget on the same loop. exit 1 (failed): the
                 ;; cycle did not complete its work.
-                (message "[%s] Text-only output runaway detected -- ending cycle" agent)
-                (setf (plist-get iar--cycle-state :completed) t)
-                (setf (plist-get iar--cycle-state :exit-code) 1))
+                (if (plist-get iar--cycle-state :runaway-recovery-given)
+                    (progn
+                      (message "[%s] Text-only output runaway (2nd fire) -- ending cycle" agent)
+                      (setf (plist-get iar--cycle-state :completed) t)
+                      (setf (plist-get iar--cycle-state :exit-code) 1))
+                  (progn
+                    (setf (plist-get iar--cycle-state :runaway-recovery-given) t)
+                    (message "[%s] Text-only output runaway detected -- requesting recovery" agent)
+                    (goto-char (point-max))
+                    (insert "\nYou appear to be repeating yourself without making progress. Stop analyzing. Pick ONE concrete action from your roadmap or task list and do it now, or write CYCLE_COMPLETE on its own line to end the cycle.\n")
+                    (gptel-send))))
                ((iar--cycle-breaker-text-check iar--cycle-state)
                 (message "[%s] Context breaker blocked the continue re-send" agent))
                (t
