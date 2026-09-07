@@ -27,11 +27,6 @@
 
 ;;; --- Buffer info ---
 
-(defun iar--format-size (chars)
-  "Format CHARS (a character count, integer) as a human-readable size string."
-  (let ((tokens (iar--approx-token-count chars)))
-    (format "%d chars (~%d tokens)" chars tokens)))
-
 (defun iar-buffer-info ()
   "Display the current conversation buffer size in chars and approx tokens.
 The system prompt is NOT in the conversation buffer -- it is sent

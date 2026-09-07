@@ -70,9 +70,6 @@ Set buffer-local by `iar-load-agent'. Kept for backward compat.")
 (defvar-local iar--current-project nil
   "Name of the currently loaded project (e.g., \"default\").")
 
-(defvar-local iar--current-mode nil
-  "Mode symbol for the current session (interactive, autonomous, etc.).")
-
 ;;; --- Personality-to-archetype mapping ---
 
 (defconst iar-personality-archetype-map
@@ -153,7 +150,6 @@ Returns the assembled plist."
     (setq-local iar--current-archetype archetype)
     (setq-local iar--current-personality personality)
     (setq-local iar--current-project project)
-    (setq-local iar--current-mode (plist-get result :mode))
     ;; Container targets from #+CONTAINERS (used by execute_code_remote)
     (setq-local iar--current-containers (plist-get result :containers))
     ;; MCP servers from #+MCP (used by iar-mcp-setup)

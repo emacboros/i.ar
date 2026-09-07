@@ -116,7 +116,7 @@ Signals an error if the cycle file is not found."
 Looks up `iar-personality-cycle-map'. Returns nil if not in the map."
   (cdr (assoc personality-name iar-personality-cycle-map)))
 
-(defun iar--cycle-load-continue-prompt (_agent-name)
+(defun iar--cycle-load-continue-prompt ()
   "Load the shared continue prompt from agents.d/common/agent_cycle_continue.org.
 Signals an error if the file is missing: a cycle without a continue
 prompt is a misconfigured house. Before 2026-09-03 this wrapped the
@@ -697,7 +697,7 @@ Tools are gated by the project's #+TOOLS metadata."
                          (iar--cycle-for-personality agent-name)))
          (prompt (or (plist-get args :prompt)
                      (iar--cycle-load-cycle-prompt cycle-name)))
-         (continue-prompt (iar--cycle-load-continue-prompt agent-name))
+         (continue-prompt (iar--cycle-load-continue-prompt))
          ;; Fail loud BEFORE any state or request: a cycle without a
          ;; continue prompt cannot land honestly (the handler's
          ;; no-continue branch completes with default exit 0, making

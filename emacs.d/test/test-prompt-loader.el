@@ -10,7 +10,7 @@
 
 (ert-deftest test-prompt-loader-load-existing ()
   "iar--load-prompt should load an existing prompt template."
-  (let ((result (iar--load-prompt "agent_cycle")))
+  (let ((result (iar--load-prompt "agent_cycle_continue")))
     (should (stringp result))
     (should (> (length result) 0))))
 
@@ -21,7 +21,7 @@
 
 (ert-deftest test-prompt-loader-trims-trailing-whitespace ()
   "iar--load-prompt should trim trailing newlines from the template."
-  (let ((result (iar--load-prompt "agent_cycle")))
+  (let ((result (iar--load-prompt "agent_cycle_continue")))
     (should (stringp result))
     ;; Result should not end with a newline
     (should-not (string-suffix-p "\n" result))))

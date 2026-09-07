@@ -197,12 +197,7 @@ loaded is a no-op."
 
 ;;; --- Prompt size reporting ---
 
-;; iar--approx-token-count is now in shared/utils.el.
-
-(defun iar--format-size (chars)
-  "Format CHARS (a character count, integer) as a human-readable size string."
-  (let ((tokens (iar--approx-token-count chars)))
-    (format "%d chars (~%d tokens)" chars tokens)))
+;; iar--approx-token-count and iar--format-size live in shared/iar-utils.el.
 
 (defun iar-prompt-info ()
   "Display the current system prompt size and composition.

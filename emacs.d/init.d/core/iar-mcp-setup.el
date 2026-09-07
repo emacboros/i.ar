@@ -30,9 +30,8 @@
 (defvar iar-mcp-servers nil
   "Alist of known MCP servers. See configs/mcp.el for format.")
 
-;; Forward-declared: owned by configs/mcp.el
-(defvar iar-mcp-auto-start nil
-  "Whether to auto-start MCP servers at session start.")
+;; iar-mcp-auto-start is owned by configs/mcp.el (defcustom, loaded
+;; before init.d modules -- do not re-declare it here).
 
 ;; Declared in mcp-hub.el (mcp package)
 (defvar mcp-hub-servers nil

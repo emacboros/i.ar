@@ -50,13 +50,13 @@ Points iar-prompts-path at an empty directory to force the miss."
         ;; prompt file cannot exist there.
         (let ((iar-prompts-path (file-name-nondirectory
                                  (directory-file-name tmpdir))))
-          (should-error (iar--cycle-load-continue-prompt "darwin")
+          (should-error (iar--cycle-load-continue-prompt)
                         :type 'error))
       (delete-directory tmpdir t))))
 
 (ert-deftest test-cycle-continue-prompt-loader-returns-content ()
   "With the real tree, the loader returns the file's content."
-  (let ((result (iar--cycle-load-continue-prompt "darwin")))
+  (let ((result (iar--cycle-load-continue-prompt)))
     (should (stringp result))
     (should (> (length result) 0))))
 

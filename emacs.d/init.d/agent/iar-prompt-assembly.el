@@ -8,7 +8,7 @@
 ;; 3. Project (knowledge + tools + objective + containers + mcp) -- from personalization/projects/<name>.org
 ;;
 ;; Assembly order (top to bottom of prompt):
-;; 1. base_context.org (expanded #+INCLUDE)
+;; 1. base_context.org (leaf file, no #+INCLUDE expansion)
 ;; 2. Archetype content
 ;; 3. Personality content
 ;; 4. Project objective
@@ -27,7 +27,6 @@
 
 (require 'cl-lib)
 (require 'subr-x)
-(require 'ox)  ; org-export-expand-include-keyword (for base_context.org)
 (require 'iar-utils)  ; iar--non-blank-p
 (require 'iar-project-parser)
 (require 'iar-knowledge-loader)  ; iar--read-knowledge-files
@@ -59,7 +58,7 @@
   '(("pentest" . "nmap, curl, python3, openssl, whois, traceroute, tcpdump. Outbound internet. No personal data.")
     ("concepts" . "Maxima, ngspice, iverilog, gnuplot, Ruby, gcc. Concepts directory mounted. No outbound internet.")
     ("life-org" . "hledger, Ruby. Personal data mounted. No outbound internet.")
-    ("debug" . "bash, journalctl, systemctl, standard debug tools. Host root filesystem mounted read-only. SSH over WireGuard."))
+    ("research" . "curl, python3, ripgrep, jq. Outbound internet. No personal data. Session-scoped /workspace only."))
   "Alist mapping container target names to brief descriptions.
 Used for prompt injection so the agent knows what each container offers.
 Hardcoded for now -- move to metadata files when there are more than ~10.")

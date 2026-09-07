@@ -36,9 +36,9 @@ Then falls back to deriving the name from `iar--current-agent-file'
 (the prompt.org path), checking buffer-local then global default.
 Returns nil if none are set.
 
-This function is called from debug module advice (request-logger,
-fsm-tracer, buffer-monitor) which run in gptel's process buffers,
-not in the gptel conversation buffer.  The agent name is set
+This function is called from debug module advice (iar-status-mode)
+and the tool call layer, which run in gptel's process buffers, not
+in the gptel conversation buffer.  The agent name is set
 buffer-locally in the conversation buffer AND as a global default
 so it is visible in process buffer contexts."
   (let ((name (if (boundp 'iar--current-agent-name)
@@ -146,5 +146,10 @@ content during programmatic saves."
          (write-contents-functions nil)
          (write-region-annotate-functions nil))
      ,@body))
+
+(defun iar--format-size (chars)
+  "Format CHARS (a character count, integer) as a human-readable size string."
+  (let ((tokens (iar--approx-token-count chars)))
+    (format "%d chars (~%d tokens)" chars tokens)))
 
 (provide 'iar-utils)

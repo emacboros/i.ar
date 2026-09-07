@@ -275,7 +275,7 @@
 
 (ert-deftest test-cycle-load-continue-prompt ()
   "iar--cycle-load-continue-prompt should load or return nil."
-  (let ((result (iar--cycle-load-continue-prompt "darwin")))
+  (let ((result (iar--cycle-load-continue-prompt)))
     ;; Returns nil if file not found, or string if found
     (should (or (null result) (stringp result)))))
 

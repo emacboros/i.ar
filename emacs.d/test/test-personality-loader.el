@@ -114,13 +114,6 @@ sanctioned internet sidecar). The container list is now (research)."
       (should (plistp result))
       (should (equal '("research") iar--current-containers)))))
 
-(ert-deftest test-pers-setup-sets-mode ()
-  "iar--setup-assembled-buffer should set iar--current-mode."
-  (with-temp-buffer
-    (text-mode)
-    (iar--setup-assembled-buffer "interactive" "mirror" "iar")
-    (should (eq 'interactive iar--current-mode))))
-
 (ert-deftest test-pers-setup-sets-project ()
   "iar--setup-assembled-buffer should set iar--current-project."
   (with-temp-buffer
