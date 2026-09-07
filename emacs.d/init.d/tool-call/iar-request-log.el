@@ -293,6 +293,25 @@ live -- process buffers and later events cannot resolve it."
      (message "[request-log] start advice failed: %s"
               (error-message-string err)))))
 
+(defvar iar--reqlog-last-stop nil
+  "Stop-reason of the most recently dumped request (string).
+Set by `iar--reqlog-dump' from the fork's :stop-reason. The cycle's
+post-response handler reads this to detect a truncated generation
+(stop=length) without re-parsing the log. Reset to nil at cycle start
+by `iar--reqlog-reset-last'.")
+
+(defvar iar--reqlog-last-tokens-out nil
+  "Output token count of the most recently dumped request (integer).
+Set by `iar--reqlog-dump' from the fork's :tokens :output. Paired with
+`iar--reqlog-last-stop' for the per-request truncated-output guard.")
+
+(defun iar--reqlog-reset-last ()
+  "Reset the last-request stop/tokens-out shared state to nil.
+Called at cycle start so a stale value from a previous cycle (or a
+delegate's request) is never read as this cycle's first response."
+  (setq iar--reqlog-last-stop nil
+        iar--reqlog-last-tokens-out nil))
+
 (defun iar--reqlog-dump (process)
   "Dump raw response tail + parse result for PROCESS. Best-effort.
 Runs :before gptel's cleanup/sentinel destroy the process buffer --
@@ -344,6 +363,13 @@ still readable."
                    (tokens (plist-get info :tokens))
                    (tok-in (and (plistp tokens) (plist-get tokens :input)))
                    (tok-out (and (plistp tokens) (plist-get tokens :output))))
+              ;; Publish the last-request stop/tokens-out to the shared
+              ;; state the cycle's post-response guard reads. This runs
+              ;; :before gptel-curl--stream-cleanup, i.e. BEFORE the
+              ;; post-response handler -- so the guard sees the request
+              ;; that just completed, not a stale one.
+              (setq iar--reqlog-last-stop stop
+                    iar--reqlog-last-tokens-out tok-out)
               (iar--reqlog-append
                "REQ %s PARSE status=%s tools=%d specs=%s error=%s stop=%s tokens_in=%s tokens_out=%s"
                id (or status "?")

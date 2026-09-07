@@ -23,6 +23,15 @@
 (require 'iar-prompt-loader)
 (require 'iar-tool-guard)
 (require 'iar-tool-call)
+(require 'iar-request-log)  ; iar--reqlog-last-stop, iar--reqlog-reset-last
+
+;; Forward declarations -- owned by iar-request-log.el (loaded via
+;; `load' in init.el, not `require', so the byte-compiler cannot see
+;; its defvars when compiling this file). Declared here so the
+;; truncated-output guard compiles clean.
+(defvar iar--reqlog-last-stop nil)
+(defvar iar--reqlog-last-tokens-out nil)
+(declare-function iar--reqlog-reset-last "iar-request-log.el")
 (require 'iar-agent-loader)  ; iar--archetype-for-personality, iar--project-for-personality, iar--setup-assembled-buffer
 (require 'iar-prompt-assembly)  ; iar--assemble-prompt
 
@@ -346,6 +355,34 @@ not output) catches this. 20 identical lines in one response is
 essentially impossible in legitimate use; false positives are cheap
 (a cycle ends early), false negatives are the silent burn we guard.")
 
+(defvar iar-cycle-truncated-output-threshold 20000
+  "Output tokens above which a stop=length (truncated) response is
+treated as a runaway. Legitimate complete responses (stop=stop) never
+exceed ~14k tokens on continuo (max 13739) or ~31k on aria (one
+outlier 31670); a truncated generation at the 65536 num_predict cap
+burns ~590k output tokens/day on continuo alone, all mostly lost (the
+invisible-turn stub makes the loss survivable, not free). The guard
+keys on stop=length + tokens_out > threshold, NOT on raw tokens_out
+alone -- a complete 30k-token response is legitimate (c100 data,
+knowledge/iar/output-token-burn-2026-09-07.md). 20k sits 1.5x above
+the continuo max and 0.6x below the aria outlier; conservative enough
+to never false-positive on a complete response while capping the
+truncated burn at ~1/3 of today's 65536.")
+
+(defun iar--cycle-truncated-output-p ()
+  "Return non-nil if the most recently completed request was a
+truncated generation (stop=length) with output tokens above
+`iar-cycle-truncated-output-threshold'. Reads the shared last-request
+state published by the request log (:before gptel-curl--stream-cleanup,
+which runs before this post-response handler). A truncated response at
+the cap is the deepseek-v4-flash degradation shape: the model burns
+65536 output tokens mid-thought and the stub survives the loss. The
+guard ends the cycle (exit 1) rather than re-send -- re-sending would
+burn another 65536-token output budget on the same loop."
+  (and (equal iar--reqlog-last-stop "length")
+       (integerp iar--reqlog-last-tokens-out)
+       (> iar--reqlog-last-tokens-out iar-cycle-truncated-output-threshold)))
+
 (defun iar--fence-state-writeback (state)
   "Write the mutated fence STATE back to its owning global.
 The fences alias the active state as (or iar--cycle-state
@@ -617,6 +654,21 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
               ;; text-check returns nil on arm (re-send proceeds) and
               ;; non-nil on second fire (blocked).
               (cond
+               ((iar--cycle-truncated-output-p)
+                ;; Truncated generation at the output cap (stop=length,
+                ;; tokens_out > threshold): the model burned 65536 output
+                ;; tokens mid-thought and the stub survives the loss. The
+                ;; invisible-turn stub (c99) makes this survivable, but
+                ;; re-sending would burn another 65536-token output budget
+                ;; on the same loop. End the cycle (exit 1) -- the work is
+                ;; not complete, but the burn is stopped. The stub already
+                ;; told the model its thinking was cut, so a re-send is
+                ;; more likely to repeat than to land.
+                (message "[%s] Truncated output (stop=length, %d tokens > %d) -- ending cycle"
+                         agent iar--reqlog-last-tokens-out
+                         iar-cycle-truncated-output-threshold)
+                (setf (plist-get iar--cycle-state :completed) t)
+                (setf (plist-get iar--cycle-state :exit-code) 1))
                ((iar--cycle-output-runaway-p start end)
                 ;; Text-only output runaway: the model degraded into a
                 ;; repetition loop (repeated text, no tool call). Give it
@@ -723,6 +775,10 @@ Tools are gated by the project's #+TOOLS metadata."
     (iar--usage-reset)
     (setq iar--cycle-state (iar--cycle-make-state agent-name cycle-buf continue-prompt max-turns)
           iar--cycle-error-strikes 0)
+    ;; Reset the shared last-request state so a stale value from a
+    ;; previous cycle (or a delegate's request) is never read as this
+    ;; cycle's first response by the truncated-output guard.
+    (iar--reqlog-reset-last)
     (with-current-buffer cycle-buf
       (text-mode)
       (gptel-mode 1)
