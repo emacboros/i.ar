@@ -458,8 +458,11 @@ write success is the best available durability, return t on write."
 Called from the cycle/one-shot exit path BEFORE kill-emacs so the
 write lands while the cycle's own commit can still capture it.
 Idempotent with the kill-emacs-hook write: both append one line; the
-second is a duplicate with a later timestamp, parseable and
-harmless. Best-effort: never signals (exit path must not break).
+second is an exact duplicate with the SAME timestamp (the stamp is
+the usage-snapshot time, not the write time -- verified 2026-09-07:
+zero same-ts-different-content pairs in either hemisphere's log),
+parseable and harmless; USAGE censuses must dedupe (c14 law).
+Best-effort: never signals (exit path must not break).
 Returns t if the line is durable (committed when in a git repo),
 nil if the write or commit failed -- the honest return value is the
 point: a belt that reports success on a failed write is a hollow
