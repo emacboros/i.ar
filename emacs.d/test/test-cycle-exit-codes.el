@@ -203,3 +203,46 @@ the correct terminal state regardless of how the cycle ended."
             (should (plist-get iar--cycle-state :completed))
             (should (= 2 (plist-get iar--cycle-state :exit-code)))))
       (kill-buffer buf))))
+
+(ert-deftest test-cycle-exit-code-glued-sentinel-is-0 ()
+  "A repeated glued CYCLE_COMPLETE (e.g. 'CYCLE_COMPLETECYCLE_COMPLETE'
+on one line) must still be detected as a cycle sentinel.
+deepseek-v4-flash occasionally duplicates the sentinel on one line
+(c75: the model wrote the sentinel twice with no newline between, the
+old own-line regex missed it, the cycle fell through to the runaway
+detector and exited 1). The + quantifier accepts one-or-more
+repetitions on the line. Pinned on the DETECTOR directly (the
+handler's no-continue branch would complete exit 0 regardless, so the
+handler-level assertion would pass on the old code too)."
+  (let ((buf (iar--test-cycle-setup-buffer
+              "task not done yet\nCYCLE_COMPLETECYCLE_COMPLETE\n")))
+    (unwind-protect
+        (with-current-buffer buf
+          (should (eq 'cycle (iar--cycle-complete-p buf))))
+      (kill-buffer buf))))
+
+(ert-deftest test-cycle-exit-code-glued-loop-complete-is-2 ()
+  "A repeated glued LOOP_COMPLETE must still complete with exit 2."
+  (let ((buf (iar--test-cycle-setup-buffer
+              "done\nLOOP_COMPLETELOOP_COMPLETE\n")))
+    (unwind-protect
+        (with-current-buffer buf
+          (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+            (iar--cycle-post-response-handler (point-min) (point-max))
+            (should (plist-get iar--cycle-state :completed))
+            (should (= 2 (plist-get iar--cycle-state :exit-code)))))
+      (kill-buffer buf))))
+
+(ert-deftest test-cycle-exit-code-sentinel-embedded-not-completion ()
+  "A sentinel glued to OTHER text on the line is NOT a completion.
+The + quantifier only matches repetitions of the sentinel itself,
+not a sentinel followed by arbitrary words. This pins the unit under
+test (iar--cycle-complete-p) directly: the handler's no-continue
+branch would complete with exit 0 regardless, so the assertion is on
+the completion DETECTOR, not the handler."
+  (let ((buf (iar--test-cycle-setup-buffer
+              "CYCLE_COMPLETE but not really done\n")))
+    (unwind-protect
+        (with-current-buffer buf
+          (should-not (iar--cycle-complete-p buf)))
+      (kill-buffer buf))))

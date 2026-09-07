@@ -157,8 +157,8 @@ BUFFER defaults to the current buffer."
           (save-excursion
             (goto-char search-start)
             (cond
-             ((re-search-forward "^\\(?:LOOP_COMPLETE\\)\\s-*$" search-end t) 'loop)
-             ((re-search-forward "^\\(?:CYCLE_COMPLETE\\)\\s-*$" search-end t) 'cycle)
+             ((re-search-forward "^\\(?:LOOP_COMPLETE\\)+\\s-*$" search-end t) 'loop)
+             ((re-search-forward "^\\(?:CYCLE_COMPLETE\\)+\\s-*$" search-end t) 'cycle)
              (t nil))))))))
 
 
