@@ -331,6 +331,16 @@ context -- the 2026-09-02 runaway re-sent a ~254k-token context
 100+ times (68M prompt tokens from one session). The breaker gives
 the model ONE grace round-trip to write a final text summary; any
 further tool call ends the cycle.")
+(defvar iar-cycle-output-runaway-min-repeats 20
+  "Minimum identical trimmed lines in ONE response to flag a text-only
+output runaway. A runaway is a single response of repeated text with no
+tool call -- the deepseek-v4-flash degradation shape (c-fail REQ-51:
+4612 identical \"Let me check the caller.\" lines, 65536 output tokens,
+stop=length, cycle burned to timeout). Neither the loop guard (counts
+tool calls; zero here) nor the context breaker (measures input buffer,
+not output) catches this. 20 identical lines in one response is
+essentially impossible in legitimate use; false positives are cheap
+(a cycle ends early), false negatives are the silent burn we guard.")
 
 (defun iar--fence-state-writeback (state)
   "Write the mutated fence STATE back to its owning global.
@@ -452,6 +462,31 @@ size is under `iar-cycle-context-limit-chars'."
           (when (> size iar-cycle-context-limit-chars)
             size))))))
 
+(defun iar--cycle-output-runaway-p (start end)
+  "Return non-nil if the response region START..END is a text-only
+output runaway: many identical trimmed lines in a single response.
+A runaway is the model degrading into a repetition loop (repeated
+text, no tool call) -- the shape that burned c-fail REQ-51 to timeout
+(4612 identical lines, 65536 output tokens, stop=length). The loop
+guard counts tool calls (zero here) and the context breaker measures
+input buffer (not output), so neither catches it. This is the output
+half of the runaway fence. Threshold: `iar-cycle-output-runaway-min-repeats'
+identical trimmed lines in one response."
+  (when (and (integerp start) (integerp end) (< start end))
+    (let ((text (with-current-buffer (current-buffer)
+                  (save-restriction
+                    (widen)
+                    (buffer-substring-no-properties start end)))))
+      (let ((counts (make-hash-table :test 'equal))
+            (max-count 0))
+        (dolist (line (split-string text "\n"))
+          (let ((trimmed (string-trim line)))
+            (when (> (length trimmed) 0)
+              (let ((c (1+ (gethash trimmed counts 0))))
+                (puthash trimmed c counts)
+                (setq max-count (max max-count c))))))
+        (>= max-count iar-cycle-output-runaway-min-repeats)))))
+
 (defun iar--cycle-breaker-text-check (state)
   "Post-response half of the context circuit breaker.
 The pre-tool-call breaker only sees TOOL calls; a text-only
@@ -557,6 +592,15 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
               ;; text-check returns nil on arm (re-send proceeds) and
               ;; non-nil on second fire (blocked).
               (cond
+               ((iar--cycle-output-runaway-p start end)
+                ;; Text-only output runaway: the model degraded into a
+                ;; repetition loop (repeated text, no tool call). End the
+                ;; run now -- re-sending would burn another 65536-token
+                ;; output budget on the same loop. exit 1 (failed): the
+                ;; cycle did not complete its work.
+                (message "[%s] Text-only output runaway detected -- ending cycle" agent)
+                (setf (plist-get iar--cycle-state :completed) t)
+                (setf (plist-get iar--cycle-state :exit-code) 1))
                ((iar--cycle-breaker-text-check iar--cycle-state)
                 (message "[%s] Context breaker blocked the continue re-send" agent))
                (t

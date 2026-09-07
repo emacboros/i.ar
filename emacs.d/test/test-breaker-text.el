@@ -147,3 +147,57 @@ text arm -> tool fire must end the run."
               (should (plist-get iar--cycle-state :completed))
               (should (= 1 (plist-get iar--cycle-state :exit-code))))))
       (kill-buffer buf))))
+
+(ert-deftest test-fence-output-runaway-detects-repetition ()
+  "A response with many identical trimmed lines is flagged as a
+text-only output runaway (the deepseek-v4-flash degradation shape:
+c-fail REQ-51 had 4612 identical 'Let me check the caller.' lines,
+65536 output tokens, no tool call)."
+  (let ((buf (get-buffer-create "*test-runaway1*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (erase-buffer)
+          (dotimes (_ 30) (insert "Let me check the caller.\n"))
+          (should (iar--cycle-output-runaway-p (point-min) (point-max))))
+      (kill-buffer buf))))
+
+(ert-deftest test-fence-output-runaway-ignores-normal ()
+  "A normal response with distinct lines is NOT flagged."
+  (let ((buf (get-buffer-create "*test-runaway2*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (erase-buffer)
+          (insert "First line of analysis.\nSecond distinct line.\nThird line.\n")
+          (should-not (iar--cycle-output-runaway-p (point-min) (point-max))))
+      (kill-buffer buf))))
+
+(ert-deftest test-fence-output-runaway-below-threshold ()
+  "Fewer than the threshold of identical lines is not a runaway."
+  (let ((buf (get-buffer-create "*test-runaway3*")))
+    (unwind-protect
+        (let ((iar-cycle-output-runaway-min-repeats 20))
+          (with-current-buffer buf
+            (erase-buffer)
+            (dotimes (_ 10) (insert "same line\n"))
+            (should-not (iar--cycle-output-runaway-p (point-min) (point-max)))))
+      (kill-buffer buf))))
+
+(ert-deftest test-fence-output-runaway-ends-cycle ()
+  "A text-only output runaway in the continue branch ends the cycle
+with exit 1 -- the c-fail REQ-51 shape must not re-send and burn
+another 65536-token output budget on the same loop."
+  (let ((buf (get-buffer-create "*test-runaway4*")))
+    (unwind-protect
+        (let ((iar-cycle-context-limit-chars 100000)
+              (iar--cycle-state (iar--cycle-make-state "test" buf "Continue." 40))
+              (iar--one-shot-state nil)
+              (iar--cycle-error-strikes 0))
+          (with-current-buffer buf (insert (make-string 200 ?x)))
+          (cl-letf (((symbol-function 'gptel-send) (lambda ())))
+            (with-current-buffer buf
+              (let ((start (point)))
+                (dotimes (_ 30) (insert "Let me check the caller.\n"))
+                (iar--cycle-post-response-handler start (point)))))
+          (should (plist-get iar--cycle-state :completed))
+          (should (= 1 (plist-get iar--cycle-state :exit-code))))
+      (kill-buffer buf))))
