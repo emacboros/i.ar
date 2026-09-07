@@ -172,3 +172,66 @@
               (call-process "git" nil t nil "diff" "--" "audit/testproject/testagent/JOURNAL.org"))
             (should (string-match-p "sibling NEW" (buffer-string)))))
       (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-tool-call-usage-write-log-now-force-stage-untracked ()
+  "NEW agent (untracked, gitignored USAGE.log): belt #2 still commits
+the line (c86 addendum -- add -f force-stage)."
+  (let* ((tmpdir (make-temp-file "usage-force-" t))
+         (repo-dir (expand-file-name "repo" tmpdir))
+         (iar-personalization-path repo-dir)
+         (iar-audit-path "audit")
+         (iar--current-agent-name "newagent")
+         (iar--current-project "testproject"))
+    (unwind-protect
+        (progn
+          (make-directory repo-dir)
+          (let ((default-directory repo-dir))
+            (call-process "git" nil nil nil "init" "-q")
+            (call-process "git" nil nil nil "config" "user.name" "Test")
+            (call-process "git" nil nil nil "config" "user.email" "t@i.ar")
+            (with-temp-file (expand-file-name ".gitignore" repo-dir)
+              (insert "audit/*\n"))
+            (call-process "git" nil nil nil "add" "-A")
+            (call-process "git" nil nil nil "commit" "-qm" "init"))
+          (iar--usage-reset)
+          (setq iar--usage-requests 7 iar--usage-input-tokens 70
+                iar--usage-output-tokens 21 iar--usage-model "m")
+          (should (eq (iar--usage-write-log-now) t))
+          ;; The line is COMMITTED despite audit/* being gitignored
+          ;; and the file untracked: survives reset --hard + clean.
+          (let ((default-directory repo-dir))
+            (call-process "git" nil nil nil "reset" "--hard" "-q")
+            (call-process "git" nil nil nil "clean" "-fdq"))
+          (let ((path (expand-file-name
+                       "audit/testproject/newagent/USAGE.log" repo-dir)))
+            (should (file-exists-p path))
+            (with-temp-buffer
+              (insert-file-contents path)
+              (should (string-match-p "requests=7 " (buffer-string))))))
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-tool-call-usage-write-log-now-add-failure-honest-nil ()
+  "Unwritable git index: add fails, belt #2 returns nil (honest)."
+  (let* ((tmpdir (make-temp-file "usage-addfail-" t))
+         (repo-dir (expand-file-name "repo" tmpdir))
+         (iar-personalization-path repo-dir)
+         (iar-audit-path "audit")
+         (iar--current-agent-name "testagent")
+         (iar--current-project "testproject"))
+    (unwind-protect
+        (progn
+          (make-directory repo-dir)
+          (let ((default-directory repo-dir))
+            (call-process "git" nil nil nil "init" "-q")
+            (call-process "git" nil nil nil "config" "user.name" "Test")
+            (call-process "git" nil nil nil "config" "user.email" "t@i.ar")
+            (call-process "git" nil nil nil "add" "-A")
+            (call-process "git" nil nil nil "commit" "-qm" "init"))
+          ;; Break the index: .git/index.lock as a DIRECTORY makes
+          ;; `git add` fail (cannot create the real index.lock).
+          (make-directory (expand-file-name ".git/index.lock" repo-dir) t)
+          (iar--usage-reset)
+          (setq iar--usage-requests 1 iar--usage-input-tokens 10
+                iar--usage-output-tokens 5 iar--usage-model "m")
+          (should (eq (iar--usage-write-log-now) nil)))
+      (delete-directory tmpdir :recursive))))

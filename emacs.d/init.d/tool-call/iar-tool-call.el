@@ -397,7 +397,7 @@ Idempotent: removes existing advice before adding."
 ;; discards uncommitted tracked-file changes: the 08:32:00 UTC line
 ;; was eaten exactly that way (aria c11 heal). c86 fix: belt #2 now
 ;; COMMITS its own line (iar--usage-commit-log-now) -- a targeted
-;; `git add -- USAGE.log` + commit, never add -A (which would sweep
+;; `git add -f -- USAGE.log` + commit, never add -A (which would sweep
 ;; a sibling's uncommitted work into a commit it did not author).
 ;; The line is durable against any reset from the moment it lands.
 
@@ -405,8 +405,11 @@ Idempotent: removes existing advice before adding."
   "Commit the belt #2 USAGE line just written.
 Targeted commit of ONLY the meter file -- never `git add -A` (that
 would sweep a sibling's or the current cycle's uncommitted work into
-a commit it did not author). Best-effort: never signals. Returns t if
-the line is durable in git, nil otherwise.
+a commit it did not author). `git add -f' because audit/* is
+gitignored: a NEW agent's untracked USAGE.log must still stage
+(c86 addendum -- plain add fails silently there and the belt
+reported a hollow success). Best-effort: never signals. Returns t if
+the line is durable in git, nil otherwise (stage failure = nil).
 
 Why this exists (c85): belt #2's write is UNCOMMITTED by construction
 (it lands after the cycle's final commit). A sibling's reset --hard
@@ -427,14 +430,24 @@ write success is the best available durability, return t on write."
             t                          ; not a git repo: write is durable enough
           (with-temp-buffer
             (let ((default-directory repo-dir))
-              (call-process "git" nil nil nil "add" "--" rel-path)
-              (let ((commit-exit
-                     (call-process "git" nil nil nil "commit" "-m"
-                                   (format "%s cycle: USAGE meter line (belt #2 durability)"
-                                           agent))))
-                ;; exit 0 = committed, 1 = nothing to commit (already
-                ;; durable). Both mean the line is in git.
-                (or (= commit-exit 0) (= commit-exit 1)))))))
+              ;; add -f: audit/* is gitignored, so a NEW agent's
+              ;; untracked USAGE.log is ignored -- plain `git add --'
+              ;; fails and the commit would be empty (c86 addendum:
+              ;; the belt reported success on a failed stage).
+              (let ((add-exit (call-process "git" nil nil nil "add" "-f" "--" rel-path)))
+                (if (/= add-exit 0)
+                    ;; Stage failed: the line is on disk but NOT in
+                    ;; git. Honest return: not durable.
+                    (progn
+                      (message "Warning: pre-exit usage commit failed: git add -f exited %d" add-exit)
+                      nil)
+                  (let ((commit-exit
+                         (call-process "git" nil nil nil "commit" "-m"
+                                       (format "%s cycle: USAGE meter line (belt #2 durability)"
+                                               agent))))
+                    ;; exit 0 = committed, 1 = nothing to commit (already
+                    ;; durable). Both mean the line is in git.
+                    (or (= commit-exit 0) (= commit-exit 1)))))))))
     (error
      (message "Warning: pre-exit usage commit failed: %s"
               (error-message-string err))
