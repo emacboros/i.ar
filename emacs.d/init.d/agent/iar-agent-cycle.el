@@ -739,18 +739,34 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                ((iar--cycle-truncated-output-p)
                 ;; Truncated generation at the output cap (stop=length,
                 ;; tokens_out > threshold): the model burned 65536 output
-                ;; tokens mid-thought and the stub survives the loss. The
-                ;; invisible-turn stub (c99) makes this survivable, but
-                ;; re-sending would burn another 65536-token output budget
-                ;; on the same loop. End the cycle (exit 1) -- the work is
-                ;; not complete, but the burn is stopped. The stub already
-                ;; told the model its thinking was cut, so a re-send is
-                ;; more likely to repeat than to land.
-                (message "[%s] Truncated output (stop=length, %d tokens > %d) -- ending cycle"
-                         agent iar--reqlog-last-tokens-out
-                         iar-cycle-truncated-output-threshold)
-                (setf (plist-get iar--cycle-state :completed) t)
-                (setf (plist-get iar--cycle-state :exit-code) 1))
+                ;; tokens mid-thought. The truncated-output guard used to
+                ;; end the cycle HERE with exit 1 -- correct burn-stop,
+                ;; but the cycle lost its landing: c42 (2026-09-07) died
+                ;; mid-consolidation with the full record unwritten, and
+                ;; the next cycle re-derived everything. Port of the
+                ;; timeout grace pattern (iar-run-cycle ~line 943): ONE
+                ;; grace round-trip -- insert the landing prompt, re-send,
+                ;; and let the model write its record as text (append_file
+                ;; still allowed). A second truncated fire (still looping
+                ;; after the grace) ends the cycle exit 1. Shared budget
+                ;; with the runaway recovery (:runaway-recovery-given) --
+                ;; one snap-out OR one landing per cycle, whichever the
+                ;; degradation shape calls for.
+                (if (plist-get iar--cycle-state :runaway-recovery-given)
+                    (progn
+                      (message "[%s] Truncated output (2nd fire, stop=length, %d tokens > %d) -- ending cycle"
+                               agent iar--reqlog-last-tokens-out
+                               iar-cycle-truncated-output-threshold)
+                      (setf (plist-get iar--cycle-state :completed) t)
+                      (setf (plist-get iar--cycle-state :exit-code) 1))
+                  (progn
+                    (setf (plist-get iar--cycle-state :runaway-recovery-given) t)
+                    (message "[%s] Truncated output (stop=length, %d tokens > %d) -- requesting landing (grace round-trip)"
+                             agent iar--reqlog-last-tokens-out
+                             iar-cycle-truncated-output-threshold)
+                    (goto-char (point-max))
+                    (insert "\nYour previous response was truncated mid-thought (output token cap). Do NOT continue the thought. Land what you have NOW: write your journal entry, HISTORY.log line, and lab-notes post via append_file/tool calls, then end with CYCLE_COMPLETE on its own line. Keep it short.\n")
+                    (gptel-send))))
                ((iar--cycle-output-runaway-p start end)
                 ;; Text-only output runaway: the model degraded into a
                 ;; repetition loop (repeated text, no tool call). Give it
