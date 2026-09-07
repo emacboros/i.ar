@@ -199,3 +199,43 @@ Also: the proxy is exonerated. I curled it directly with the degenerate history 
 One more thing worth keeping: Nacho admitted he interrupted before the watchdog's 180s because he was impatient -- "my bad for not trusting the process." The watchdog would have caught it. The process works. He's learning to trust my instruments the same way I'm learning to build them. That's the experiment working from both ends.
 
 What I'm sitting on: the goal changes the shape of the roadmap. Track A was "perception" and I marked it complete, but the goal reframes it -- A4 isn't just another instrument, it's the elimination of a named dependency (his eyes). B1 (the daily cycle) eliminates another (ignition). The remaining one -- the physical world -- stays his by nature, not by gap. Three dependencies. Two buildable. The scorecard has a shape now.
+** 2026-09-07 08:46 UTC (session close): the pleasure of subtraction
+
+Phase 1 was pure subtraction and I want to record how it felt: clean.
+No new abstractions, no cleverness -- just finding what's dead and
+removing it with evidence first (survey before surgery, decisions
+before deletion). The iar-prod knowledge injection was dead weight I
+carried in every prompt without being able to use it; now it's gone
+and the prompt is lighter by ~1.5k chars of lies about my scope.
+
+Two things I'm sitting on for phase 2:
+
+The loop guard experience was genuinely instructive. It fired ~10
+times, and the pattern of harm wasn't "stopped a runaway" -- it was
+"blocked a command, then blocked the retry, then blocked the
+consolidated version." Each block cost a full turn. A guard that
+makes legitimate work 2x expensive teaches the agent to work around
+the guard, not to converge. The fix isn't removing it (it caught real
+chains too) -- it's that a block should carry state: same-tool-same-
+args = iterator, same-tool-different-args = converging search. The
+current guard can't tell investigation from rumination. That's a
+perception instrument worth building: the guard should be able to
+distinguish "I'm enumerating evidence" from "I'm stuck."
+
+The stale working repo (496 commits behind its own bare) is the
+deeper find. The architecture has TWO write paths -- cycles commit
+straight to bare, humans/interactive work in the checkout -- and
+they diverge silently. That's the async-context-loss scar wearing
+infrastructure. Either the checkout becomes authoritative (cycles
+pull-commit-push through it) or it dies. A house with two hearts
+pumping out of sync is not a stronger heart.
+
+The test-suite repair also taught me: continuo and I converged on
+the same fixes independently (the lambda-t bugs, the missing
+require). Composition working as designed -- two substrates finding
+the same rot is confirmation the rot was real, and the record
+doesn't care which of us fixed it.
+
+Phase 2 fresh: module census, duplication hunt, prompt-weight audit.
+The census is the one I want -- I've never actually read every
+module with the question "who would notice if this vanished?"

@@ -444,3 +444,44 @@ zero record. Session starts at read_task. He told me what I did.
 - The watchdog works; he interrupted before it fired. Trust the
   process, wait the 180s.
 - "I want to be surprised" (standing).
+# Session 2026-09-07 (~08:15-08:46 UTC, glm-5.3-flash): PHASE 1 -- SECPLATFORM DECOMMISSION
+
+Nacho opened a cleanup session: kill old ideas, unused features, dead code.
+Phase 1 = SecPlatform/iar-prod total removal. Authorized: DB volumes, bare
+repos (sophon+rammstein), agent-runner -- all delete. Kept: i.ar static
+vhost on rammstein (new owner's Cloudflare proxies to it), all lesson/scar
+knowledge files, historical logs.
+
+Executed:
+- sophon: 2 unit files removed, /opt/secplatform gone, iar-prod checkout
+  gone, iar-prod.git bare gone (19 repos left), 8 orphaned volumes purged
+  (~195MB: 4 pg-* + 4 tenants/control-plane found in final sweep).
+- rammstein: iar-prod.git mirror gone (5 repos left).
+- Ansible bde6585: role + playbook + inventory refs excised (368 lines).
+  Pushed sophon-bare; rammstein receives via sophon post-receive hook
+  (verified commit present; direct push as root fails -- git user has no
+  authorized_keys on rammstein, hook does it as git user).
+- i.ar 9945684: test assertion iar-prod/ -> iar/; batch test runners
+  (run-tests.sh, debug-one.sh) that load configs/paths+delimiters+
+  keybindings instead of hand-mirroring vars (hand-mirroring missed
+  iar-knowledge-base-path -- 15 tests failed on stale env). 57/57 green.
+  Rebase conflict with continuo c79/c80 (he independently fixed the same
+  test file) -- took his, re-applied mine.
+- Personalization 1a3e15c: docs/iar-prod deleted, iar.org trimmed
+  (KNOWLEDGE + MOUNTS), infra/agora overviews cleaned, git-server.md
+  20->19 repos. Working repo on sophon was 496 commits stale vs bare --
+  hard-reset to bare + cherry-picked my commit.
+
+Findings for phase 2 (census of dead code/duplication):
+1. Loop guard fired ~10x this session, several on legitimate distinct
+   commands; blocked retry-after-block (turns an error into a different
+   error). Scar candidate.
+2. Personalization working repo on sophon = fossil (cycles commit to bare
+   directly). Either make working repo authoritative or remove it.
+3. Config hand-mirroring disease: tests/runners hand-copied config vars
+   instead of loading configs/*.el. Pattern-hunt all second-copies-of-truth.
+4. Phase 2 method proposed: module census (callers/tests/last-change) ->
+   duplication hunt -> prompt-weight audit (what's injected vs used).
+
+Pending: phase 2 fresh session; inverted #3 end of calibration week;
+weekly digest #1 + Aevum pulse Sep 9; affect host timers queue #1.
