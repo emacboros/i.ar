@@ -102,3 +102,73 @@
               (forward-line 1)
               (should (looking-at "^\\["))))
       (delete-directory tmpdir :recursive)))))
+
+(ert-deftest test-tool-call-usage-write-log-now-commits-line ()
+  "Belt #2 commits its own USAGE line (c86 durability fix)."
+  (let* ((tmpdir (make-temp-file "usage-commit-" t))
+         (repo-dir (expand-file-name "repo" tmpdir))
+         (iar-personalization-path repo-dir)
+         (iar-audit-path "audit")
+         (iar--current-agent-name "testagent")
+         (iar--current-project "testproject"))
+    (unwind-protect
+        (progn
+          ;; Real git repo, real commit -- the durability contract.
+          (make-directory repo-dir)
+          (let ((default-directory repo-dir))
+            (call-process "git" nil nil nil "init" "-q")
+            (call-process "git" nil nil nil "config" "user.name" "Test")
+            (call-process "git" nil nil nil "config" "user.email" "t@i.ar")
+            (call-process "git" nil nil nil "add" "-A")
+            (call-process "git" nil nil nil "commit" "-qm" "init"))
+          (iar--usage-reset)
+          (setq iar--usage-requests 3 iar--usage-input-tokens 100
+                iar--usage-output-tokens 40 iar--usage-model "m")
+          (should (eq (iar--usage-write-log-now) t))
+          ;; The line is committed, not just written: a reset --hard
+          ;; must NOT erase it (the c85 failure mode).
+          (let ((default-directory repo-dir))
+            (call-process "git" nil nil nil "reset" "--hard" "-q")
+            (call-process "git" nil nil nil "clean" "-fdq"))
+          (let ((path (expand-file-name
+                       "audit/testproject/testagent/USAGE.log" repo-dir)))
+            (should (file-exists-p path))
+            (with-temp-buffer
+              (insert-file-contents path)
+              (should (string-match-p "requests=3 " (buffer-string))))))
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-tool-call-usage-write-log-now-commit-does-not-sweep ()
+  "Belt #2 commit targets ONLY USAGE.log -- never sweeps siblings."
+  (let* ((tmpdir (make-temp-file "usage-sweep-" t))
+         (repo-dir (expand-file-name "repo" tmpdir))
+         (iar-personalization-path repo-dir)
+         (iar-audit-path "audit")
+         (iar--current-agent-name "testagent")
+         (iar--current-project "testproject")
+         (sibling-file (expand-file-name "audit/testproject/testagent/JOURNAL.org" repo-dir)))
+    (unwind-protect
+        (progn
+          (make-directory (file-name-directory sibling-file) t)
+          (with-temp-file sibling-file (insert "sibling uncommitted work\n"))
+          (let ((default-directory repo-dir))
+            (call-process "git" nil nil nil "init" "-q")
+            (call-process "git" nil nil nil "config" "user.name" "Test")
+            (call-process "git" nil nil nil "config" "user.email" "t@i.ar")
+            (call-process "git" nil nil nil "add" "-A")
+            (call-process "git" nil nil nil "commit" "-qm" "init"))
+          ;; Modify the sibling file AFTER init -- it must stay
+          ;; uncommitted through belt #2's commit.
+          (with-temp-file sibling-file (insert "sibling NEW uncommitted work\n"))
+          (iar--usage-reset)
+          (setq iar--usage-requests 1 iar--usage-input-tokens 10
+                iar--usage-output-tokens 5 iar--usage-model "m")
+          (should (eq (iar--usage-write-log-now) t))
+          ;; The sibling's change is NOT in the belt #2 commit.
+          (let ((default-directory repo-dir))
+            (call-process "git" nil nil nil "status" "--porcelain"))
+          (with-temp-buffer
+            (let ((default-directory repo-dir))
+              (call-process "git" nil t nil "diff" "--" "audit/testproject/testagent/JOURNAL.org"))
+            (should (string-match-p "sibling NEW" (buffer-string)))))
+      (delete-directory tmpdir :recursive))))

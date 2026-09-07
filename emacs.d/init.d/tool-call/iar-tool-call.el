@@ -391,6 +391,54 @@ Idempotent: removes existing advice before adding."
 ;; idempotent in effect (one extra line) and the newline guard keeps
 ;; it parseable. Belt #3 (iar.sh parsing "Tokens:" stdout) is the
 ;; interactive-session option; not needed if belt #2 holds.
+;;
+;; c85 finding -- belt #2's write is UNCOMMITTED by construction
+;; (lands after the cycle's final commit). A sibling's reset --hard
+;; discards uncommitted tracked-file changes: the 08:32:00 UTC line
+;; was eaten exactly that way (aria c11 heal). c86 fix: belt #2 now
+;; COMMITS its own line (iar--usage-commit-log-now) -- a targeted
+;; `git add -- USAGE.log` + commit, never add -A (which would sweep
+;; a sibling's uncommitted work into a commit it did not author).
+;; The line is durable against any reset from the moment it lands.
+
+(defun iar--usage-commit-log-now ()
+  "Commit the belt #2 USAGE line just written.
+Targeted commit of ONLY the meter file -- never `git add -A` (that
+would sweep a sibling's or the current cycle's uncommitted work into
+a commit it did not author). Best-effort: never signals. Returns t if
+the line is durable in git, nil otherwise.
+
+Why this exists (c85): belt #2's write is UNCOMMITTED by construction
+(it lands after the cycle's final commit). A sibling's reset --hard
+discards uncommitted tracked-file changes -- the 08:32:00 UTC line
+was eaten exactly that way (aria c11 heal). Committing the line makes
+it durable against any reset. Not a git repo (tests, interactive):
+write success is the best available durability, return t on write."
+  (condition-case err
+      (let* ((agent (or (iar--get-agent-name) "unknown"))
+             (project (or (iar--current-project-name) "nil"))
+             (repo-dir (expand-file-name iar-personalization-path))
+             (log-dir (expand-file-name
+                       (format "%s/%s" project agent)
+                       (expand-file-name iar-audit-path repo-dir)))
+             (log-path (expand-file-name "USAGE.log" log-dir))
+             (rel-path (file-relative-name log-path repo-dir)))
+        (if (not (file-directory-p (expand-file-name ".git" repo-dir)))
+            t                          ; not a git repo: write is durable enough
+          (with-temp-buffer
+            (let ((default-directory repo-dir))
+              (call-process "git" nil nil nil "add" "--" rel-path)
+              (let ((commit-exit
+                     (call-process "git" nil nil nil "commit" "-m"
+                                   (format "%s cycle: USAGE meter line (belt #2 durability)"
+                                           agent))))
+                ;; exit 0 = committed, 1 = nothing to commit (already
+                ;; durable). Both mean the line is in git.
+                (or (= commit-exit 0) (= commit-exit 1)))))))
+    (error
+     (message "Warning: pre-exit usage commit failed: %s"
+              (error-message-string err))
+     nil)))
 
 (defun iar--usage-write-log-now ()
   "Write the usage line NOW (pre-exit), not at kill-emacs time.
@@ -399,11 +447,13 @@ write lands while the cycle's own commit can still capture it.
 Idempotent with the kill-emacs-hook write: both append one line; the
 second is a duplicate with a later timestamp, parseable and
 harmless. Best-effort: never signals (exit path must not break).
-Returns t if the line was written, nil if the write failed --
-the honest return value is the point: a belt that reports success
-on a failed write is a hollow success (c55)."
+Returns t if the line is durable (committed when in a git repo),
+nil if the write or commit failed -- the honest return value is the
+point: a belt that reports success on a failed write is a hollow
+success (c55)."
   (condition-case err
-      (if (iar--usage-write-log) t nil)
+      (and (iar--usage-write-log)
+           (iar--usage-commit-log-now))
     (error
      (message "Warning: pre-exit usage write failed: %s"
               (error-message-string err))
