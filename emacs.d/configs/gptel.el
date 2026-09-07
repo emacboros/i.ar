@@ -94,7 +94,7 @@ When NO-THINK is non-nil, append think:false to disable model thinking
                          :request-params (iar--gptel-request-params iar-ollama-no-think)))
 
 ;; Default model: check EMACBOROS_OLLAMA_MODEL env var first (set by
-;; agent_loop.sh --model flag), fall back to glm-5.3:cloud.
+;; iar.sh --model flag), fall back to glm-5.3:cloud.
 ;;
 ;; The model MUST be in the :models list above. If it isn't, gptel will
 ;; error quickly -- this is intentional, it catches typos and models

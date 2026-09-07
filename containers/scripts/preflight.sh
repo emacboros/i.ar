@@ -179,7 +179,7 @@ echo "============================================"
 if [ $FAIL -eq 1 ]; then
     echo -e "${RED}  PREFLIGHT FAILED — refusing to start${NC}"
     echo "  Dangerous paths are writable. Fix mount"
-    echo "  configuration in emacboros.sh before proceeding."
+    echo "  configuration in iar.sh before proceeding."
     echo "============================================"
     exit 1
 else

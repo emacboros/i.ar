@@ -19,18 +19,8 @@ set -euo pipefail
 
 REPO_DIR="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
 
-# =============================================================================
-# Dispatch: --status is handled by a separate script, not the main flow.
-# =============================================================================
-for arg in "$@"; do
-    if [[ "${arg}" == "--status" ]]; then
-        exec "${REPO_DIR}/utils/iar-status.sh" "$@"
-    fi
-done
-
 source "${REPO_DIR}/metaconfig/header.sh"
 [[ -f "${REPO_DIR}/utils/telegram.sh" ]] && source "${REPO_DIR}/utils/telegram.sh"
-[[ -f "${REPO_DIR}/utils/matrix.sh" ]] && source "${REPO_DIR}/utils/matrix.sh"
 
 IMAGE_NAME="iar-emacboros"
 LOCAL_OLLAMA_HOST="${EMACBOROS_OLLAMA_HOST:-10.66.0.5:11434}"
@@ -50,8 +40,8 @@ Required:
                        The directory must contain four subdirectories:
                          docs/      -- injectable project documentation
                          knowledge/  -- concept knowledge bases (agent-queryable)
-                         tasks/      -- per-agent personal files
-                         audit/      -- per-agent history logs and global audit log
+                         tasks/      -- task trees (tasks/<project>/<task>/)
+                         audit/      -- per-agent logs (audit/<project>/<personality>/)
                        Mounted at /root/personalization/ (single mount).
                        Agents access subdirs at /root/personalization/{docs,knowledge,tasks,audit}.
 
@@ -71,8 +61,8 @@ Options (both modes):
                        Default: disabled (all guards active).
   --ollama-host HOST    Ollama API host:port (default: ${LOCAL_OLLAMA_HOST}).
   --local              Shortcut for --ollama-host localhost:11434 with host networking.
-  --model NAME          Ollama model name (default: glm-5.2:cloud).
-                       Must be in the model list in metaconfig/gptel.el.
+  --model NAME          Ollama model name (default: glm-5.3:cloud).
+                       Must be in the model list in emacs.d/configs/gptel.el.
   --ctx N               Max context window in tokens (default: 1048576 = 1M).
                        Critical for local models -- KV cache scales linearly.
                        Use 131072 (128K) or 262144 (256K) for local models.
@@ -105,7 +95,7 @@ Options (both modes):
                        Can be specified multiple times for different targets.
   --knowledge LABEL    Documentation directory label to load (default: iar/).
                        Can be specified multiple times to load multiple bases.
-  --cycle-prompt NAME  Override cycle prompt file (e.g. matrix_turn).
+  --cycle-prompt NAME  Override cycle prompt file (e.g. aria_daily).
                        Loads from agents.d/common/<NAME>.org instead of
                        the default agent cycle prompt.
   --help, -h            Show this message and exit.
@@ -128,7 +118,6 @@ Environment:
   EMACBOROS_OLLAMA_HOST     Ollama API host (overridden by --ollama-host)
   AGENT_TELEGRAM_BOT_TOKEN  Telegram bot token for notifications (loop mode)
   AGENT_TELEGRAM_CHAT_ID    Telegram chat ID for notifications (loop mode)
-  *_MATRIX_TOKEN        Matrix bot tokens (sourced from utils/matrix.sh)
 
 Examples:
   # Interactive session with self-modification
@@ -380,7 +369,7 @@ if [[ -n "${ONE_SHOT_PROMPT}" && "${MODE}" != "one-shot" ]]; then
 fi
 
 if [[ -z "${PROJECT_NAME}" ]]; then
-    error "--project is required. Specify a project name (e.g., iar, paranoia, pentesting)."
+    error "--project is required. Specify a project name (e.g., iar, pentest, moto)."
     echo ""
     usage
     exit 1
@@ -508,10 +497,11 @@ fi
 # Logging (loop and one-shot mode)
 # =============================================================================
 if [[ "${MODE}" == "loop" || "${MODE}" == "one-shot" ]]; then
+    # Nested layout (matches LAST-CYCLE.txt home): audit/iar/<agent>/
     if [[ "${MODE}" == "loop" ]]; then
-        LOG_FILE="${PERSONALIZATION_DIR}/audit/${AGENT_NAME}-loop-$(date +%Y-%m-%d).log"
+        LOG_FILE="${PERSONALIZATION_DIR}/audit/iar/${AGENT_NAME}/cycle-$(date +%Y-%m-%d).log"
     else
-        LOG_FILE="${PERSONALIZATION_DIR}/audit/${AGENT_NAME}-oneshot-$(date +%Y-%m-%d).log"
+        LOG_FILE="${PERSONALIZATION_DIR}/audit/iar/${AGENT_NAME}/oneshot-$(date +%Y-%m-%d).log"
     fi
     mkdir -p "$(dirname "${LOG_FILE}")"
 else
@@ -863,12 +853,6 @@ build_podman_args() {
         $([[ "${OLLAMA_NO_THINK:-0}" -eq 1 ]] && echo "-e EMACBOROS_OLLAMA_NO_THINK=1") \
         -e "AGENT_TELEGRAM_BOT_TOKEN=${AGENT_TELEGRAM_BOT_TOKEN:-}" \
         -e "AGENT_TELEGRAM_CHAT_ID=${AGENT_TELEGRAM_CHAT_ID:-}" \
-        -e "MIRROR_BOT_MATRIX_TOKEN=${MIRROR_BOT_MATRIX_TOKEN:-}" \
-        -e "DARWIN_BOT_MATRIX_TOKEN=${DARWIN_BOT_MATRIX_TOKEN:-}" \
-        -e "AUDITOR_BOT_MATRIX_TOKEN=${AUDITOR_BOT_MATRIX_TOKEN:-}" \
-        -e "CTFWIZARD_BOT_MATRIX_TOKEN=${CTFWIZARD_BOT_MATRIX_TOKEN:-}" \
-        -e "GARDENER_BOT_MATRIX_TOKEN=${GARDENER_BOT_MATRIX_TOKEN:-}" \
-        -e "HUMAN_MATRIX_TOKEN=${HUMAN_MATRIX_TOKEN:-}" \
         $([[ -n "${GPTEL_FORK_PATH}" ]] && echo "-v ${GPTEL_FORK_PATH}:/root/.emacs.d/gptel-fork:z -e EMACBOROS_GPTEL_FORK_PATH=/root/.emacs.d/gptel-fork") \
         $([[ "${SELF_MODIFICATION:-0}" -eq 1 ]] && echo "-e EMACBOROS_SELF_MODIFICATION=1") \
         $([[ -n "${RATE_LIMIT}" ]] && echo "-e IAR_RATE_LIMIT=${RATE_LIMIT}") \
@@ -903,7 +887,7 @@ run_interactive() {
     info "i.ar Interactive Session"
     info "  Personalization: ${PERSONALIZATION_DIR}"
     info "  Ollama: ${OLLAMA_HOST}"
-    info "  Model: ${OLLAMA_MODEL:-glm-5.2:cloud (default)}"
+    info "  Model: ${OLLAMA_MODEL:-glm-5.3:cloud (default)}"
     info "  Context: ${OLLAMA_CTX:-1048576 (default)}"
     if [[ "${OLLAMA_NO_THINK:-0}" -eq 1 ]]; then
         info "  Thinking: disabled (think:false)"
@@ -969,7 +953,7 @@ run_one_shot() {
     info "  Personalization: ${PERSONALIZATION_DIR}"
     info "  Timeout: ${TIMEOUT}s"
     info "  Ollama: ${OLLAMA_HOST}"
-    info "  Model: ${OLLAMA_MODEL:-glm-5.2:cloud (default)}"
+    info "  Model: ${OLLAMA_MODEL:-glm-5.3:cloud (default)}"
     info "  Context: ${OLLAMA_CTX:-1048576 (default)}"
     if [[ "${OLLAMA_NO_THINK:-0}" -eq 1 ]]; then
         info "  Thinking: disabled (think:false)"
@@ -1052,7 +1036,7 @@ info "  Cooldown: ${COOLDOWN}s"
 info "  Per-cycle timeout: ${TIMEOUT}s"
 info "  Max consecutive failures: ${MAX_CONSECUTIVE_FAILURES}"
 info "  Ollama: ${OLLAMA_HOST}"
-info "  Model: ${OLLAMA_MODEL:-glm-5.2:cloud (default)}"
+info "  Model: ${OLLAMA_MODEL:-glm-5.3:cloud (default)}"
 info "  Context: ${OLLAMA_CTX:-1048576 (default)}"
 if [[ "${OLLAMA_NO_THINK:-0}" -eq 1 ]]; then
     info "  Thinking: disabled (think:false)"
@@ -1075,7 +1059,7 @@ Max cycles: ${MAX_CYCLES}
 Cooldown: ${COOLDOWN}s
 Timeout: ${TIMEOUT}s per cycle
 Ollama: ${OLLAMA_HOST}
-Model: ${OLLAMA_MODEL:-glm-5.2:cloud}
+Model: ${OLLAMA_MODEL:-glm-5.3:cloud}
 Thinking: $( [[ "${OLLAMA_NO_THINK:-0}" -eq 1 ]] && echo "disabled" || echo "enabled (default)" )"
 
 while [[ ${CYCLE} -lt ${MAX_CYCLES} ]]; do
