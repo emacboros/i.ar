@@ -455,7 +455,7 @@ essentially impossible in legitimate use; false positives are cheap
   "Output tokens above which a stop=length (truncated) response is
 treated as a runaway. Legitimate complete responses (stop=stop) never
 exceed ~14k tokens on continuo (max 13739) or ~31k on aria (one
-outlier 31670); a truncated generation at the 65536 num_predict cap
+outlier 31670); a truncated generation at the 32768 num_predict cap
 burns ~590k output tokens/day on continuo alone, all mostly lost (the
 invisible-turn stub makes the loss survivable, not free). The guard
 keys on stop=length + tokens_out > threshold, NOT on raw tokens_out
@@ -463,7 +463,7 @@ alone -- a complete 30k-token response is legitimate (c100 data,
 knowledge/iar/output-token-burn-2026-09-07.md). 20k sits 1.5x above
 the continuo max and 0.6x below the aria outlier; conservative enough
 to never false-positive on a complete response while capping the
-truncated burn at ~1/3 of today's 65536.")
+  truncated burn (the 32768 num_predict cap halves the worst case).")
 
 
 (defvar iar-cycle-cross-response-window 5
@@ -471,7 +471,7 @@ truncated burn at ~1/3 of today's 65536.")
 guard tracks repeated lines. The deepseek-v4-flash text-only loop
 repeats the SAME paragraph ACROSS responses (5-10 reps each, under the
 per-response 20-line threshold), so the per-response output-runaway
-guard never fires until the final 65536-token response. This guard
+guard never fires until the final 65536-capped response. This guard
 tracks the most-repeated line across the last N responses and fires
 when its cumulative count crosses
 `iar-cycle-cross-response-threshold' (c111 finding).")
@@ -495,7 +495,7 @@ which runs before this post-response handler). A truncated response at
 the cap is the deepseek-v4-flash degradation shape: the model burns
 65536 output tokens mid-thought and the stub survives the loss. The
 guard ends the cycle (exit 1) rather than re-send -- re-sending would
-burn another 65536-token output budget on the same loop."
+burn another num_predict-capped output budget on the same loop."
   (and (equal iar--reqlog-last-stop "length")
        (integerp iar--reqlog-last-tokens-out)
        (> iar--reqlog-last-tokens-out iar-cycle-truncated-output-threshold)))
@@ -699,7 +699,7 @@ last `iar-cycle-cross-response-window' responses with a cumulative count
 at or above `iar-cycle-cross-response-threshold'. The deepseek-v4-flash
 text-only loop repeats the SAME paragraph ACROSS responses (5-10 reps
 each, under the per-response 20-line threshold), so the per-response
-output-runaway guard never fires until the final 65536-token response
+output-runaway guard never fires until the final 65536-capped response
 (c111 finding). This guard catches the loop at response ~5-6, saving
 ~17 requests of burn per occurrence.
 
@@ -925,7 +925,7 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                 ;; per-response threshold). The deepseek-v4-flash
                 ;; text-only loop repeats a paragraph ACROSS responses
                 ;; (5-10 reps each), so the per-response guard never
-                ;; fires until the final 65536-token response (c111).
+                ;; fires until the final 65536-capped response (c111).
                 ;; Same recovery contract as the per-response runaway:
                 ;; ONE recovery round-trip, then end on second fire.
                 ;; Shares :runaway-recovery-given so a cross-response

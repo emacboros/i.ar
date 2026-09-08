@@ -61,7 +61,7 @@ When NO-THINK is non-nil, append think:false to disable model thinking
                                  (when ctx-str
                                    (setq ctx-num (string-to-number ctx-str)))
                                  (if (> ctx-num 0) ctx-num 1048576))
-                     :num_predict 65536
+                     :num_predict 32768
                      ))))
     (if no-think
         (append params '(:think :json-false))
