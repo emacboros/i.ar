@@ -107,18 +107,33 @@ knows the entry was capped without inflating the log."
       (format "%s...[+%d chars]" (substring s 0 keep)
               (- (length s) keep)))))
 
+(defvar iar-request-log-tail-msgs 6
+  "How many trailing messages the START payload tail serializes.
+Was 2 (one tool result + one assistant emission -- enough for the
+malformed-call forensics the log was built for). Raised to 6 (c66
+tail-cap flag, approved by Nacho 2026-09-08): the +N msgs anomaly
+needs the CONTENT of the extra messages, and roles=6 alone shows
+only their shape. 6 msgs x ~1k chars each stays inside the
+4k-char cap in the common case; the cap still bounds the worst
+case.")
+
 (defun iar--reqlog-payload-tail (messages)
-  "Serialize the last two MESSAGES as capped JSON.
-MESSAGES is the :messages vector from request data. The last message
-is usually the tool result / user turn; the second-to-last is the
-agent's most recent emission (assistant turn with tool calls). Two
-messages capture both. Returns \"nil\" when absent, and
-\"unserializable\" when encoding fails -- never signals."
+  "Serialize the last `iar-request-log-tail-msgs' MESSAGES as capped JSON.
+MESSAGES is the :messages vector from request data. Was 2 messages
+(one tool result + one assistant emission); 6 since the c66 +N msgs
+anomaly -- the START tail must be able to show WHAT the extra
+messages are, not just that they exist (the instrument-limit class:
+a tail cap that hides the very messages the anomaly consists of).
+Returns \"nil\" when absent, and \"unserializable\" when encoding
+fails -- never signals."
   (condition-case nil
       (if (or (not (vectorp messages)) (zerop (length messages)))
           "nil"
         (let* ((n (length messages))
-               (start (max 0 (- n 2)))
+               (keep (or (and (boundp 'iar-request-log-tail-msgs)
+                              iar-request-log-tail-msgs)
+                         6))
+               (start (max 0 (- n keep)))
                (tail (if (zerop start)
                          messages
                        (vconcat (cl-subseq messages start)))))

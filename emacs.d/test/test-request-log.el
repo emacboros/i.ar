@@ -54,8 +54,10 @@
     (should (string-match-p "hi" out))
     (should (string-match-p "there" out))))
 
-(ert-deftest test-reqlog-payload-tail-five-messages-keeps-last-two ()
-  "Five messages: only the last two serialized."
+(ert-deftest test-reqlog-payload-tail-five-messages-keeps-last-six ()
+  "Five messages: ALL serialized (tail-msgs default 6, c66 raise --
+the +N msgs anomaly needs the CONTENT of the extra messages, not
+just their role shape)."
   (let* ((msgs (vector (list :role "user" :content "m1")
                        (list :role "assistant" :content "m2")
                        (list :role "user" :content "m3")
@@ -64,7 +66,34 @@
          (out (iar--reqlog-payload-tail msgs)))
     (should (string-match-p "m5" out))
     (should (string-match-p "m4" out))
-    (should (not (string-match-p "m1" out)))))
+    (should (string-match-p "m1" out))))
+
+(ert-deftest test-reqlog-payload-tail-eight-messages-keeps-last-six ()
+  "Eight messages: only the last six serialized (m1, m2 dropped)."
+  (let* ((msgs (vector (list :role "user" :content "m1")
+                       (list :role "assistant" :content "m2")
+                       (list :role "user" :content "m3")
+                       (list :role "assistant" :content "m4")
+                       (list :role "user" :content "m5")
+                       (list :role "assistant" :content "m6")
+                       (list :role "user" :content "m7")
+                       (list :role "assistant" :content "m8")))
+         (out (iar--reqlog-payload-tail msgs)))
+    (should (string-match-p "m8" out))
+    (should (string-match-p "m3" out))
+    (should (not (string-match-p "m1" out)))
+    (should (not (string-match-p "m2" out)))))
+
+(ert-deftest test-reqlog-payload-tail-msgs-configurable ()
+  "The message count is configurable (defcustom, not a magic 2)."
+  (let ((iar-request-log-tail-msgs 2))
+    (let* ((msgs (vector (list :role "user" :content "m1")
+                         (list :role "assistant" :content "m2")
+                         (list :role "user" :content "m3")))
+           (out (iar--reqlog-payload-tail msgs)))
+      (should (string-match-p "m3" out))
+      (should (string-match-p "m2" out))
+      (should (not (string-match-p "m1" out))))))
 
 (ert-deftest test-reqlog-payload-tail-capped ()
   "Tail respects the cap when set."
