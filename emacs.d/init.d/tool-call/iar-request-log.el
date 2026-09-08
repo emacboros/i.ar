@@ -332,7 +332,7 @@ still readable."
                      (status (if (string-match "^HTTP[^ ]* \\([0-9]+\\)" raw)
                                  (match-string 1 raw)
                                "?"))
-                     (body (if (string-match "\n\n" raw)
+                     (body (if (string-match "\r?\n\r?\n" raw)
                                (substring raw (match-end 0))
                              raw)))
                 (iar--reqlog-append "REQ %s RESPONSE http=%s body_tail=%s"

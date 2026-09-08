@@ -583,3 +583,46 @@ list to test the empty-hook path."
 
 (provide 'test-coverage-aria)
 ;;; test-coverage-aria.el ends here
+
+(ert-deftest test-reqlog-dump-crlf-header-separator ()
+  "CRLF HTTP header separator: body_tail excludes the headers.
+c133: the old separator regex (\"\\n\\n\") never matched the CRLF
+(\\r\\n\\r\\n) header terminator that Ollama/Google frontends emit,
+so the raw HTTP headers leaked into every RESPONSE body_tail --
+~725 chars of headers consumed the 4000-char cap before the first
+SSE chunk. The regex now accepts optional \\r before each \\n."
+  (let* ((tmpdir (make-temp-file "reqlog-crlf-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar--current-agent-name "testagent")
+         (iar--current-project "testproject")
+         (iar-request-log-enabled t)
+         (iar-request-log-body-chars 500)
+         (iar-request-log-tail-chars 500)
+         (buf (generate-new-buffer " *test-crlf*"))
+         (proc (list 'fake-proc))
+         (info (list :buffer buf :model "m" :status 'success
+                     :tool-use nil :error nil))
+         (fsm (gptel-make-fsm :info info)))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (insert "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n"
+                    "{\"model\":\"m\",\"done\":true}"))
+          (puthash proc 7 iar--reqlog-processes)
+          (cl-letf (((symbol-function 'process-buffer) (lambda (_p) buf))
+                    ((symbol-function 'alist-get)
+                     (lambda (key alist &optional _default _testfn _remove)
+                       (cdr (assq key alist)))))
+            (let ((gptel--request-alist (list (list proc fsm))))
+              (iar--reqlog-dump proc)))
+          (let ((path (expand-file-name
+                       "audit/testproject/testagent/REQUESTS.log" tmpdir)))
+            (with-temp-buffer
+              (insert-file-contents path)
+              (let ((line (buffer-string)))
+                (should (string-match-p "body_tail={\\\"model\\\"" line))
+                ;; The HTTP header must NOT leak into the body_tail.
+                (should-not (string-match-p "body_tail=HTTP/" line))))))
+      (kill-buffer buf)
+      (delete-directory tmpdir :recursive))))
