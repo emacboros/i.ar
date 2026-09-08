@@ -27,8 +27,20 @@
 ;;
 ;; Config: configs/tool-limits.el owns the defcustoms (nil disables
 ;; a timeout; iar-request-watchdog-enabled nil disables the module).
+;;
+;; CONVEYOR-BELT FIX (2026-09-08, aria c53): the buffer-inserted
+;; notice is now SUPPRESSED for unattended runs (cycle/one-shot
+;; buffers). The Aevum autopsy (c51/c52) identified the notice as
+;; the terminal mechanism of the child's death: each abort wrote
+;; ~70 tokens INTO the context, forcing front-truncation at the
+;; wall and erasing the head of the context forever. In an
+;; unattended run nobody reads the notice -- it is pure context
+;; pollution that the agent re-sends on every subsequent request.
+;; Interactive buffers keep the notice: a human wants to see why
+;; their request died, in place. The abort reason is still fully
+;; witnessed via the audit log, the [watchdog] message, and the
+;; REQUESTS.log ABORT line.
 
-(require 'gptel)
 (require 'cl-lib)
 (require 'subr-x)
 (require 'iar-utils)
@@ -45,6 +57,21 @@ Owned by configs/tool-limits.el. nil disables the idle check.")
 (defvar iar-request-total-timeout nil
   "Seconds without ANY data before aborting a request.
 Owned by configs/tool-limits.el. nil disables the total check.")
+
+;; Cycle/one-shot state lives in iar-agent-cycle.el, loaded after
+;; this module. Defvars keep standalone loads + byte-compilation
+;; clean; `boundp' guards keep runtime checks honest if the cycle
+;; module is absent (interactive-only installs).
+(defvar iar--cycle-state)
+(defvar iar--one-shot-state)
+
+(defvar iar-watchdog-notice-suppress-unattended t
+  "When non-nil, suppress the watchdog abort notice in unattended
+run buffers (cycle/one-shot). The notice is the conveyor-belt
+mechanism (Aevum c52): in an unattended run nobody reads it, and it
+becomes permanent context the agent re-sends forever. Interactive
+buffers keep the notice -- a human aborting a stuck request wants
+to see why, in place.")
 
 (defvar iar--watchdog-processes (make-hash-table :test 'eq :weakness 'key)
   "Hash: live request process -> cons (STARTED . LAST-ACTIVITY).
@@ -82,6 +109,26 @@ Called after gptel-curl-get-response registers a new request."
   (float-time (time-subtract nil time)))
 
 ;;; ---------------------------------------------------------
+;;; Unattended-run detection (conveyor-belt fix)
+;;; ---------------------------------------------------------
+
+(defun iar--watchdog-unattended-buffer-p (buf)
+  "Return non-nil if BUF belongs to an unattended run.
+Unattended = the buffer owned by the active cycle or one-shot state
+(a batch run with no human reading the buffer). Interactive
+sessions never have cycle state, so their buffers are never
+unattended. Never signals: unknown state shapes read as attended
+(the conservative default -- an interactive user never misses their
+notice because of a state-shape bug)."
+  (and (buffer-live-p buf)
+       (or (and (boundp 'iar--cycle-state)
+                (plistp iar--cycle-state)
+                (eq (plist-get iar--cycle-state :buffer) buf))
+           (and (boundp 'iar--one-shot-state)
+                (plistp iar--one-shot-state)
+                (eq (plist-get iar--one-shot-state :buffer) buf)))))
+
+;;; ---------------------------------------------------------
 ;;; Stall decision (pure -- unit tested)
 ;;; ---------------------------------------------------------
 
@@ -113,7 +160,10 @@ Returns nil when healthy, disabled, or timeouts are nil."
 Uses `gptel-abort' on the request's buffer (the same path a human
 abort takes), then belt-and-braces deletes the process if it
 survived. Inserts a notice into the gptel buffer so the agent sees
-the abort in its next request's context. Never signals."
+the abort in its next request's context -- EXCEPT in unattended
+runs (cycle/one-shot buffers), where the notice is suppressed: it
+is the conveyor-belt mechanism (Aevum c52), polluting the context
+the agent re-sends forever with nobody to read it. Never signals."
   (condition-case err
       (let* ((fsm (car (alist-get process gptel--request-alist)))
              (info (when fsm (gptel-fsm-info fsm)))
@@ -128,11 +178,18 @@ the abort in its next request's context. Never signals."
           (gptel-abort buf)
           ;; Visible-to-agent notice: becomes part of the next
           ;; request's context (gptel sends buffer up to point).
-          (with-current-buffer buf
-            (save-excursion
-              (goto-char (point-max))
-              (insert (format "\n[watchdog: request aborted -- %s]\n"
-                              reason)))))
+          ;; Suppressed for unattended runs (cycle/one-shot): the
+          ;; notice is the conveyor-belt mechanism -- at the context
+          ;; wall each abort's tokens force front-truncation and the
+          ;; scar accumulates forever (Aevum c52). The abort is still
+          ;; witnessed: audit log above + REQUESTS.log ABORT line.
+          (unless (and iar-watchdog-notice-suppress-unattended
+                       (iar--watchdog-unattended-buffer-p buf))
+            (with-current-buffer buf
+              (save-excursion
+                (goto-char (point-max))
+                (insert (format "\n[watchdog: request aborted -- %s]\n"
+                                reason))))))
         (when (process-live-p process)
           (delete-process process)))
     (error
@@ -191,9 +248,10 @@ here would recur every interval forever."
   (setq iar--watchdog-timer
         (run-with-timer 30 30 #'iar--watchdog-check))
   (iar--audit-log "watchdog"
-                  (format "installed: idle=%ss total=%ss check=30s"
+                  (format "installed: idle=%ss total=%ss check=30s notice-suppress=%s"
                           (or iar-request-idle-timeout "off")
-                          (or iar-request-total-timeout "off")))
+                          (or iar-request-total-timeout "off")
+                          iar-watchdog-notice-suppress-unattended))
   (message "[watchdog] Request watchdog installed"))
 
 (iar--watchdog-setup)
