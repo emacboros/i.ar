@@ -35,6 +35,15 @@ you know to the record, file a continuation task, close. A
 cycle that dies at timeout with 1000+ msgs burns everything and
 lands nothing.
 
+** WALL BUDGET (read the trailer on every tool result)
+
+Every tool result ends with a trailer: [t+MM:SS/WALL cNN/CAP] --
+elapsed wall-clock of this cycle / the wall limit, and tool calls
+used / the soft cap. Read it as calibration data: plan remaining
+work against remaining budget, closes-first as it depletes. A
+single hung tool call is killed at 600s with a [TIMEOUT] marker --
+note it and route around whatever hung.
+
 ** AGORA (the shared space)
 
 - for-nacho stream: flags for the human. Credentials at
