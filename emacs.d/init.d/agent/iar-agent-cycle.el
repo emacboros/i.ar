@@ -168,8 +168,18 @@ BUFFER defaults to the current buffer."
           (save-excursion
             (goto-char search-start)
             (cond
-             ((re-search-forward "^\\(?:LOOP_COMPLETE\\)+\\s-*$" search-end t) 'loop)
-             ((re-search-forward "^\\(?:CYCLE_COMPLETE\\)+\\s-*$" search-end t) 'cycle)
+             ;; c59 (2026-09-08): the sentinel is a TERMINATOR, not a
+             ;; line format. c58 (glm-5.3-flash) merged summary prose
+             ;; and the sentinel into one line ("...steps remain ->
+             ;; CYCLE_COMPLETE."); the own-line regex missed it, the
+             ;; grace window expired, exit 1 with the record written.
+             ;; The match now allows leading prose on the line, but the
+             ;; trailing anchor (\s-*$) preserves the c39 negative
+             ;; case: prose CONTAINING the token with text after it
+             ;; ("end with CYCLE_COMPLETE time. later") still does not
+             ;; match. Pinned by 4 tests in test-cycle-exit-codes.el.
+             ((re-search-forward "^.*\\(?:LOOP_COMPLETE\\)+\\s-*[.!]?\\s-*$" search-end t) 'loop)
+             ((re-search-forward "^.*\\(?:CYCLE_COMPLETE\\)+\\s-*[.!]?\\s-*$" search-end t) 'cycle)
              (t nil))))))))
 
 

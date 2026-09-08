@@ -246,3 +246,30 @@ the completion DETECTOR, not the handler."
         (with-current-buffer buf
           (should-not (iar--cycle-complete-p buf)))
       (kill-buffer buf))))
+
+(ert-deftest test-cycle-exit-code-sentinel-midline-after-prose ()
+  "A sentinel written mid-line after prose ('...steps remain -> CYCLE_COMPLETE.')
+must still complete the cycle. c58 (2026-09-08): glm-5.3-flash merged its
+summary prose and the sentinel into one line; the own-line regex missed it,
+the grace window expired, exit 1 -- the record was written but the cycle
+was scored failed. The sentinel is a TERMINATOR, not a line format: any
+line whose trailing content is the sentinel (optionally repeated) counts.
+Prose merely CONTAINING the token with text after it still does not match
+(the c39 negative case is preserved by the trailing \\s-*$)."
+  (let ((buf (iar--test-cycle-setup-buffer
+              "task not done yet\nsteps remain -> CYCLE_COMPLETE.\n")))
+    (unwind-protect
+        (with-current-buffer buf
+          (should (eq 'cycle (iar--cycle-complete-p buf))))
+      (kill-buffer buf))))
+
+(ert-deftest test-cycle-exit-code-prose-containing-token-still-no-match ()
+  "Prose that CONTAINS the sentinel token with text after it must NOT
+complete. The c39 negative case, pinned mid-line: 'CYCLE_COMPLETE time.'
+inside a sentence is speech about the sentinel, not the sentinel."
+  (let ((buf (iar--test-cycle-setup-buffer
+              "task not done yet\nwe will end with CYCLE_COMPLETE time. later\n")))
+    (unwind-protect
+        (with-current-buffer buf
+          (should-not (iar--cycle-complete-p buf)))
+      (kill-buffer buf))))
