@@ -22,6 +22,18 @@
 (require 'iar-rate-limit)
 (require 'cl-lib)
 
+(defcustom iar-remote-exec-default-timeout 600
+  "Default timeout in seconds for remote/sidecar exec calls.
+Mirrors `iar-exec-default-timeout' (execute_code_local, c65): one
+hung tool call must never be able to eat the cycle's wall budget.
+SSH has ConnectTimeout=10 for the handshake, but a remote command
+that hangs (a log tail on a growing file, a remote process that
+never exits) previously sat for 3600s -- longer than a cycle.
+600s bounds the damage; callers needing longer pass an explicit
+timeout."
+  :type 'integer
+  :group 'iar)
+
 ;; Declared in configs/paths.el (loaded before init.d modules).
 (defvar iar-personalization-path nil
   "Absolute path to the personalization mount point.")
@@ -114,7 +126,8 @@ are rejected -- execute_code_remote should not be registered."
 (defun iar--exec-local-container (callback target command &optional timeout)
   "Execute COMMAND in local container TARGET via podman exec.
 Calls CALLBACK with the result string when done.
-TIMEOUT in seconds (default 3600).
+TIMEOUT in seconds (default `iar-remote-exec-default-timeout', 600s
+-- one hung call must not eat the cycle wall).
 
 Honest-failure preflight (fix C, 2026-09-03): the Emacs container
 image ships no podman client and no podman socket, so every local
@@ -124,7 +137,7 @@ as a generic error, and invisible to failure-first (cycle exit stayed
 green; the audit bridge logged the callback as success). The preflight
 says exactly what is broken so no cycle re-diagnoses from zero."
   (let* ((container-name (iar--resolve-container-env-var target))
-         (timeout (or timeout 3600))
+         (timeout (or timeout iar-remote-exec-default-timeout))
          (buf (generate-new-buffer " *gptel-remote-exec*"))
          (timed-out nil)
          (timer nil)
@@ -187,7 +200,8 @@ says exactly what is broken so no cycle re-diagnoses from zero."
 (defun iar--exec-remote-ssh (callback target command &optional timeout)
   "Execute COMMAND on remote target TARGET via SSH.
 Calls CALLBACK with the result string when done.
-TIMEOUT in seconds (default 3600).
+TIMEOUT in seconds (default `iar-remote-exec-default-timeout', 600s
+-- one hung call must not eat the cycle wall).
 Uses call-process via make-process with explicit argv (no shell).
 
 Honest-failure preflight (same class as the podman check, 2026-09-03):
@@ -197,7 +211,7 @@ error with no diagnosis."
          (host (plist-get conn :host))
          (port (plist-get conn :port))
          (user (plist-get conn :user))
-         (timeout (or timeout 3600))
+         (timeout (or timeout iar-remote-exec-default-timeout))
          (buf (generate-new-buffer " *gptel-remote-ssh*"))
          (timed-out nil)
          (timer nil)

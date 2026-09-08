@@ -217,9 +217,16 @@ Signals an error if the personality is not found."
 :runaway-recovery-given -- t once a text-only output runaway has been
 ;;               given its one recovery round-trip (second fire ends the run)")
 
-(defun iar--cycle-make-state (agent buf continue max-turns)
-  "Create a fresh cycle state plist."
+(defun iar--cycle-make-state (agent buf continue max-turns &optional wall-timeout)
+  "Create a fresh cycle state plist.
+WALL-TIMEOUT (optional, seconds) is the run's wall-clock budget.
+:start-time is captured HERE, once -- the shared clock source: the
+event loop's deadline and the tool-result budget trailer both read
+this value, so the two instruments cannot drift apart (the
+instruments-lying class: two clocks that disagree are a fence that
+lies about the time it enforces)."
   (list :agent agent :buffer buf :continue continue :max-turns max-turns
+        :start-time (current-time) :wall-timeout wall-timeout
         :turn-count 0 :tool-call-count 0 :request-count 0
         :completed nil :exit-code 0
         :cap-blocks 0 :cap-warned nil :same-tool-warned nil
@@ -1018,7 +1025,7 @@ Tools are gated by the project's #+TOOLS metadata."
     (message "[%s] Starting cycle with %ds timeout (archetype: %s, project: %s, cycle: %s)"
              agent-name timeout archetype project cycle-name)
     (iar--usage-reset)
-    (setq iar--cycle-state (iar--cycle-make-state agent-name cycle-buf continue-prompt max-turns)
+    (setq iar--cycle-state (iar--cycle-make-state agent-name cycle-buf continue-prompt max-turns timeout)
           iar--cycle-error-strikes 0)
     ;; Reset the shared last-request state so a stale value from a
     ;; previous cycle (or a delegate's request) is never read as this
@@ -1056,10 +1063,13 @@ Tools are gated by the project's #+TOOLS metadata."
       (message "[%s] Sending cycle prompt to %s agent..." agent-name agent-name)
       (gptel-send))
 
-    ;; Batch mode event loop: wait until completed or timeout
+    ;; Batch mode event loop: wait until completed or timeout.
+    ;; The deadline is computed from the state's :start-time -- the
+    ;; SAME clock the budget trailer reads (one t0, two readers).
     (when noninteractive
       (let ((idle-since nil)
-            (deadline (time-add nil (seconds-to-time timeout))))
+            (deadline (time-add (plist-get iar--cycle-state :start-time)
+                                (seconds-to-time timeout))))
         (while (and (not (plist-get iar--cycle-state :completed))
                    (time-less-p nil deadline))
           (accept-process-output nil 1)
@@ -1192,9 +1202,12 @@ a hardcoded copy here drifted from them the moment either changed.")
 :exit-code       -- 0 for success, 1 for timeout/error
 :final-response  -- extracted response string or nil")
 
-(defun iar--one-shot-make-state (agent buf max-turns)
-  "Create a fresh one-shot state plist."
+(defun iar--one-shot-make-state (agent buf max-turns &optional wall-timeout)
+  "Create a fresh one-shot state plist.
+WALL-TIMEOUT and :start-time: the shared clock source (see
+`iar--cycle-make-state' -- one t0 for the fence and the trailer)."
   (list :agent agent :buffer buf :max-turns max-turns
+        :start-time (current-time) :wall-timeout wall-timeout
         :turn-count 0 :tool-call-count 0 :cap-blocks 0
         :cap-warned nil
         :completed nil :exit-code 0 :final-response nil))
@@ -1323,7 +1336,7 @@ Tools are gated by the project's #+TOOLS metadata."
     (message "[%s] Starting one-shot with %ds timeout (archetype: %s, project: %s)"
              agent-name timeout archetype project)
     (iar--usage-reset)
-    (setq iar--one-shot-state (iar--one-shot-make-state agent-name os-buf max-turns))
+    (setq iar--one-shot-state (iar--one-shot-make-state agent-name os-buf max-turns timeout))
     (with-current-buffer os-buf
       (text-mode)
       (gptel-mode 1)
@@ -1354,10 +1367,12 @@ Tools are gated by the project's #+TOOLS metadata."
       (message "[%s] Sending one-shot prompt to %s..." agent-name agent-name)
       (gptel-send))
 
-    ;; Batch mode event loop: wait until completed or timeout
+    ;; Batch mode event loop: deadline from the state's :start-time
+    ;; (the shared clock -- same source the budget trailer reads).
     (when noninteractive
       (let ((idle-since nil)
-            (deadline (time-add nil (seconds-to-time timeout))))
+            (deadline (time-add (plist-get iar--one-shot-state :start-time)
+                                (seconds-to-time timeout))))
         (while (and (not (plist-get iar--one-shot-state :completed))
                    (time-less-p nil deadline))
           (accept-process-output nil 1)

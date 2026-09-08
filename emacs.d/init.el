@@ -111,6 +111,14 @@
 ;; Advice chain: timestamp (outer) -> truncation -> gptel original.
 (load (expand-file-name "iar-tool-result-timestamp.el" init-tool-call-dir))
 
+;; Tool result budget trailer -- append [t+MM:SS/WALL cNN/CAP] to every
+;; tool result during cycles/one-shots. STATE, not alarm (no threshold
+;; logic to fail -- the c67 anomaly class). Shares the cycle state's
+;; :start-time with the wall fence: one t0, two readers, no drift.
+;; Loads AFTER iar-tool-result-timestamp so this advice is OUTERMOST:
+;; chain = budget (outer) -> timestamp -> truncation -> gptel original.
+(load (expand-file-name "iar-tool-result-budget.el" init-tool-call-dir))
+
 ;; Request log (Track A4) -- the witness. Logs every request lifecycle
 ;; (payload tail, raw response, parse result, filter errors, aborts)
 ;; to REQUESTS.log so agents can see their own emissions after the

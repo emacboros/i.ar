@@ -171,3 +171,28 @@ nil disables rotation."
                  (const :tag "Disabled" nil))
   :safe #'iar--positive-integer-or-nil-p
   :group 'iar)
+;; =============================================================================
+;; Tool Result Budget Trailer
+;; =============================================================================
+
+(defcustom iar-tool-result-budget t
+  "When non-nil, append a budget trailer to every tool result.
+Format: [t+MM:SS/WALL cNN/CAP] -- elapsed wall-clock since cycle
+start / the cycle's wall timeout, and tool calls used (including
+the current one) / the soft tool-call cap. STATE, not alarm: no
+thresholds, no warn logic; the agent reads it as calibration data
+(plan remaining work against remaining budget, closes-first as it
+depletes).
+
+The trailer and the wall fence share the SAME clock source (the
+cycle state's :start-time) -- one t0, two readers, no drift.
+
+Only active cycle/one-shot runs get trailers: interactive sessions
+are not budgeted. Results without an honest clock (state missing
+:start-time/:wall-timeout) pass through untrailered.
+
+Set to nil to disable (bare results)."
+  :type '(choice (const :tag "Enable budget trailer" t)
+                 (const :tag "Disable budget trailer" nil))
+  :safe #'booleanp
+  :group 'iar)
