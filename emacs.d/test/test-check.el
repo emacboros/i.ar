@@ -154,3 +154,49 @@ temp files remain after the call."
               (should (stringp result))
               (should (string-match-p "Byte-compile error" result)))))
       (delete-file tmpfile))))
+;;; --- Verdict-line severity (drill-003 fix, 2026-09-08) ---
+
+(ert-deftest test-check-severity-clean ()
+  "Clean file verdict line starts with OK."
+  (let* ((tmpfile (test-check--write-temp-el
+                   ";; -*- lexical-binding: t; -*-\n(defun foo () 1)\n"))
+         (result (iar--tool-check-elisp tmpfile)))
+    (should (string-prefix-p "OK" result))
+    (delete-file tmpfile)))
+
+(ert-deftest test-check-severity-warnings ()
+  "Warning-level file (missing lexical-binding) verdict starts with WARNINGS, not ISSUES/ERRORS."
+  (let* ((tmpfile (test-check--write-temp-el "(defun foo () 1)\n"))
+         (result (iar--tool-check-elisp tmpfile)))
+    (should (string-prefix-p "WARNINGS" result))
+    (should-not (string-prefix-p "ERRORS" result))
+    (delete-file tmpfile)))
+
+(ert-deftest test-check-severity-errors ()
+  "Error-level file (malformed arglist) verdict starts with ERRORS."
+  (let* ((tmpfile (test-check--write-temp-el
+                   ";; -*- lexical-binding: t; -*-\n(defun (foo) 1)\n"))
+         (result (iar--tool-check-elisp tmpfile)))
+    (should (string-prefix-p "ERRORS" result))
+    (delete-file tmpfile)))
+
+(ert-deftest test-check-severity-paren-error-is-errors ()
+  "Parenthesis errors classify as ERRORS (not warnings)."
+  (let* ((tmpfile (test-check--write-temp-el
+                   "(defun foo ()\n  (message \"hello\"\n"))
+         (result (iar--tool-check-elisp tmpfile)))
+    (should (string-prefix-p "ERRORS" result))
+    (should (string-match-p "[Pp]aren" result))
+    (delete-file tmpfile)))
+
+(ert-deftest test-check-severity-function ()
+  "iar--check-elisp-severity classifies directly."
+  (should (null (iar--check-elisp-severity nil)))
+  (should (eq :errors (iar--check-elisp-severity
+                       '("Parenthesis error: unbalanced"))))
+  (should (eq :errors (iar--check-elisp-severity
+                       '("foo.el:2:2: Error: Malformed arglist: 1"))))
+  (should (eq :warnings (iar--check-elisp-severity
+                         '("foo.el:1:1: Warning: no lexical-binding"))))
+  (should (eq :warnings (iar--check-elisp-severity
+                         '("some unrecognized diagnostic")))))
