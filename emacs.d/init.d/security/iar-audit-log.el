@@ -119,14 +119,42 @@ Never signals."
       (or (iar--get-agent-name) "unknown")
     (error "unknown")))
 
+(defun iar--audit-classify-result (tool-name result)
+  "Classify a tool RESULT for the audit status field.
+Returns one of:
+  \"rejected\" -- the call never executed: tool-spec was nil
+  (unknown/blocked/malformed tool name) and the result is the
+  fence's <tool_call_error> injection. The fence firing is not the
+  call succeeding; logging these as success trained the census to
+  score failures as successes in exactly the row that carries the
+  malformed-emission signal (relay aria-0007).
+  \"error\" -- the result reports failure: an \"Error:\" prefix
+  (tool-level errors), a \"Command exited with code N\" prefix
+  (non-zero shell exit -- previously invisible: 9713 exec calls,
+  zero logged as error), or a \"[TIMEOUT after Ns\" prefix
+  (execute_code_local timeout kill).
+  \"success\" -- everything else.
+TOOL-NAME is nil exactly when the tool-spec lookup failed (blocked
+or malformed call), so it is the primary rejected signal; the
+result-prefix check is the corroborating witness."
+  (cond
+   ((and (null tool-name)
+         (stringp result)
+         (string-prefix-p "<tool_call_error>" result))
+    "rejected")
+   ((null tool-name) "rejected")
+   ((not (stringp result)) "success")
+   ((string-prefix-p "Error:" result) "error")
+   ((string-prefix-p "Command exited with code" result) "error")
+   ((string-prefix-p "[TIMEOUT after" result) "error")
+   (t "success")))
+
 (defun iar--audit-log-tool-call-with-agent (tool-name args result agent)
   "Write the audit entry for a tool call with AGENT pre-captured.
 Same detail policy as `iar--audit-log-tool-call' but takes the
 agent name as an argument instead of resolving it (which fails in
 async sentinel contexts)."
-  (let* ((status (if (and (stringp result)
-                          (string-prefix-p "Error:" result))
-                     "error" "success"))
+  (let* ((status (iar--audit-classify-result tool-name result))
          (detail
           (concat (format "name=%s status=%s result_len=%d"
                           (or tool-name "nil") status
@@ -141,6 +169,19 @@ async sentinel contexts)."
                                (if (> (length cmd) 200)
                                    (concat (substring cmd 0 197) "...")
                                  cmd))))
+                    ((or "read_file")
+                     (when-let* ((fp (plist-get args :filepath)))
+                       (format " path=%s" fp)))
+                    ((or "list_directory" "read_knowledge")
+                     (when-let* ((p (plist-get args :path)))
+                       (format " path=%s" p)))
+                    ("delegate"
+                     (format " agent=%s task=%s"
+                             (or (plist-get args :agent) "pipeline")
+                             (let ((tk (or (plist-get args :task) "")))
+                               (if (> (length tk) 80)
+                                   (concat (substring tk 0 77) "...")
+                                 tk))))
                     ("git_commit"
                      (format " repo=%s msg=%s"
                              (or (plist-get args :repo_path) "?")
