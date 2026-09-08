@@ -20,11 +20,25 @@
 (require 'iar-output-sanitizer)
 (require 'iar-rate-limit)
 
+(defcustom iar-exec-default-timeout 600
+  "Default timeout in seconds for async shell commands.
+One hung tool call once ate a full 1800s cycle budget (aria c62/c63:
+a single rg with no timeout stalled the tool-execution window, the
+one window no watchdog watches). 600s bounds the damage to a third
+of a cycle; callers needing longer (builds, test suites) pass an
+explicit timeout."
+  :type 'integer
+  :group 'iar)
+
 (defun iar--async-shell-command (callback command &optional timeout)
   "Run COMMAND asynchronously, returning result via CALLBACK.
 
 Returns immediately, calls CALLBACK with the result string when done.
-TIMEOUT in seconds (default 3600) kills the process on true hangs.
+TIMEOUT in seconds kills the process on true hangs. Default: the
+`iar-exec-default-timeout' variable (600s) -- a cycle budget is 1800s,
+so one hung call must never be able to eat it. Callers may pass a
+larger explicit timeout for legitimately slow commands (builds,
+suite runs).
 
 Uses :connection-type 'pipe to prevent pty allocation.  Without a TTY,
 programs detect non-interactive mode via isatty() and skip pagers,
@@ -32,7 +46,7 @@ color codes, and interactive prompts.  No environment variable patches
 needed."
   (let* ((cb callback)
          (cmd command)
-         (timeout (or timeout 3600))
+         (timeout (or timeout iar-exec-default-timeout))
          (buf (generate-new-buffer " *gptel-async-shell*"))
          (timed-out nil)
          (timer nil)
