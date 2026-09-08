@@ -320,12 +320,21 @@ by `iar--reqlog-reset-last'.")
 Set by `iar--reqlog-dump' from the fork's :tokens :output. Paired with
 `iar--reqlog-last-stop' for the per-request truncated-output guard.")
 
+(defvar iar--reqlog-last-tokens-in nil
+  "Input token count of the most recently dumped request (integer).
+Set by `iar--reqlog-dump' from the fork's :tokens :input. Read by
+the context-size fence (iar-context-fence.el) as the best pre-call
+estimate of the NEXT request's size (each request re-sends the
+accumulated context). Reset to nil at cycle start by
+`iar--reqlog-reset-last'.")
+
 (defun iar--reqlog-reset-last ()
   "Reset the last-request stop/tokens-out shared state to nil.
 Called at cycle start so a stale value from a previous cycle (or a
 delegate's request) is never read as this cycle's first response."
   (setq iar--reqlog-last-stop nil
-        iar--reqlog-last-tokens-out nil))
+        iar--reqlog-last-tokens-out nil
+        iar--reqlog-last-tokens-in nil))
 
 (defun iar--reqlog-dump (process)
   "Dump raw response tail + parse result for PROCESS. Best-effort.
@@ -384,7 +393,8 @@ still readable."
               ;; post-response handler -- so the guard sees the request
               ;; that just completed, not a stale one.
               (setq iar--reqlog-last-stop stop
-                    iar--reqlog-last-tokens-out tok-out)
+                    iar--reqlog-last-tokens-out tok-out
+                    iar--reqlog-last-tokens-in tok-in)
               (iar--reqlog-append
                "REQ %s PARSE status=%s tools=%d specs=%s error=%s stop=%s tokens_in=%s tokens_out=%s"
                id (or status "?")
@@ -465,3 +475,4 @@ aborts (the watchdog calls gptel-abort) and human aborts."
 (iar--reqlog-setup)
 
 (provide 'iar-request-log)
+

@@ -125,6 +125,11 @@
 ;; fact. Loads after the watchdog (shares the curl advice pattern).
 (load (expand-file-name "iar-request-log.el" init-tool-call-dir))
 
+;; Context-size fence (aria-0005 ratified 2026-09-08) -- soft/hard caps
+;; on per-request input tokens, mirroring the tool-call cap architecture.
+;; Loads AFTER iar-request-log (reads iar--reqlog-last-tokens-in).
+(load (expand-file-name "iar-context-fence.el" init-tool-call-dir))
+
 ;; Request watchdog (Track A1) -- abort stalled gptel requests.
 ;; No request-level timeout existed in the stack; a dead stream hung
 ;; the session silently. Watchdog makes the invisible failure visible.

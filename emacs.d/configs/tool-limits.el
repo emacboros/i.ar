@@ -196,3 +196,48 @@ Set to nil to disable (bare results)."
                  (const :tag "Disable budget trailer" nil))
   :safe #'booleanp
   :group 'iar)
+;; =============================================================================
+;; Context-Size Fence (aria-0005 ratified, 2026-09-08)
+;; =============================================================================
+
+(defcustom iar-context-fence t
+  "When non-nil, fence cycles/one-shots on per-request input tokens.
+Mirrors the tool-call cap architecture on the input side:
+- SOFT WARN (iar-context-soft-cap): block ONE non-memory tool call
+  with a converge notice; the call is retried; fires once per run.
+- HARD CAP (iar-context-hard-cap): block every non-memory tool call
+  with the landing instruction; after iar-context-hard-cap-blocks
+  ignored blocks, the run ends (exit 1).
+Data source: iar--reqlog-last-tokens-in (published by
+iar-request-log.el). Interactive sessions are NOT fenced.
+Set to nil to disable."
+  :type '(choice (const :tag "Enable context fence" t)
+                 (const :tag "Disable context fence" nil))
+  :safe #'booleanp
+  :group 'iar)
+
+(defcustom iar-context-soft-cap 131072
+  "Input tokens (of the last completed request) at which the soft
+warn fires: one call blocked with a converge notice, then pass.
+128k tokens (Nacho, 2026-09-08). nil disables the soft warn."
+  :type '(choice (integer :tag "Soft cap tokens")
+                 (const :tag "Disabled" nil))
+  :safe #'iar--positive-integer-or-nil-p
+  :group 'iar)
+
+(defcustom iar-context-hard-cap 524288
+  "Input tokens at which every non-memory tool call is blocked with
+the landing instruction. 512k tokens (Nacho, 2026-09-08). The
+existing context circuit breaker (chars-based, 800k chars) remains
+the last-resort backstop; this fence is the token-unit bound."
+  :type '(choice (integer :tag "Hard cap tokens")
+                 (const :tag "Disabled" nil))
+  :safe #'iar--positive-integer-or-nil-p
+  :group 'iar)
+
+(defcustom iar-context-hard-cap-blocks 5
+  "Ignored hard-cap blocks before the run is force-ended (exit 1).
+Mirrors iar-cycle-tool-call-hard-cap."
+  :type 'integer
+  :safe #'integerp
+  :group 'iar)
