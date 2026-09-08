@@ -37,7 +37,7 @@
                    "(defun foo ()\n  (message \"hello\"\n")) ; missing close paren
          (result (iar--tool-check-elisp tmpfile)))
     (should (stringp result))
-    (should (string-match-p "ISSUES" result))
+    (should (string-prefix-p "ERRORS" result))
     (should (string-match-p "[Pp]aren" result))
     (delete-file tmpfile)))
 
