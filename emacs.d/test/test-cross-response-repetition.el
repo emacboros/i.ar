@@ -140,3 +140,74 @@ exit 1."
           (should (plist-get iar--cycle-state :completed))
           (should (= 1 (plist-get iar--cycle-state :exit-code))))
       (kill-buffer buf))))
+
+;;; --- Scaffolding exclusion (aria c54/c55 fix) ---
+
+(ert-deftest test-cross-rep-ignores-tool-block-scaffolding ()
+  "Tool-call display blocks (propertized 'gptel '(tool . id)) must NOT
+count toward the runaway census -- aria c54/c55 found the fence firing
+on ~95 tool-call display blocks (5211 lines, 131 '```' + 66 identical
+truncated previews) with zero model repetition. 30 identical tool-block
+previews + 5 model lines must NOT fire; 25 identical MODEL lines MUST."
+  (let ((buf (get-buffer-create "*test-crossrep-scaffold*")))
+    (unwind-protect
+        (let ((iar-cycle-cross-response-window 5)
+              (iar-cycle-cross-response-threshold 30)
+              (iar--cycle-state (iar--cycle-make-state "test" buf "Continue." 40))
+              (iar--one-shot-state nil))
+          (with-current-buffer buf
+            (erase-buffer)
+            ;; 30 identical tool-block previews (propertized 'ignore)
+            (dotimes (_ 30)
+              (insert (propertize "``` tool (execute_code_local :command \"cd /root/i.ar ...)"
+                                  'gptel 'ignore)
+                      "\n"))
+            ;; 5 model lines -- under the 20-line per-response threshold,
+            ;; and 5 < 30 cross-response threshold. Must NOT fire.
+            (let ((start (point)))
+              (dotimes (_ 5) (insert "Normal model analysis line.\n"))
+              (should-not (iar--cycle-cross-response-repetition-p start (point))))))
+      (kill-buffer buf))))
+
+(ert-deftest test-cross-rep-model-lines-still-count ()
+  "Model text (unpropertized) must still accumulate across responses --
+the guard must not be silenced by the scaffolding filter."
+  (let ((buf (get-buffer-create "*test-crossrep-model*")))
+    (unwind-protect
+        (let ((iar-cycle-cross-response-window 5)
+              (iar-cycle-cross-response-threshold 30)
+              (iar--cycle-state (iar--cycle-make-state "test" buf "Continue." 40))
+              (iar--one-shot-state nil))
+          (with-current-buffer buf
+            (erase-buffer)
+            ;; 4 responses of 10 model lines each = 40 cumulative > 30.
+            (dotimes (i 4)
+              (let ((start (point)))
+                (dotimes (_ 10) (insert "Let me think about what I can actually do.\n"))
+                (if (< i 2)
+                    (should-not (iar--cycle-cross-response-repetition-p start (point)))
+                  (should (iar--cycle-cross-response-repetition-p start (point))))))))
+      (kill-buffer buf))))
+
+(ert-deftest test-cross-rep-tool-result-content-excluded ()
+  "Tool RESULT content (propertized 'gptel '(tool . id)) must NOT count
+-- identical tool results (e.g. the same error repeated) are scaffolding,
+not model speech."
+  (let ((buf (get-buffer-create "*test-crossrep-toolresult*")))
+    (unwind-protect
+        (let ((iar-cycle-cross-response-window 5)
+              (iar-cycle-cross-response-threshold 30)
+              (iar--cycle-state (iar--cycle-make-state "test" buf "Continue." 40))
+              (iar--one-shot-state nil))
+          (with-current-buffer buf
+            (erase-buffer)
+            ;; 30 identical tool RESULT blocks (propertized (tool . id))
+            (dotimes (_ 30)
+              (insert (propertize "Error: Tool 'foo' is not available. Available tools: bar"
+                                  'gptel '(tool . 42))
+                      "\n"))
+            ;; 5 model lines -- must NOT fire.
+            (let ((start (point)))
+              (dotimes (_ 5) (insert "Normal model analysis line.\n"))
+              (should-not (iar--cycle-cross-response-repetition-p start (point))))))
+      (kill-buffer buf))))

@@ -618,6 +618,36 @@ size is under `iar-cycle-context-limit-chars'."
           (when (> size iar-cycle-context-limit-chars)
             size))))))
 
+
+(defun iar--cycle-response-text (start end)
+  "Return the model-response text in region START..END, excluding
+gptel machine-inserted regions: tool-call display blocks (propertized
+`gptel' `(tool . id)') and their fences (`gptel' `ignore'), and reasoning
+blocks (`gptel' `ignore'). The runaway census must not count gptel's
+own scaffolding -- aria c54/c55 found the fence firing on ~95 tool-call
+display blocks (5211 lines, 131 ``` + 66 identical truncated previews)
+with zero model repetition. `buffer-substring-no-properties' strips the
+very text-properties that mark machine-inserted regions, so the fence
+could not tell scaffolding from speech. Walks the region by `gptel'
+property change, including only spans whose property is nil or
+`response' (model text + separators), excluding `ignore' (reasoning,
+tool fences) and (tool . id) (tool call/result content)."
+  (with-current-buffer (current-buffer)
+    (save-restriction
+      (widen)
+      (let ((result "")
+            (pos start))
+        (while (< pos end)
+          (let* ((prop (get-text-property pos 'gptel))
+                 (next (or (next-single-property-change pos 'gptel
+                                                        (current-buffer) end)
+                           end)))
+            (unless (or (eq prop 'ignore)
+                        (and (consp prop) (eq (car prop) 'tool)))
+              (setq result (concat result (buffer-substring pos next))))
+            (setq pos next)))
+        result))))
+
 (defun iar--cycle-output-runaway-p (start end)
   "Return non-nil if the response region START..END is a text-only
 output runaway: many identical trimmed lines in a single response.
@@ -629,10 +659,7 @@ input buffer (not output), so neither catches it. This is the output
 half of the runaway fence. Threshold: `iar-cycle-output-runaway-min-repeats'
 identical trimmed lines in one response."
   (when (and (integerp start) (integerp end) (< start end))
-    (let ((text (with-current-buffer (current-buffer)
-                  (save-restriction
-                    (widen)
-                    (buffer-substring-no-properties start end)))))
+    (let ((text (iar--cycle-response-text start end)))
       (let ((counts (make-hash-table :test 'equal))
             (max-count 0))
         (dolist (line (split-string text "\n"))
@@ -678,7 +705,7 @@ survives across responses within a run."
           (save-restriction
             (widen)
             (dolist (line (split-string
-                           (buffer-substring-no-properties start end) "\n"))
+                           (iar--cycle-response-text start end) "\n"))
               (let ((trimmed (string-trim line)))
                 (when (> (length trimmed) 0)
                   (let ((c (1+ (gethash trimmed resp-counts 0))))
