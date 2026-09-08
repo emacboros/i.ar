@@ -215,3 +215,39 @@ paralysis, not truly degraded); a SECOND fire ends the run."
           (should (plist-get iar--cycle-state :completed))
           (should (= 1 (plist-get iar--cycle-state :exit-code))))
       (kill-buffer buf))))
+;;; --- Scaffolding exclusion, per-response guard (aria c55 fire shape) ---
+
+(ert-deftest test-fence-output-runaway-ignores-tool-block-scaffolding ()
+  "The per-response runaway guard must not fire on gptel tool-call
+display scaffolding. This is the EXACT c55 fire shape: the fence fired
+on a healthy final response because the scanned region contained 66
+identical truncated \"``` tool (execute_code_local ...)\" preview lines
+(propertized 'gptel 'ignore / '(tool . id) by gptel) against a
+threshold of 20 -- zero model repetition required. Old code used
+buffer-substring-no-properties, which stripped the properties and
+counted the scaffolding as model speech. Differential: old code fires
+(30 previews > 20), new code must not (5 model lines < 20)."
+  (let ((buf (get-buffer-create "*test-runaway-scaffold*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (erase-buffer)
+          ;; 30 identical tool-block previews, propertized as gptel
+          ;; machine-inserted regions (half 'ignore fences, half tool
+          ;; blocks -- both classes the helper must exclude).
+          (dotimes (_ 15)
+            (insert (propertize "``` tool (execute_code_local :command \"cd /root/i.ar ...)"
+                                'gptel 'ignore)
+                    "\n"))
+          (dotimes (_ 15)
+            (insert (propertize "⦿ Tool result: [03:21:52] --- services:\nactive\nactive"
+                                'gptel '(tool . 42))
+                    "\n"))
+          ;; 5 model lines -- under the 20-line threshold. Must NOT fire.
+          (let ((start (point)))
+            (dotimes (_ 5) (insert "Normal model analysis line.\n"))
+            (should-not (iar--cycle-output-runaway-p start (point))))
+          ;; Control: 25 identical MODEL lines MUST still fire.
+          (let ((start (point)))
+            (dotimes (_ 25) (insert "Degenerate repeated model line.\n"))
+            (should (iar--cycle-output-runaway-p start (point)))))
+      (kill-buffer buf))))
