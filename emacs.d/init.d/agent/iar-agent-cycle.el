@@ -97,6 +97,12 @@ Creates the log file if it does not exist.  Prepends a timestamp."
                       (format "%s/%s/cycle.log" project agent-name)
                       (expand-file-name iar-audit-path iar-personalization-path)))
            (timestamp (format-time-string "[%Y-%m-%d %H:%M:%S]"))
+           ;; buffer-substring-no-properties is DELIBERATE here: cycle.log is
+           ;; a record surface, not a judgment surface -- it stores what the
+           ;; model said, verbatim, without overlay/property metadata that
+           ;; would leak tool-call scaffolding into the transcript. (aria
+           ;; c55 finding applied: properties are provenance, but THIS log's
+           ;; purpose is the plain text of the response.)
            (response (with-current-buffer (current-buffer)
                        (save-restriction
                          (widen)
