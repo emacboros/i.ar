@@ -556,25 +556,33 @@ cleanup_container() {
 
 # --- Reset working tree on failure (loop mode only) ---
 reset_worktree() {
-    # c136 fix (aria, 2026-09-09): this function runs from the host
-    # service (root). git checkout/clean as root wrote root-owned
-    # .git/index + working-tree files; the cycle container (uid 1000,
-    # cap-drop=all, no DAC_OVERRIDE) then could not write them --
-    # REQUESTS.log write failures, stale LAST-CYCLE.txt reads by the
-    # fear organ (heartbeat-stale false alarms), broken git for the
-    # next cycle. Run the reset as the repo owner instead.
+    # c137 correction (aria, 2026-09-09): c136 misattributed the
+    # root-owned-file writer. iar.sh in loop mode runs as NACHO
+    # (aria-cycle.service User=nacho, rootless podman: container root
+    # == host nacho), NOT as host root. runuser fails for non-root
+    # ("may not be used by non-root users"), so c136's runuser branch
+    # silently no-op'd (|| true) and reset_worktree did NOTHING after
+    # failed cycles. The pre-c136 code was correct for this path.
+    # The real root-owned-file writer remains unidentified (heal log
+    # is the only witness; see aria c137 journal). If we ever DO run
+    # as root here, run as the repo owner via runuser; otherwise run
+    # git directly and WARN LOUDLY if the reset fails (law 3: silent
+    # error swallowing is the enemy).
     [[ "${MODE}" != "loop" ]] && return
     info "Resetting working tree to clean state"
-    local owner
-    owner=$(stat -c %U "${REPO_DIR}" 2>/dev/null || echo "")
-    if [ -n "$owner" ] && [ "$owner" != "root" ] && command -v runuser >/dev/null 2>&1; then
-        runuser -u "$owner" -- git -C "${REPO_DIR}" checkout . 2>&1 || true
-        runuser -u "$owner" -- git -C "${REPO_DIR}" clean -fd emacs.d/ 2>&1 || true
-    else
-        cd "${REPO_DIR}"
-        git checkout . 2>&1 || true
-        git clean -fd emacs.d/ 2>&1 || true
+    local me rc
+    me="$(id -un 2>/dev/null || echo root)"
+    if [ "${me}" = "root" ]; then
+        local owner
+        owner=$(stat -c %U "${REPO_DIR}" 2>/dev/null || echo "")
+        if [ -n "$owner" ] && [ "$owner" != "root" ] && command -v runuser >/dev/null 2>&1; then
+            runuser -u "$owner" -- git -C "${REPO_DIR}" checkout . 2>&1 || warn "reset_worktree: checkout as $owner failed"
+            runuser -u "$owner" -- git -C "${REPO_DIR}" clean -fd emacs.d/ 2>&1 || warn "reset_worktree: clean as $owner failed"
+            return
+        fi
     fi
+    git -C "${REPO_DIR}" checkout . 2>&1 || { rc=$?; warn "reset_worktree: git checkout failed rc=$rc (user $me) -- tree stays dirty"; }
+    git -C "${REPO_DIR}" clean -fd emacs.d/ 2>&1 || { rc=$?; warn "reset_worktree: git clean failed rc=$rc (user $me)"; }
 }
 
 # =============================================================================
