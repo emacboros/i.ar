@@ -61,7 +61,7 @@ own line after the result."
         (iar--one-shot-state nil))
     (let ((result (iar--budget-append-trailer "hello")))
       (should (string-prefix-p "hello" result))
-      (should (string-match-p "\\[t\\+12:34/30:00 c6/120\\]\\'" result)))))
+      (should (string-match-p "\\[t\\+12:34/30:00 c6/300\\]\\'" result)))))
 
 (ert-deftest test-budget-count-includes-current-call ()
   "The trailer's call count INCLUDES the current call: the trailer
@@ -70,7 +70,7 @@ count is (1+ :tool-call-count)."
   (let ((iar--cycle-state (list :agent "t" :start-time (current-time)
                                 :wall-timeout 1800 :tool-call-count 0))
         (iar--one-shot-state nil))
-    (should (string-match-p "c1/120]\\'"
+    (should (string-match-p "c1/300]\\'"
                             (iar--budget-append-trailer "x")))))
 
 (ert-deftest test-budget-one-shot-state ()
@@ -83,7 +83,7 @@ one-shot)."
                                                 (seconds-to-time 754))
                                    :wall-timeout 7200
                                    :tool-call-count 119)))
-    (should (string-match-p "\\[t\\+12:34/120:00 c120/120\\]\\'"
+    (should (string-match-p "\\[t\\+12:34/120:00 c120/300\\]\\'"
                             (iar--budget-append-trailer "hello")))))
 
 (ert-deftest test-budget-cycle-state-wins ()
@@ -93,7 +93,7 @@ as the fences)."
                                 :wall-timeout 1800 :tool-call-count 1))
         (iar--one-shot-state (list :agent "o" :start-time (current-time)
                                    :wall-timeout 7200 :tool-call-count 2)))
-    (should (string-match-p "c2/120]\\'"
+    (should (string-match-p "c2/300]\\'"
                             (iar--budget-append-trailer "x")))))
 
 (ert-deftest test-budget-idempotent ()
@@ -102,7 +102,7 @@ twice on the same result)."
   (let ((iar--cycle-state (list :agent "t" :start-time (current-time)
                                 :wall-timeout 1800 :tool-call-count 5))
         (iar--one-shot-state nil))
-    (let ((result "[t+01:00/30:00 c1/120] already trailered"))
+    (let ((result "[t+01:00/30:00 c1/300] already trailered"))
       (should (string= result (iar--budget-append-trailer result))))))
 
 (ert-deftest test-budget-non-string ()
@@ -128,7 +128,7 @@ order (budget outer -> truncation inner)."
     (let* ((trailered (iar--budget-append-trailer (make-string 500 ?x)))
            (truncated (iar--truncate-tool-result trailered)))
       ;; The trailer must still be at the end after truncation
-      (should (string-match-p "\\[t\\+[0-9][0-9]:[0-9][0-9]/30:00 c6/120\\]\\'"
+      (should (string-match-p "\\[t\\+[0-9][0-9]:[0-9][0-9]/30:00 c6/300\\]\\'"
                               truncated)))))
 
 ;;; --- Shared clock (the scar-list law) ---

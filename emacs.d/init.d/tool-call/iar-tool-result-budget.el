@@ -47,7 +47,11 @@ Owned by configs/tool-limits.el.")
 
 ;; Forward-declared: owned by iar-agent-cycle.el (loads after this
 ;; module; runtime reads are safe, standalone loads need the default).
-(defvar iar-cycle-tool-call-cap 120
+;; NOTE: this defvar only binds when void -- if iar-agent-cycle.el
+;; loaded first, its value wins. Kept in sync with the owner
+;; (2026-09-09: 120 -> 300 with the cap raise; a stale forward
+;; declaration here shadowed the real cap for the trailer display).
+(defvar iar-cycle-tool-call-cap 300
   "SOFT cap: tool calls per cycle before tools are blocked.
 Owned by iar-agent-cycle.el; forward-declared here so the trailer
 can read it without a load-order dependency.")

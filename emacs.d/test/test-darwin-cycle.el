@@ -249,7 +249,7 @@
   (should-not (safe-local-variable-p 'iar-cycle-max-turns "foo"))
   (should (safe-local-variable-p 'iar-cycle-max-turns 40))
   (should (safe-local-variable-p 'iar-cycle-max-turns 100))
-  (should (eq (default-value 'iar-cycle-max-turns) 40)))
+  (should (eq (default-value 'iar-cycle-max-turns) 120)))
 
 (provide 'test-darwin-cycle)
 ;;; --- Additional coverage tests ---

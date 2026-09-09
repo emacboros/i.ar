@@ -12,10 +12,15 @@
   :safe #'iar--positive-integer-p
   :group 'iar)
 
-(defcustom iar-cycle-max-turns 40
+(defcustom iar-cycle-max-turns 120
   "Maximum number of LLM response turns before forcing cycle end.
 Each turn is one model response (with or without tool calls).
-This prevents infinite loops."
+This prevents infinite loops. Raised 40 -> 120 (2026-09-09, Nacho:
+cycle performance degraded vs interactive; headroom available).
+Measured: continuo's best cycle in the 09-09 log ran 85 turns --
+the old 40 killed that shape. Pathology is owned by the loop
+guard, the output-runaway guards and the context breaker; this
+is the absolute bound only."
   :type 'integer
   :safe #'iar--positive-integer-p
   :group 'iar)

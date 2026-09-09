@@ -114,9 +114,10 @@ its CYCLE_COMPLETE landing. Regression for the 53 exit-1 cycles
     (should-not (iar--cycle-tool-call-cap
                  (list :name "read_file" :args nil)))))
 
-(ert-deftest test-fence-cap-default-is-120 ()
-  "The cap default is 120 tool calls per cycle."
-  (should (= 120 iar-cycle-tool-call-cap)))
+(ert-deftest test-fence-cap-default-is-300 ()
+  "The cap default is 300 tool calls per cycle (raised from 120,
+2026-09-09: cycle limits raised across the board, Nacho)."
+  (should (= 300 iar-cycle-tool-call-cap)))
 
 (ert-deftest test-fence-cap-warns-once-at-budget ()
   "At the warn threshold the hook blocks ONE non-memory call with
@@ -172,9 +173,9 @@ memory pass, and the warn must not burn a memory call."
           (should-not (plist-get iar--cycle-state :cap-warned)))
       (kill-buffer cycle-buf))))
 
-(ert-deftest test-fence-cap-warn-default-is-60 ()
-  "The warn default is 60, below the 120 cap."
-  (should (= 60 iar-cycle-tool-call-warn))
+(ert-deftest test-fence-cap-warn-default-is-150 ()
+  "The warn default is 150, below the 300 cap."
+  (should (= 150 iar-cycle-tool-call-warn))
   (should (< iar-cycle-tool-call-warn iar-cycle-tool-call-cap)))
 
 (ert-deftest test-fence-cap-hard-cap-grace-on-first-fire ()

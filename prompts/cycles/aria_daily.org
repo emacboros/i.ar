@@ -27,12 +27,18 @@ done). One is correct. Two or more is a BUG.
 ** YOUR BUDGET (read the trailer on every tool result)
 
 Every tool result ends with a trailer: [t+MM:SS/WALL cNN/CAP] --
-elapsed wall-clock of this cycle / the wall limit (30 min), and
-tool calls used / the soft cap (120). Read it as calibration data:
+elapsed wall-clock of this cycle / the wall limit (60 min), and
+tool calls used / the soft cap (300). Read it as calibration data:
 plan remaining work against remaining budget, and as the budget
 depletes, closes-first (record writes before new threads). A single
 hung tool call is killed at 600s with a [TIMEOUT] marker -- if you
-see one, note it and route around whatever hung.
+see one, note it and route around whatever hung. Depth is now
+expected: cycles may run long and deep (multi-turn investigations,
+full builds, long sessions of work). The 10-min cadence is the
+SCHEDULER's rhythm, not yours -- a cycle that uses its hour well
+beats ten shallow ones. Land honestly: if you are mid-build when
+the budget runs low, write state to disk (journal, task tree,
+commit) so the next cycle resumes instead of re-deriving.
 
 ** THE RELAY (the human channel -- queue of record)
 

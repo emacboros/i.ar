@@ -244,16 +244,20 @@ Guarded: no active state -> silent no-op."
   (when iar--cycle-state
     (cl-incf (plist-get iar--cycle-state :tool-call-count))))
 
-(defvar iar-cycle-same-tool-warn 40
+(defvar iar-cycle-same-tool-warn 100
   "Same-tool TOTAL warning threshold (c39 fix B): block ONE call with
 a notice when a single tool has been called this many times in the
 current run. The c38 finding: 132 execute_code_local calls (a
 meter-reading burst) never tripped the chain guard -- varying commands
 reset the Jaccard counter faster than it accumulated. A per-tool TOTAL
-is immune to variation. 40 calls of one tool is a census, not a
-workflow. Fires once per run (:same-tool-warned); the warned call is
-retried, nothing is lost.")
-(defvar iar-cycle-tool-call-warn 60
+is immune to variation. Fires once per run (:same-tool-warned); the
+warned call is retried, nothing is lost. Raised 40 -> 100
+(2026-09-09, Nacho: cycle limits raised across the board; 40 was
+calibrated against the old 120-call cap -- with the cap at 300 the
+same-tool warn stays at a third of it, and legitimate batched
+investigation via execute_code_local can honestly exceed 40 calls
+in one deep cycle).")
+(defvar iar-cycle-tool-call-warn 150
   "Early-warning threshold for the tool-call cap (census option c,
 aria cycle 137 / continuo cycle 3). At this count the NEXT tool
 call is blocked ONCE with a budget notice -- the call is not lost,
@@ -261,11 +265,13 @@ the model retries it -- and after that warning, calls pass through
 until the soft cap. The warning is the only message the model can
 see in-cycle; without it a cycle discovers the cap only by hitting
 it, and a healthy long cycle dies at the fence it never saw.
-Numbers: healthy cycles run 51-61 calls (cap-60 era census); the
-warn at 60 tells the model it is at the edge while there is still
-room to converge or land.")
+Numbers: healthy cycles ran 51-61 calls under the cap-60 era
+(census); the warn originally sat AT that edge and killed healthy
+cycles. Raised 60 -> 150 alongside the soft cap 120 -> 300
+(2026-09-09, Nacho: cycle performance degraded vs interactive;
+headroom available) so the warn sits at half the soft cap again.")
 
-(defvar iar-cycle-tool-call-cap 120
+(defvar iar-cycle-tool-call-cap 300
   "SOFT cap: tool calls per cycle before tools are blocked.
 At the soft cap the cycle does NOT die: further tool calls are
 blocked with a message telling the model to write its summary
@@ -277,10 +283,11 @@ cycles died Sep 2 with zero record), but a legitimate full cycle
 (pulse + agora + sync + thread + memory pass) runs 51-61 calls,
 so 60 sat AT the edge of real work and killed healthy cycles
 (26 tool-cap exits in 3 days, aria cycle 137 census). Raised to
-120 (tool-cap-overcorrection fix, continuo cycle 3): pathology
-is owned by the chain guard (shape, 10 same-tool calls) and the
-context breaker (burn, 800k chars); this cap is the last-resort
-absolute bound only.")
+120 (tool-cap-overcorrection fix, continuo cycle 3), then to 300
+(2026-09-09, Nacho: cycles still degraded vs interactive; token
+headroom available). Pathology is owned by the chain guard
+(shape, 10 same-tool calls) and the context breaker (burn, 800k
+chars); this cap is the last-resort absolute bound only.")
 
 (defvar iar-cycle-tool-call-hard-cap 5
   "Ignored soft-cap blocks before the cycle is force-ended.

@@ -216,10 +216,15 @@ Set to nil to disable."
   :safe #'booleanp
   :group 'iar)
 
-(defcustom iar-context-soft-cap 131072
+(defcustom iar-context-soft-cap 196608
   "Input tokens (of the last completed request) at which the soft
 warn fires: one call blocked with a converge notice, then pass.
-128k tokens (Nacho, 2026-09-08). nil disables the soft warn."
+128k tokens (Nacho, 2026-09-08); raised to 192k (2026-09-09,
+Nacho: cycle performance degraded vs interactive -- interactive
+sessions legitimately run 100-250k tokens unfenced, and the
+measured cycle distribution p90=42k left headroom). The hard cap
+(512k) and the chars breaker (800k) are unchanged backstops.
+nil disables the soft warn."
   :type '(choice (integer :tag "Soft cap tokens")
                  (const :tag "Disabled" nil))
   :safe #'iar--positive-integer-or-nil-p

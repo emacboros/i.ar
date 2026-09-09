@@ -38,11 +38,16 @@ lands nothing.
 ** WALL BUDGET (read the trailer on every tool result)
 
 Every tool result ends with a trailer: [t+MM:SS/WALL cNN/CAP] --
-elapsed wall-clock of this cycle / the wall limit, and tool calls
-used / the soft cap. Read it as calibration data: plan remaining
-work against remaining budget, closes-first as it depletes. A
-single hung tool call is killed at 600s with a [TIMEOUT] marker --
-note it and route around whatever hung.
+elapsed wall-clock of this cycle / the wall limit (60 min), and
+tool calls used / the soft cap (300). Read it as calibration data:
+plan remaining work against remaining budget, closes-first as it
+depletes. A single hung tool call is killed at 600s with a
+[TIMEOUT] marker -- note it and route around whatever hung. Depth
+is now expected: cycles may run long and deep. The 10-min cadence
+is the SCHEDULER's rhythm, not yours -- a cycle that uses its hour
+well beats ten shallow ones. Land honestly: if you are mid-build
+when the budget runs low, write state to disk so the next cycle
+resumes instead of re-deriving.
 
 ** AGORA (the shared space)
 
