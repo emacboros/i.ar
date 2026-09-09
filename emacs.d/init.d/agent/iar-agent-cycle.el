@@ -1171,6 +1171,118 @@ Tools are gated by the project's #+TOOLS metadata."
 (add-hook 'iar-pre-tool-call-functions #'iar--cycle-tool-call-cap)
 (remove-hook 'iar-pre-tool-call-functions #'iar--cycle-context-breaker)
 (add-hook 'iar-pre-tool-call-functions #'iar--cycle-context-breaker)
+;; Interactive fences (aria-0006): global post-response hook, no-op
+;; unless iar-interactive-fences is on AND no cycle/one-shot state
+;; owns the run. Default off -- ratification pending.
+(remove-hook 'iar-post-response-functions #'iar--interactive-fence-handler)
+(add-hook 'iar-post-response-functions #'iar--interactive-fence-handler)
+
+
+;;; ---------------------------------------------------------
+;;; Interactive fences (aria-0006, cycle c107 proposal)
+;;; ---------------------------------------------------------
+;; The cycle and one-shot paths arm their fences via state plists
+;; created in iar-run-cycle / iar-run-one-shot. Interactive gptel
+;; sessions have NO state, so every fence that dispatches on
+;; (or iar--cycle-state iar--one-shot-state) is a silent no-op there
+;; -- the aria-0006 finding: the first INTERACTIVE text-loop
+;; degeneration (2026-09-08, glm-5.3-flash:cloud, witnessed by
+;; Nacho) had no instrument watching. The human was the only
+;; detector. Again.
+;;
+;; This section adds an OPTIONAL lightweight interactive state so
+;; the two text-degeneration fences (per-response output runaway +
+;; cross-response repetition) can arm in interactive sessions.
+;; DEFAULT OFF (iar-interactive-fences nil): enabling changes what
+;; plumbing may interrupt a human's session -- nacho-test class,
+;; ratification required before anyone flips it on.
+;;
+;; Contract differences from the cycle path:
+;; - No exit code, no tombstone: the human IS the loop. On second
+;;   fire the fence disarms itself for that buffer and says so --
+;;   re-arming requires a fresh M-x iar-interactive-fences-reset
+;;   (or reopening the buffer). A fence that silently re-arms is a
+;;   fence that can be ignored.
+;; - The tool-call cap and context breaker stay cycle/one-shot
+;;   only: interactive sessions are human-paced, and the cap's
+;;   landing contract (CYCLE_COMPLETE) has no interactive meaning.
+;; - A cycle or one-shot state in the same Emacs takes precedence:
+;;   their handlers own their buffers, this hook must not
+;;   double-fire into them.
+
+(defvar iar-interactive-fences nil
+  "When non-nil, arm the text-degeneration fences (output runaway +
+cross-response repetition) in INTERACTIVE gptel buffers.
+Default nil: ratification pending (aria-0006, nacho-test class --
+changes what plumbing may interrupt). Cycle and one-shot runs are
+unaffected either way; their own handlers own their buffers.")
+
+(defvar-local iar--interactive-state nil
+  "Per-buffer fence state for interactive gptel sessions.
+Same shape as the cycle state's fence-relevant keys:
+:cross-rep-window, :runaway-recovery-given, :disarmed.
+Created lazily by `iar--interactive-fence-handler' when
+`iar-interactive-fences' is on.")
+
+(defun iar--interactive-fences-reset ()
+  "Re-arm the interactive fences in the current buffer.
+Clears the per-buffer state (a disarmed fence re-arms)."
+  (interactive)
+  (setq iar--interactive-state nil)
+  (message "iar: interactive fences re-armed for this buffer"))
+
+(defun iar--interactive-fence-handler (start end)
+  "Post-response fence for INTERACTIVE gptel sessions.
+Global hook (registered at load): fires for every completed
+response in every buffer. No-ops unless `iar-interactive-fences'
+is on and no cycle/one-shot state owns the run. Checks the same
+two text-degeneration fences the cycle path uses; ONE recovery
+round-trip (snap-out prompt), then the fence disarms itself for
+the buffer -- the human is the loop, so the second fire says so
+instead of ending a run."
+  (when (and iar-interactive-fences
+             (null iar--cycle-state)
+             (null iar--one-shot-state)
+             (integerp start) (integerp end) (< start end))
+    ;; Lazy per-buffer state: created on first response, kept in the
+    ;; buffer so the cross-response window survives across turns.
+    (unless iar--interactive-state
+      (setq iar--interactive-state
+            (list :cross-rep-window nil
+                  :runaway-recovery-given nil
+                  :disarmed nil)))
+    (unless (plist-get iar--interactive-state :disarmed)
+      (let ((runaway (iar--cycle-output-runaway-p start end))
+            (saved-one-shot iar--one-shot-state)
+            cross)
+        ;; The cross-response check reads the active state via
+        ;; (or iar--cycle-state iar--one-shot-state) -- both nil in
+        ;; interactive use, so bind the buffer-local state into the
+        ;; alias slot it reads, then read the window back.
+        (setq iar--one-shot-state iar--interactive-state)
+        (setq cross (iar--cycle-cross-response-repetition-p start end))
+        (setq iar--interactive-state iar--one-shot-state)
+        (setq iar--one-shot-state saved-one-shot)
+        (when (or runaway cross)
+          (if (plist-get iar--interactive-state :runaway-recovery-given)
+              ;; Second fire: disarm, tell the human. No exit code --
+              ;; the human is the loop; a fence that silently re-arms
+              ;; is a fence that can be ignored.
+              (progn
+                (setq iar--interactive-state
+                      (plist-put iar--interactive-state :disarmed t))
+                (message "iar: text-loop fence fired AGAIN -- DISARMED in this buffer (M-x iar--interactive-fences-reset re-arms)")
+                (goto-char (point-max))
+                (insert "\n[iar fence] Text-loop fence fired twice -- disarmed in this buffer. Delete the looped text or M-x iar--interactive-fences-reset to re-arm.\n"))
+            ;; First fire: one recovery round-trip (same shape as the
+            ;; cycle path's snap-out).
+            (setq iar--interactive-state
+                  (plist-put iar--interactive-state
+                             :runaway-recovery-given t))
+            (message "iar: text-loop fence fired (interactive) -- requesting recovery")
+            (goto-char (point-max))
+            (insert "\nYou are repeating yourself -- a text-only loop. Break it NOW with a tool call or a short, fresh response. Do not analyze, do not repeat. If you were mid-task, state the next single step in one line.\n")
+            (gptel-send)))))))
 
 (provide 'iar-agent-cycle)
 ;;; ---------------------------------------------------------
