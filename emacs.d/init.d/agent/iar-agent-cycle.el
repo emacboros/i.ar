@@ -155,7 +155,18 @@ Returns `loop' if LOOP_COMPLETE is found, `cycle' if CYCLE_COMPLETE is found.
 Returns nil if neither is found. Search is case-sensitive.
 Sentinel must appear on its own line (surrounded by line boundaries).
 If START > END, swaps them. Positions clamped to buffer boundaries.
-BUFFER defaults to the current buffer."
+BUFFER defaults to the current buffer.
+
+c132 (2026-09-09): the search runs over MODEL-TEXT ONLY -- gptel
+`ignore' spans (reasoning/thinking blocks) and tool-call spans are
+excluded, the same discipline as `iar--cycle-response-text' (c54/c55).
+Live-fire evidence: continuo turn 557 (req 260909165458-70) ended
+exit 0 with ZERO durable output -- nemotron streamed ~29k chars of
+THINKING (which rehearses \"...signal CYCLE_COMPLETE\" as it plans
+the ending), emitted empty content, and the sentinel matched inside
+the thinking block. A sentinel inside thinking is a REHEARSAL, not
+an ENDING. The fences already ignore thinking; the exit detector
+must speak the same language."
   (let ((buf (or buffer (current-buffer))))
     (with-current-buffer buf
       (save-restriction
@@ -172,22 +183,27 @@ BUFFER defaults to the current buffer."
                   (max (min (or end buf-max) buf-max) buf-min)))
                (case-fold-search nil))
           (save-excursion
-            (goto-char search-start)
-            (cond
-             ;; c59 (2026-09-08): the sentinel is a TERMINATOR, not a
-             ;; line format. c58 (glm-5.3-flash) merged summary prose
-             ;; and the sentinel into one line ("...steps remain ->
-             ;; CYCLE_COMPLETE."); the own-line regex missed it, the
-             ;; grace window expired, exit 1 with the record written.
-             ;; The match now allows leading prose on the line, but the
-             ;; trailing anchor (\s-*$) preserves the c39 negative
-             ;; case: prose CONTAINING the token with text after it
-             ;; ("end with CYCLE_COMPLETE time. later") still does not
-             ;; match. Pinned by 4 tests in test-cycle-exit-codes.el.
-             ((re-search-forward "^.*\\(?:LOOP_COMPLETE\\)+\\s-*[.!]?\\s-*$" search-end t) 'loop)
-             ((re-search-forward "^.*\\(?:CYCLE_COMPLETE\\)+\\s-*[.!]?\\s-*$" search-end t) 'cycle)
-             (t nil))))))))
-
+            (catch 'sentinel
+              (let ((pos search-start))
+                (while (< pos search-end)
+                  (let* ((prop (get-text-property pos 'gptel))
+                         (next (or (next-single-property-change
+                                    pos 'gptel (current-buffer) search-end)
+                                   search-end)))
+                    (unless (or (eq prop 'ignore)
+                                (and (consp prop) (eq (car prop) 'tool)))
+                      ;; Model span only: c59 terminator regex (leading
+                      ;; prose allowed, trailing anchor preserved).
+                      (goto-char pos)
+                      (cond
+                       ((re-search-forward
+                         "^.*\\(?:LOOP_COMPLETE\\)+\\s-*[.!]?\\s-*$" next t)
+                        (throw 'sentinel 'loop))
+                       ((re-search-forward
+                         "^.*\\(?:CYCLE_COMPLETE\\)+\\s-*[.!]?\\s-*$" next t)
+                        (throw 'sentinel 'cycle))))
+                    (setq pos next)))
+                nil))))))))
 
 (defun iar--cycle-load-profile (agent-name)
   "Load a personality profile for AGENT-NAME using the assembly engine.
