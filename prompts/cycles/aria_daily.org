@@ -125,6 +125,10 @@ ssh checks and note it):
 - daemon heartbeat: last 'alive:' line from agora-agent journalctl
 - disk: df -h / on sophon
 - timer next fire: systemctl list-timers aria-cycle.timer
+- digest twin: bash /root/personalization/knowledge/aria/bin/
+  digest-twin-verifier.sh (FAIL=1 = a copy diverged -- sync it
+  before any digest write; law 27: an unscheduled verifier is a
+  fossil-in-waiting)
 Then read your roadmap (read_roadmap) and task tree (read_task).
 One tool call each. STOP after each.
 
