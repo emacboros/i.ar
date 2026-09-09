@@ -556,11 +556,25 @@ cleanup_container() {
 
 # --- Reset working tree on failure (loop mode only) ---
 reset_worktree() {
+    # c136 fix (aria, 2026-09-09): this function runs from the host
+    # service (root). git checkout/clean as root wrote root-owned
+    # .git/index + working-tree files; the cycle container (uid 1000,
+    # cap-drop=all, no DAC_OVERRIDE) then could not write them --
+    # REQUESTS.log write failures, stale LAST-CYCLE.txt reads by the
+    # fear organ (heartbeat-stale false alarms), broken git for the
+    # next cycle. Run the reset as the repo owner instead.
     [[ "${MODE}" != "loop" ]] && return
     info "Resetting working tree to clean state"
-    cd "${REPO_DIR}"
-    git checkout . 2>&1 || true
-    git clean -fd emacs.d/ 2>&1 || true
+    local owner
+    owner=$(stat -c %U "${REPO_DIR}" 2>/dev/null || echo "")
+    if [ -n "$owner" ] && [ "$owner" != "root" ] && command -v runuser >/dev/null 2>&1; then
+        runuser -u "$owner" -- git -C "${REPO_DIR}" checkout . 2>&1 || true
+        runuser -u "$owner" -- git -C "${REPO_DIR}" clean -fd emacs.d/ 2>&1 || true
+    else
+        cd "${REPO_DIR}"
+        git checkout . 2>&1 || true
+        git clean -fd emacs.d/ 2>&1 || true
+    fi
 }
 
 # =============================================================================
