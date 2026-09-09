@@ -86,7 +86,9 @@ When NO-THINK is non-nil, append think:false to disable model thinking
                                    "gpt-oss:120b"
                                    "mistral-medium-3.5:128b"
                                    "nemotron-3-super:120b"
+                                   "nemotron-3-super:cloud"
                                    "nemotron-3-ultra:cloud"
+                                   "gemma4:cloud"
                                    "deepseek-v4-flash:cloud"
                                    "deepseek-v4-pro:cloud"
                                    "glm-5.3:cloud"
@@ -96,9 +98,16 @@ When NO-THINK is non-nil, append think:false to disable model thinking
 ;; Default model: check EMACBOROS_OLLAMA_MODEL env var first (set by
 ;; iar.sh --model flag), fall back to glm-5.3:cloud.
 ;;
-;; The model MUST be in the :models list above. If it isn't, gptel will
-;; error quickly -- this is intentional, it catches typos and models
-;; that haven't been added to the config yet.
+;; The model MUST be in the :models list above. If it isn't, gptel
+;; does NOT error: gptel--sanitize-model silently falls back to the
+;; FIRST entry of :models (car available), and if that fallback is
+;; also absent from the ollama server, the request 404s and the cycle
+;; dies at its first request with no visible config error.
+;; (D-014 incident 2026-09-09: rotate.sh mapped continuo to
+;; nemotron-3-super:cloud while this list still lacked it; sanitize
+;; swapped to north-mini-code-1.0:q8_0, which the server no longer
+;; has -- continuo lost ~24h of cycles. rotate.sh and this list are
+;; ONE system; change them together.)
 (setq iar-gptel-default-model
       (intern (or (getenv "EMACBOROS_OLLAMA_MODEL")
                   "glm-5.3:cloud")))
