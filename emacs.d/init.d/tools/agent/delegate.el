@@ -229,6 +229,14 @@ It distinguishes three cases:
             (set completed-sym t)
             (when (symbol-value timer-sym)
               (cancel-timer (symbol-value timer-sym)))
+            ;; c143: restore the parent's global-default identity BEFORE
+            ;; the callback. The callback is the parent's async tool
+            ;; completion (gptel--process-tool-call runs from the
+            ;; delegate's own completion path); without the restore, the
+            ;; parent's post-completion audit lines (and the tool-call
+            ;; bridge's agent resolution fallback) resolve the leaked
+            ;; sub-agent default -- the 15:19:38 misattribution class.
+            (iar--delegate-restore-parent-defaults parent-agent-sym parent-file-sym)
             (let* ((response (iar--delegate-extract-result full-response)))
               (run-with-timer
                5 nil
@@ -247,6 +255,8 @@ It distinguishes three cases:
             (set completed-sym t)
             (when (symbol-value timer-sym)
               (cancel-timer (symbol-value timer-sym)))
+            ;; c143: restore before callback (same reasoning as case 1).
+            (iar--delegate-restore-parent-defaults parent-agent-sym parent-file-sym)
             (let* ((response (iar--delegate-extract-result full-response)))
               (run-with-timer
                5 nil

@@ -105,7 +105,7 @@ This is bridged to gptel-post-response-functions by the tool call layer.")
 Returns (:block . message) if any hook function blocks, nil otherwise."
   (run-hook-with-args-until-success 'iar-pre-tool-call-functions info))
 
-(defun iar--bridge-post-tool-call (tool-name tool-result &optional args)
+(defun iar--bridge-post-tool-call (tool-name tool-result &optional args agent)
   "Bridge function: run `iar-post-tool-call-functions' for TOOL-NAME
 and TOOL-RESULT.  Also logs every tool call to the audit log.
 
@@ -114,15 +114,18 @@ audit detail: for effectful tools the arguments ARE the fact being
 audited (which file was written, what command ran). Captured by
 `iar--truncate-tool-result-advice' from the tool-call struct while
 the conversation buffer is current -- async tool sentinels lose
-that context, so it must be taken here, not in the sentinel."
-  ;; Capture the agent name NOW, in the conversation buffer's dynamic
-  ;; context. By the time this runs we are inside gptel--handle-tool-use's
-  ;; with-current-buffer on the conversation buffer, so buffer-locals
-  ;; resolve. Async sentinels (execute_code_local's shell sentinel) run
-  ;; later in a dead context -- that is why 4238+ audit lines said
-  ;; "nil" for agent (2026-08-31 finding).
+that context, so it must be taken here, not in the sentinel.
+
+AGENT (optional) is the audit agent name, pre-resolved by the
+advice from the FSM's :buffer (c140/c143: async tool completions
+run OUTSIDE gptel--handle-tool-use's with-current-buffer, so
+buffer-locals do not resolve -- the delegate-completion
+misattribution). When AGENT is nil, falls back to the legacy
+current-buffer resolution: sync tools still dispatch inside the
+conversation buffer's dynamic context, and test paths pass fsm=nil."
   (iar--audit-log-tool-call-with-agent
-   tool-name args tool-result (iar--audit-log-agent-name))
+   tool-name args tool-result
+   (or agent (iar--audit-log-agent-name)))
   (run-hook-with-args 'iar-post-tool-call-functions tool-name tool-result))
 
 (defun iar--bridge-post-response (status info)
@@ -151,6 +154,31 @@ Returns RESULT unchanged if under limit or if truncation is disabled."
                                total keep keep)))
           (concat head notice tail))))))
 
+(defun iar--audit-log-agent-name-from-fsm (fsm)
+  "Resolve the audit agent name from FSM's :buffer (the conversation
+buffer that OWNS the request), falling back to the legacy
+current-buffer resolution. Never signals.
+
+c140/c143: gptel dispatches SYNC tools inside
+`gptel--handle-tool-use''s with-current-buffer on the conversation
+buffer, so buffer-locals resolve there. ASYNC tools (delegate is
+the only one) receive `process-tool-result' and call it LATER, from
+the tool's own completion path, in whatever buffer happens to be
+current -- the delegate's buffer or a dead context. Resolving the
+agent there misattributes the parent's delegate completion to the
+callee (the 15:19:38 audit line: no agent= detail, attributed to
+reviewer). The FSM carries the parent's :buffer through the whole
+async round trip, so the name must resolve from it, not from
+whatever is current at completion."
+  (condition-case nil
+      (or (when fsm
+            (let* ((info (ignore-errors (gptel-fsm-info fsm)))
+                   (buf (and (plistp info) (plist-get info :buffer))))
+              (when (and (bufferp buf) (buffer-live-p buf))
+                (buffer-local-value 'iar--current-agent-name buf))))
+          (iar--audit-log-agent-name))
+    (error "unknown")))
+
 (defun iar--truncate-tool-result-advice (orig-fun fsm tool-spec tool-call result)
   "Around advice on `gptel--process-tool-call'.
 Scrubs raw bytes from RESULT (utf-8), then truncates it before it
@@ -160,14 +188,20 @@ sentinel-crash fix (2026-09-02): raw binary bytes in a tool result
 conversation, and json-serialize rejected them on the NEXT request,
 killing batch Emacs with exit 255. Scrub happens before truncation
 so both paths see clean text.
-Also runs post-tool-call audit logging after the original function."
+Also runs post-tool-call audit logging after the original function,
+with the agent resolved from the FSM's :buffer (async-safe)."
   (let* ((tool-name (when tool-spec (gptel-tool-name tool-spec)))
          (args (when (plistp tool-call) (plist-get tool-call :args)))
          (truncated (iar--truncate-tool-result
                      (iar--utf8-scrub result)))
          (ret (funcall orig-fun fsm tool-spec tool-call truncated)))
-    ;; Post-tool-call: audit log (with args detail) + i.ar hooks
-    (iar--bridge-post-tool-call tool-name truncated args)
+    ;; Post-tool-call: audit log (with args detail) + i.ar hooks.
+    ;; The agent is resolved from the FSM's :buffer, not the current
+    ;; buffer: async tool completions run outside the dispatch context
+    ;; (c140/c143 misattribution fix).
+    (iar--bridge-post-tool-call
+     tool-name truncated args
+     (iar--audit-log-agent-name-from-fsm fsm))
     ret))
 
 ;;; ---------------------------------------------------------

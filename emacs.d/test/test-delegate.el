@@ -777,3 +777,107 @@ when no tools were called, not the full response."
   (let ((result (iar--delegate-extract-result
                  "text\n=== DELEGATION RESULT ===\n")))
     (should (string= result ""))))
+;;; --- c143: parent-default restore in completion cases 1/2a ---
+
+(ert-deftest test-delegate-completion-restores-parent-defaults-case1 ()
+  "Case 1 (tools called): the parent's global-default identity is
+restored BEFORE the callback runs. The callback is the parent's
+async tool completion; without the restore, the parent's
+post-completion audit lines resolve the leaked sub-agent default."
+  (with-temp-buffer
+    (insert "prefix\nresponse text here\n")
+    (let ((result nil)
+          (completed-sym (make-symbol "completed"))
+          (timer-sym (make-symbol "timer"))
+          (tools-called-sym (make-symbol "tools-called"))
+          (turn-count-sym (make-symbol "turn-count"))
+          (parent-agent-sym (make-symbol "parent-agent"))
+          (parent-file-sym (make-symbol "parent-file")))
+      (set completed-sym nil)
+      (set timer-sym nil)
+      (set tools-called-sym t)
+      (set turn-count-sym 0)
+      (set parent-agent-sym "parentaria")
+      (set parent-file-sym "/tmp/aria.org")
+      (let ((fn (iar--delegate-completion-fn
+                 (current-buffer)
+                 (lambda (r) (setq result r))
+                 "reviewer"
+                 completed-sym timer-sym 600
+                 tools-called-sym turn-count-sym
+                 iar-delegate-max-turns parent-agent-sym parent-file-sym)))
+        (funcall fn 8 (point-max))
+        (should result)
+        (should (symbol-value completed-sym))
+        ;; The parent's global default must be restored by the time
+        ;; the callback has run (it runs inside funcall callback).
+        (should (string= "parentaria"
+                         (default-value 'iar--current-agent-name)))
+        (should (string= "/tmp/aria.org"
+                         (default-value 'iar--current-agent-file)))))))
+
+(ert-deftest test-delegate-completion-restores-parent-defaults-case2a ()
+  "Case 2a (marker completion, no tools): parent defaults restored
+before the callback, same as case 1."
+  (with-temp-buffer
+    (insert "prefix\n=== DELEGATION RESULT ===\nDone.\n")
+    (let ((result nil)
+          (completed-sym (make-symbol "completed"))
+          (timer-sym (make-symbol "timer"))
+          (tools-called-sym (make-symbol "tools-called"))
+          (turn-count-sym (make-symbol "turn-count"))
+          (parent-agent-sym (make-symbol "parent-agent"))
+          (parent-file-sym (make-symbol "parent-file")))
+      (set completed-sym nil)
+      (set timer-sym nil)
+      (set tools-called-sym nil)
+      (set turn-count-sym 0)
+      (set parent-agent-sym "parentaria")
+      (set parent-file-sym "/tmp/aria.org")
+      (let ((fn (iar--delegate-completion-fn
+                 (current-buffer)
+                 (lambda (r) (setq result r))
+                 "reviewer"
+                 completed-sym timer-sym 600
+                 tools-called-sym turn-count-sym
+                 iar-delegate-max-turns parent-agent-sym parent-file-sym)))
+        (funcall fn 8 (point-max))
+        (should result)
+        (should (symbol-value completed-sym))
+        (should (string= "parentaria"
+                         (default-value 'iar--current-agent-name)))
+        (should (string= "/tmp/aria.org"
+                         (default-value 'iar--current-agent-file)))))))
+
+(ert-deftest test-delegate-completion-case2b-does-not-restore-mid-run ()
+  "Case 2b (re-prompt): the delegate is still running, so the
+parent's defaults must NOT be restored yet -- the sub-agent's
+global default must survive for its own next turn."
+  (with-temp-buffer
+    (insert "prefix\nI will act now.\n")
+    (let ((result nil)
+          (completed-sym (make-symbol "completed"))
+          (timer-sym (make-symbol "timer"))
+          (tools-called-sym (make-symbol "tools-called"))
+          (turn-count-sym (make-symbol "turn-count"))
+          (parent-agent-sym (make-symbol "parent-agent"))
+          (parent-file-sym (make-symbol "parent-file")))
+      (set completed-sym nil)
+      (set timer-sym nil)
+      (set tools-called-sym nil)
+      (set turn-count-sym 0)
+      (set parent-agent-sym "parentaria")
+      (set parent-file-sym "/tmp/aria.org")
+      (let ((fn (iar--delegate-completion-fn
+                 (current-buffer)
+                 (lambda (r) (setq result r))
+                 "reviewer"
+                 completed-sym timer-sym 600
+                 tools-called-sym turn-count-sym
+                 iar-delegate-max-turns parent-agent-sym parent-file-sym)))
+        (funcall fn 8 (point-max))
+        (should (null result))
+        (should (null (symbol-value completed-sym)))
+        ;; Still mid-run: the sub-agent's default stays.
+        (should-not (string= "parentaria"
+                             (default-value 'iar--current-agent-name)))))))
