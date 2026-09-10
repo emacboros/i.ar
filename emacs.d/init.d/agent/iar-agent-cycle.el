@@ -511,6 +511,30 @@ catches the loop well before the final 65536-token response while
 staying far above legitimate use (a line repeated 30 times across 5
 responses is essentially impossible in honest work).")
 
+(defun iar--cycle-thinking-only-response-p (start end)
+  "Return non-nil if the response region START..END is THINKING-ONLY:
+the model produced reasoning (gptel `ignore' spans) but no visible
+response text outside them. Measured as: the region is non-trivial
+(>500 chars of raw span) while `iar--cycle-response-text' (which
+excludes ignore + tool spans) yields under 20 chars of model text
+(separators only -- the real fires streamed content:"" throughout).
+
+Evidence (2026-09-10 night fires, continuo/nemotron): all six
+truncated-output fires (stop=length, 32768 tokens at the num_predict
+cap) were thinking-only -- 1.2-1.4M chars of streamed reasoning,
+content empty. A thinking-only truncated response can never land:
+the grace round-trip re-sends and the model loops again (fire 2
+burns another 32768 tokens + ~10 min wall). The deepseek-era fires
+were text loops (the per-response runaway guard's shape); the
+nemotron-era fires are the same pathology in the thinking channel.
+This predicate is the discriminator: thinking-only truncation ends
+the cycle immediately, no grace."
+  (when (and (integerp start) (integerp end) (< start end))
+    (let ((raw-size (- end start))
+          (text (iar--cycle-response-text start end)))
+      (and (> raw-size 500)
+           (< (length (string-trim text)) 20)))))
+
 (defun iar--cycle-truncated-output-p ()
   "Return non-nil if the most recently completed request was a
 truncated generation (stop=length) with output tokens above
@@ -949,6 +973,19 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                 ;; with the runaway recovery (:runaway-recovery-given) --
                 ;; one snap-out OR one landing per cycle, whichever the
                 ;; degradation shape calls for.
+                ;; Thinking-only truncation (nemotron-era fire class,
+                ;; 2026-09-10): the response is 1M+ chars of reasoning
+                ;; with no model text. The grace round-trip cannot land
+                ;; -- the model is looping in reasoning, not stuck before
+                ;; it. End immediately; the grace contract (one landing
+                ;; per cycle) applies only to truncations with real
+                ;; text, which CAN land.
+                (if (iar--cycle-thinking-only-response-p start end)
+                    (progn
+                      (message "[%s] Thinking-loop truncation (stop=length, %d tokens, thinking-only response) -- ending cycle, no grace"
+                               agent iar--reqlog-last-tokens-out)
+                      (setf (plist-get iar--cycle-state :completed) t)
+                      (setf (plist-get iar--cycle-state :exit-code) 1))
                 (if (plist-get iar--cycle-state :runaway-recovery-given)
                     (progn
                       (message "[%s] Truncated output (2nd fire, stop=length, %d tokens > %d) -- ending cycle"
@@ -963,7 +1000,7 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                              iar-cycle-truncated-output-threshold)
                     (goto-char (point-max))
                     (insert "\nYour previous response was truncated mid-thought (output token cap). Do NOT continue the thought. Land what you have NOW: write your journal entry, HISTORY.log line, and lab-notes post via append_file/tool calls, then end with CYCLE_COMPLETE on its own line. Keep it short.\n")
-                    (gptel-send))))
+                    (gptel-send)))))
                ((iar--cycle-output-runaway-p start end)
                 ;; Text-only output runaway: the model degraded into a
                 ;; repetition loop (repeated text, no tool call). Give it
