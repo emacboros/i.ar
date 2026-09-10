@@ -68,7 +68,8 @@
   (load (expand-file-name "memory.el" configs-dir))
   (load (expand-file-name "file-guard.el" configs-dir))
   (load (expand-file-name "tool-limits.el" configs-dir))
-  (load (expand-file-name "tasks.el" configs-dir)))
+  (load (expand-file-name "tasks.el" configs-dir))
+  (load (expand-file-name "mcp.el" configs-dir)))
 
 ;; --- Load shared utilities (must be before all other init.d modules) ---
 
