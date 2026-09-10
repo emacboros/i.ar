@@ -253,3 +253,102 @@ the echo-shape check on the executed call rejects it."
             (should (= 0 (plist-get iar--one-shot-state :exit-code)))))
       (setq iar--one-shot-state nil)
       (kill-buffer buf))))
+
+;;; --- Ollama-shape regression (c168) ---
+;;; The Ollama parser (gptel-ollama--sanitize-call-spec) delivers :args
+;;; as a PLIST (:command "..."), not a string. c167 matched only the
+;;; string shape and the close never fired in production (continuo
+;;; 22:19Z cycle: REQ -85 echo executed, no block). These tests pin the
+;;; PRODUCTION shape (law 39: the fixture must match production).
+
+(ert-deftest test-terminal-echo-ollama-plist-args-predicate-closes ()
+  "The predicate closes when the last spec's :args is the Ollama
+plist shape (:command \"echo \\\"CYCLE_COMPLETE\\\"\")."
+  (let ((buf (iar--test-terminal-echo-buffer
+              (list (cons "``` reasoning\nWe are done.\n```\n" 'ignore)
+                    (cons "``` tool (execute_code_local ...)\n```" '(tool . "call_1"))))))
+    (unwind-protect
+        (let ((iar--reqlog-last-tool-specs
+               (list (list :name "execute_code_local"
+                           :args '(:command "echo \"CYCLE_COMPLETE\"")))))
+          (with-current-buffer buf
+            (should (eq 'cycle (iar--cycle-terminal-echo-p (point-min) (point-max))))))
+      (kill-buffer buf))))
+
+(ert-deftest test-terminal-echo-ollama-plist-args-hook-closes ()
+  "The hook closes when info :args is the Ollama plist shape."
+  (let* ((buf (iar--test-echo-hook-buffer))
+         (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+    (unwind-protect
+        (with-current-buffer buf
+          (setq gptel--fsm-last
+                (gptel-make-fsm
+                 :info (list :position (copy-marker (point-min))
+                             :tracking-marker (copy-marker (point-max)))))
+          (let ((iar--reqlog-last-tool-specs
+                 (list (list :name "execute_code_local"
+                             :args '(:command "echo \"CYCLE_COMPLETE\""))))
+                (iar--one-shot-state nil))
+            (let ((result (iar--cycle-terminal-echo-close
+                           (list :name "execute_code_local"
+                                 :args '(:command "echo \"CYCLE_COMPLETE\"")))))
+              (should (plist-get result :block))
+              (should (plist-get iar--cycle-state :completed))
+              (should (= 0 (plist-get iar--cycle-state :exit-code))))))
+      (setq iar--cycle-state nil)
+      (kill-buffer buf))))
+
+(ert-deftest test-terminal-echo-ollama-plist-loop-echo-hook-exit-2 ()
+  "A LOOP echo in Ollama plist shape closes with exit 2."
+  (let* ((buf (iar--test-echo-hook-buffer))
+         (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+    (unwind-protect
+        (with-current-buffer buf
+          (setq gptel--fsm-last
+                (gptel-make-fsm
+                 :info (list :position (copy-marker (point-min))
+                             :tracking-marker (copy-marker (point-max)))))
+          (let ((iar--reqlog-last-tool-specs
+                 (list (list :name "execute_code_local"
+                             :args '(:command "echo \"LOOP_COMPLETE\""))))
+                (iar--one-shot-state nil))
+            (iar--cycle-terminal-echo-close
+             (list :name "execute_code_local"
+                   :args '(:command "echo \"LOOP_COMPLETE\"")))
+            (should (plist-get iar--cycle-state :completed))
+            (should (= 2 (plist-get iar--cycle-state :exit-code)))))
+      (setq iar--cycle-state nil)
+      (kill-buffer buf))))
+
+(ert-deftest test-terminal-echo-ollama-plist-grep-mention-no-close ()
+  "A census grep mentioning the token in Ollama plist shape does NOT
+close (the echo must be the whole command, not a substring)."
+  (let* ((buf (iar--test-echo-hook-buffer))
+         (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+    (unwind-protect
+        (with-current-buffer buf
+          (setq gptel--fsm-last
+                (gptel-make-fsm
+                 :info (list :position (copy-marker (point-min))
+                             :tracking-marker (copy-marker (point-max)))))
+          (let ((iar--reqlog-last-tool-specs
+                 (list (list :name "execute_code_local"
+                             :args '(:command "grep -c CYCLE_COMPLETE /tmp/x.log"))))
+                (iar--one-shot-state nil))
+            (should-not (iar--cycle-terminal-echo-close
+                         (list :name "execute_code_local"
+                               :args '(:command "grep -c CYCLE_COMPLETE /tmp/x.log"))))
+            (should-not (plist-get iar--cycle-state :completed))))
+      (setq iar--cycle-state nil)
+      (kill-buffer buf))))
+
+(ert-deftest test-terminal-echo-echo-command-helper-shapes ()
+  "iar--cycle-echo-command: plist -> :command value; string -> itself;
+other shapes -> nil."
+  (should (equal "echo \"CYCLE_COMPLETE\""
+                 (iar--cycle-echo-command '(:command "echo \"CYCLE_COMPLETE\""))))
+  (should (equal "echo \"CYCLE_COMPLETE\""
+                 (iar--cycle-echo-command "echo \"CYCLE_COMPLETE\"")))
+  (should-not (iar--cycle-echo-command '(:command :null)))
+  (should-not (iar--cycle-echo-command nil))
+  (should-not (iar--cycle-echo-command 42)))

@@ -571,6 +571,24 @@ distinguishes them. The nemotron streaming anomaly rate is ~1/900
        (integerp iar--reqlog-last-tokens-out)
        (= iar--reqlog-last-tokens-out 0)))
 
+(defun iar--cycle-echo-command (args)
+  "Return the COMMAND STRING carried by tool-call ARGS, or nil.
+Shape-tolerant (aria-0030 second correction, 2026-09-10 c168):
+the Ollama parser (gptel-ollama--sanitize-call-spec) delivers :args
+as a PLIST -- (:command \"echo ...\") -- while some backends/tests
+deliver a raw string. The c167 hook and predicate matched only the
+string shape, so the echo close NEVER fired on the production
+Ollama path (live evidence: continuo 22:19Z cycle, REQ -85 echo
+executed, no block, one more 2.8k-token round-trip). Accepts:
+- plist with :command -> its value (string)
+- string -> itself
+Anything else -> nil."
+  (cond
+   ((plistp args) (let ((cmd (plist-get args :command)))
+                    (and (stringp cmd) cmd)))
+   ((stringp args) args)
+   (t nil)))
+
 (defun iar--cycle-terminal-echo-p (start end)
   "Return the close symbol if the response region START..END is a
 TERMINAL-SENTINEL ECHO: the model's ONLY act in this response was a
@@ -616,11 +634,11 @@ response's request, never a stale one."
         (let* ((last-spec (car (last iar--reqlog-last-tool-specs)))
                (name (and (plistp last-spec) (plist-get last-spec :name)))
                (args (and (plistp last-spec) (plist-get last-spec :args))))
-          (when (and (equal name "execute_code_local")
-                     (stringp args)
-                     (string-match-p "CYCLE_COMPLETE\\|LOOP_COMPLETE" args))
-            (if (and (string-match-p "LOOP_COMPLETE" args)
-                     (not (string-match-p "CYCLE_COMPLETE" args)))
+          (when-let* ((cmd (and (equal name "execute_code_local")
+                                (iar--cycle-echo-command args)))
+                      (_ (string-match-p "CYCLE_COMPLETE\\|LOOP_COMPLETE" cmd)))
+            (if (and (string-match-p "LOOP_COMPLETE" cmd)
+                     (not (string-match-p "CYCLE_COMPLETE" cmd)))
                 'loop 'cycle)))))))
 
 (defun iar--cycle-terminal-echo-close (info)
@@ -657,10 +675,11 @@ the next request is sent. Returns nil otherwise."
       (let* ((name (plist-get info :name))
              (args (plist-get info :args)))
         (when (and (equal name "execute_code_local")
-                   (stringp args)
-                   (string-match-p
-                    "\\`\\s-*echo\\s-+\"?\\(CYCLE\\|LOOP\\)_COMPLETE"
-                    args))
+                   (let ((cmd (iar--cycle-echo-command args)))
+                     (and cmd
+                          (string-match-p
+                           "\\`\\s-*echo\\s-+\"?\\(CYCLE\\|LOOP\\)_COMPLETE"
+                           cmd))))
           (let* ((buf (plist-get state :buffer))
                  (closep
                   (when (buffer-live-p buf)
