@@ -32,6 +32,8 @@
 (defvar iar--reqlog-last-stop nil)
 (defvar iar--reqlog-last-tokens-out nil)
 (declare-function iar--reqlog-reset-last "iar-request-log.el")
+;; (iar--cycle-empty-response-p reads the same shared state; defined
+;; below alongside the truncated-output guard it sits next to.)
 (require 'iar-agent-loader)  ; iar--archetype-for-personality, iar--project-for-personality, iar--setup-assembled-buffer
 (require 'iar-prompt-assembly)  ; iar--assemble-prompt
 
@@ -523,6 +525,27 @@ burn another num_predict-capped output budget on the same loop."
        (integerp iar--reqlog-last-tokens-out)
        (> iar--reqlog-last-tokens-out iar-cycle-truncated-output-threshold)))
 
+(defun iar--cycle-empty-response-p ()
+  "Return non-nil if the most recently completed request was an
+EMPTY text-only end: stop=stop with tokens_out=0 (the 0/0 shape).
+Reads the shared last-request state published by the request log
+(:before gptel-curl--stream-cleanup, which runs before this
+post-response handler). Never fires on missing data (nil stop or
+nil tokens-out): no data is not an anomaly, it is absence of
+evidence.
+
+aria-0026 ruling (session XI, 2026-09-10): a 0/0 text-only end is
+TOMBSTONE-WORTHY, never a clean end. Live-fire: continuo turn 557
+(req 260909165458-70) ended exit 0 with zero durable output -- the
+cycle evaporated (no memory pass, no record) and LAST-CYCLE.txt
+said ok. At the response layer a 0/0 end is indistinguishable from
+a clean text-only end; the token counts are the only witness that
+distinguishes them. The nemotron streaming anomaly rate is ~1/900
+(1 occurrence in continuo's whole current log)."
+  (and (equal iar--reqlog-last-stop "stop")
+       (integerp iar--reqlog-last-tokens-out)
+       (= iar--reqlog-last-tokens-out 0)))
+
 (defun iar--fence-state-writeback (state)
   "Write the mutated fence STATE back to its owning global.
 The fences alias the active state as (or iar--cycle-state
@@ -891,6 +914,25 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
               ;; text-check returns nil on arm (re-send proceeds) and
               ;; non-nil on second fire (blocked).
               (cond
+               ((and (iar--cycle-empty-response-p)
+                     (not (iar--cycle-complete-p (current-buffer) start end)))
+                ;; aria-0026 (session XI, 2026-09-10): a 0/0 text-only
+                ;; end (stop=stop, tokens_out=0) is TOMBSTONE-WORTHY,
+                ;; never a clean end. Live-fire: continuo turn 557
+                ;; (req 260909165458-70) ended exit 0 with zero durable
+                ;; output -- no memory pass, no record, LAST-CYCLE.txt
+                ;; said ok. The cycle evaporated. Placed BEFORE the
+                ;; continue branch: a 0/0 end is already empty, so
+                ;; re-prompting cannot fix it -- re-prompting is the
+                ;; tombstone's job to record, not the cycle's to do.
+                ;; The sentinel branch above already claimed any
+                ;; response region that (impossibly, at 0 tokens)
+                ;; carries a sentinel; the (not complete-p) clause
+                ;; keeps the sentinel branch authoritative.
+                (message "[%s] Empty 0/0 text-only end (stop=stop, tokens_out=0) -- tombstone, exit 1" agent)
+                (iar--cycle-tombstone agent 0)
+                (setf (plist-get iar--cycle-state :completed) t)
+                (setf (plist-get iar--cycle-state :exit-code) 1))
                ((iar--cycle-truncated-output-p)
                 ;; Truncated generation at the output cap (stop=length,
                 ;; tokens_out > threshold): the model burned 65536 output
