@@ -623,6 +623,71 @@ response's request, never a stale one."
                      (not (string-match-p "CYCLE_COMPLETE" args)))
                 'loop 'cycle)))))))
 
+(defun iar--cycle-terminal-echo-close (info)
+  "Pre-tool-call hook: terminal-echo close, TOOL-PATH edition
+(aria-0030 correction, 2026-09-10 c167).
+
+The c166 post-response branch below is UNREACHABLE for the exact
+case it was built for: an echo-only response carries a tool call,
+so the FSM transitions WAIT -> TOOL -> TRET -> WAIT and NEVER
+reaches DONE -- `gptel-post-response-functions' fire only on
+DONE/ERRS/ABRT (gptel--handle-post-insert/-error/-abort).
+Live evidence (continuo cycle 21:36Z 2026-09-10, first run under
+the c166 fix): 7 echo requests, zero \"Terminal sentinel echo\"
+messages in the service log, cycle ended only via the
+thinking-only truncation guard on the NEXT request. The close
+must live in the channel that actually runs: the pre-tool-call
+hook, which fires for every pending tool call BEFORE execution.
+
+Discriminator (ALL required):
+- The call being executed is execute_code_local whose args match
+  the ECHO COMMAND SHAPE (echo + sentinel as the whole command) --
+  not a census grep that merely mentions the token.
+- iar--cycle-terminal-echo-p over the CURRENT response region
+  (the FSM's :position..:tracking-marker): last published spec is
+  the sentinel echo AND the response's model text is < 20 chars.
+  Same predicate as c166, reached through the tool path.
+
+On match: set :completed + :exit-code (CYCLE echo -> 0, LOOP
+echo -> 2), writeback, and block the call. The echo itself has
+nothing to run; the event loop sees :completed and exits before
+the next request is sent. Returns nil otherwise."
+  (let ((state (or iar--cycle-state iar--one-shot-state)))
+    (when state
+      (let* ((name (plist-get info :name))
+             (args (plist-get info :args)))
+        (when (and (equal name "execute_code_local")
+                   (stringp args)
+                   (string-match-p
+                    "\\`\\s-*echo\\s-+\"?\\(CYCLE\\|LOOP\\)_COMPLETE"
+                    args))
+          (let* ((buf (plist-get state :buffer))
+                 (closep
+                  (when (buffer-live-p buf)
+                    (with-current-buffer buf
+                      (let* ((finfo (and (gptel-fsm-p gptel--fsm-last)
+                                         (gptel-fsm-info gptel--fsm-last)))
+                             (start (plist-get finfo :position))
+                             (end (or (plist-get finfo :tracking-marker)
+                                      (plist-get finfo :position))))
+                        (when (and start end
+                                   (markerp start) (markerp end)
+                                   (marker-buffer start)
+                                   (eq (marker-buffer start) (marker-buffer end)))
+                          (iar--cycle-terminal-echo-p
+                           (marker-position start)
+                           (marker-position end))))))))
+            (when closep
+              (let ((agent (plist-get state :agent)))
+                (message "[%s] Terminal sentinel echo (pre-tool-call, %s) -- closing cycle"
+                         agent (if (eq closep 'loop) "LOOP" "CYCLE"))
+                (setq state (plist-put state :completed t))
+                (setq state (plist-put state :exit-code
+                                       (if (eq closep 'loop) 2 0)))
+                (iar--fence-state-writeback state)
+                (list :block
+                      "Terminal echo close registered -- cycle ending now.")))))))))
+
 (defun iar--fence-state-writeback (state)
   "Write the mutated fence STATE back to its owning global.
 The fences alias the active state as (or iar--cycle-state
@@ -974,15 +1039,18 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                             'loop)
                         2 0)))
              ((iar--cycle-terminal-echo-p start end)
-              ;; aria-0030 terminal-echo close (2026-09-10): the
-              ;; response's only act was a tool call echoing the
-              ;; sentinel -- the echo's tool result IS the close in
-              ;; the tool channel. Same authority as the text
-              ;; sentinel (law 38: speak the listener's language, or
-              ;; make the listener speak the speaker's). Placed
-              ;; BEFORE max-turns: a close is a close, even a turn
-              ;; that exhausted the budget trying to close. LOOP
-              ;; echo -> exit 2 (task done), CYCLE echo -> exit 0.
+              ;; aria-0030 terminal-echo close, DONE-path belt
+              ;; (2026-09-10). DEAD CODE in production as built
+              ;; (c166): an echo-only response carries a tool call,
+              ;; the FSM never reaches DONE, and this handler never
+              ;; runs for it. The LIVE close is the pre-tool-call
+              ;; hook iar--cycle-terminal-echo-close. This branch
+              ;; stays as a belt for a future gptel change that runs
+              ;; post-response hooks on tool-call responses; it is
+              ;; exercised by tests but cannot fire on today's FSM.
+              ;; Placed BEFORE max-turns: a close is a close, even a
+              ;; turn that exhausted the budget trying to close.
+              ;; LOOP echo -> exit 2 (task done), CYCLE echo -> exit 0.
               (let ((close-kind (iar--cycle-terminal-echo-p start end)))
                 (message "[%s] Terminal sentinel echo (tool channel, %s) -- closing cycle"
                          agent (if (eq close-kind 'loop) "LOOP" "CYCLE"))
@@ -1342,6 +1410,12 @@ Tools are gated by the project's #+TOOLS metadata."
 (add-hook 'iar-pre-tool-call-functions #'iar--cycle-tool-call-cap)
 (remove-hook 'iar-pre-tool-call-functions #'iar--cycle-context-breaker)
 (add-hook 'iar-pre-tool-call-functions #'iar--cycle-context-breaker)
+;; Terminal-echo close, TOOL path (aria-0030 correction): the c166
+;; post-response branch never runs for tool-call responses (the FSM
+;; reaches DONE only on text-only responses). This hook fires in the
+;; pre-tool-call channel, which DOES run for every pending call.
+(remove-hook 'iar-pre-tool-call-functions #'iar--cycle-terminal-echo-close)
+(add-hook 'iar-pre-tool-call-functions #'iar--cycle-terminal-echo-close)
 ;; Interactive fences (aria-0006): global post-response hook, no-op
 ;; unless iar-interactive-fences is on AND no cycle/one-shot state
 ;; owns the run. Default off -- ratification pending.

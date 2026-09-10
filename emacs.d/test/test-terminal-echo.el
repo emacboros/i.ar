@@ -121,3 +121,135 @@ fails because the response carries real text after the tool span."
   (let ((iar--reqlog-last-tool-specs (list (iar--test-echo-spec "echo \"CYCLE_COMPLETE\""))))
     (iar--reqlog-reset-last)
     (should (null iar--reqlog-last-tool-specs))))
+
+;;; --- pre-tool-call hook (c167 correction: the close lives in the tool path) ---
+
+(defun iar--test-echo-hook-buffer ()
+  "Build a response buffer for the hook tests: thinking (ignore) +
+tool span, model text empty -- the echo-only production shape."
+  (iar--test-terminal-echo-buffer
+   (list (cons "``` reasoning\nWe are done.\n```\n" 'ignore)
+         (cons "``` tool (execute_code_local ...)\n```" '(tool . "call_1")))))
+
+(ert-deftest test-terminal-echo-hook-closes-cycle ()
+  "The pre-tool-call hook closes the cycle on an echo-only response:
+:completed t, exit 0, block message returned."
+  (let* ((buf (iar--test-echo-hook-buffer))
+         (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+    (unwind-protect
+        (with-current-buffer buf
+          (setq gptel--fsm-last
+                (gptel-make-fsm
+                 :info (list :position (copy-marker (point-min))
+                             :tracking-marker (copy-marker (point-max)))))
+          (let ((iar--reqlog-last-tool-specs
+                 (list (list :name "execute_code_local"
+                             :args "echo \"CYCLE_COMPLETE\"")))
+                (iar--one-shot-state nil))
+            (let ((result (iar--cycle-terminal-echo-close
+                           (list :name "execute_code_local"
+                                 :args "echo \"CYCLE_COMPLETE\""))))
+              (should (plist-get result :block))
+              (should (plist-get iar--cycle-state :completed))
+              (should (= 0 (plist-get iar--cycle-state :exit-code))))))
+      (setq iar--cycle-state nil)
+      (kill-buffer buf))))
+
+(ert-deftest test-terminal-echo-hook-loop-echo-exit-2 ()
+  "A LOOP echo closes with exit 2 (task done)."
+  (let* ((buf (iar--test-echo-hook-buffer))
+         (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+    (unwind-protect
+        (with-current-buffer buf
+          (setq gptel--fsm-last
+                (gptel-make-fsm
+                 :info (list :position (copy-marker (point-min))
+                             :tracking-marker (copy-marker (point-max)))))
+          (let ((iar--reqlog-last-tool-specs
+                 (list (list :name "execute_code_local"
+                             :args "echo \"LOOP_COMPLETE\"")))
+                (iar--one-shot-state nil))
+            (iar--cycle-terminal-echo-close
+             (list :name "execute_code_local" :args "echo \"LOOP_COMPLETE\""))
+            (should (plist-get iar--cycle-state :completed))
+            (should (= 2 (plist-get iar--cycle-state :exit-code)))))
+      (setq iar--cycle-state nil)
+      (kill-buffer buf))))
+
+(ert-deftest test-terminal-echo-hook-no-close-on-text-response ()
+  "A response with real model text + echo does NOT close (mid-work)."
+  (let* ((buf (iar--test-terminal-echo-buffer
+               (list (cons "Census done, moving on.\n" nil)
+                     (cons "``` tool (execute_code_local ...)\n```" '(tool . "call_1")))))
+         (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+    (unwind-protect
+        (with-current-buffer buf
+          (setq gptel--fsm-last
+                (gptel-make-fsm
+                 :info (list :position (copy-marker (point-min))
+                             :tracking-marker (copy-marker (point-max)))))
+          (let ((iar--reqlog-last-tool-specs
+                 (list (list :name "execute_code_local"
+                             :args "echo \"CYCLE_COMPLETE\"")))
+                (iar--one-shot-state nil))
+            (should-not (iar--cycle-terminal-echo-close
+                         (list :name "execute_code_local"
+                               :args "echo \"CYCLE_COMPLETE\"")))
+            (should-not (plist-get iar--cycle-state :completed))))
+      (setq iar--cycle-state nil)
+      (kill-buffer buf))))
+
+(ert-deftest test-terminal-echo-hook-no-close-on-grep-mention ()
+  "A census grep command that MENTIONS the sentinel does not close:
+the echo-shape check on the executed call rejects it."
+  (let* ((buf (iar--test-echo-hook-buffer))
+         (iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+    (unwind-protect
+        (with-current-buffer buf
+          (setq gptel--fsm-last
+                (gptel-make-fsm
+                 :info (list :position (copy-marker (point-min))
+                             :tracking-marker (copy-marker (point-max)))))
+          (let ((iar--reqlog-last-tool-specs
+                 (list (list :name "execute_code_local"
+                             :args "grep -c CYCLE_COMPLETE /tmp/census.log")))
+                (iar--one-shot-state nil))
+            (should-not (iar--cycle-terminal-echo-close
+                         (list :name "execute_code_local"
+                               :args "grep -c CYCLE_COMPLETE /tmp/census.log")))
+            (should-not (plist-get iar--cycle-state :completed))))
+      (setq iar--cycle-state nil)
+      (kill-buffer buf))))
+
+(ert-deftest test-terminal-echo-hook-no-state-no-close ()
+  "No active cycle/one-shot state -> nil, no crash (interactive use)."
+  (let* ((buf (iar--test-echo-hook-buffer))
+         (iar--cycle-state nil)
+         (iar--one-shot-state nil))
+    (unwind-protect
+        (with-current-buffer buf
+          (should-not (iar--cycle-terminal-echo-close
+                       (list :name "execute_code_local"
+                             :args "echo \"CYCLE_COMPLETE\""))))
+      (kill-buffer buf))))
+
+(ert-deftest test-terminal-echo-hook-one-shot-closes ()
+  "The hook dispatches on one-shot state too (echo close in one-shot)."
+  (let* ((buf (iar--test-echo-hook-buffer))
+         (iar--cycle-state nil)
+         (iar--one-shot-state (iar--cycle-make-state "test" buf nil 40)))
+    (unwind-protect
+        (with-current-buffer buf
+          (setq gptel--fsm-last
+                (gptel-make-fsm
+                 :info (list :position (copy-marker (point-min))
+                             :tracking-marker (copy-marker (point-max)))))
+          (let ((iar--reqlog-last-tool-specs
+                 (list (list :name "execute_code_local"
+                             :args "echo \"CYCLE_COMPLETE\""))))
+            (iar--cycle-terminal-echo-close
+             (list :name "execute_code_local" :args "echo \"CYCLE_COMPLETE\""))
+            (should (plist-get iar--one-shot-state :completed))
+            (should (= 0 (plist-get iar--one-shot-state :exit-code)))))
+      (setq iar--one-shot-state nil)
+      (kill-buffer buf))))
