@@ -881,3 +881,85 @@ global default must survive for its own next turn."
         ;; Still mid-run: the sub-agent's default stays.
         (should-not (string= "parentaria"
                              (default-value 'iar--current-agent-name)))))))
+
+;;; --- c149: timeout handler is single-callback and terminal ---
+
+(ert-deftest test-delegate-timeout-handler-live-buffer-single-callback ()
+  "c149: on a live buffer the timeout handler completes ONCE.
+Sets COMPLETED-SYM before aborting (so the completion hook's entry
+guard skips the aborted request -- no re-prompt of a dying request),
+calls the callback exactly once with a timeout message, and schedules
+exactly one buffer-kill timer."
+  (let ((result nil)
+        (callback-count 0)
+        (buf (generate-new-buffer "test-timeout-live"))
+        (completed-sym (make-symbol "completed"))
+        (timer-sym (make-symbol "timer"))
+        (tools-called-sym (make-symbol "tools-called"))
+        (turn-count-sym (make-symbol "turn-count")))
+    (set completed-sym nil)
+    (set timer-sym nil)
+    (set tools-called-sym nil)
+    (set turn-count-sym 0)
+    (unwind-protect
+        (progn
+          ;; Simulate a live delegate buffer with partial response text.
+          (with-current-buffer buf
+            (insert "partial thinking, no result yet"))
+          (iar--delegate-timeout-handler
+           buf (lambda (r) (setq result r) (cl-incf callback-count))
+           "testagent" completed-sym 1 30
+           nil nil)
+          ;; Single callback, completed flag set, timeout message.
+          (should (= callback-count 1))
+          (should (symbol-value completed-sym))
+          (should (string-match-p "TIMEOUT after 30s" result))
+          ;; No re-prompt timer was armed by the completion hook (the
+          ;; hook is skipped entirely via its entry guard).
+          (should (null (symbol-value timer-sym))))
+      (when (buffer-live-p buf) (kill-buffer buf))
+      ;; Cancel the scheduled buffer-kill timer so it doesn't fire
+      ;; after the test buffer is gone.
+      (dolist (timer timer-list)
+        (when (and (timerp timer)
+                   (eq (aref timer 5) buf))
+          (cancel-timer timer))))))
+
+(ert-deftest test-delegate-timeout-handler-completion-hook-skips-after ()
+  "After the timeout handler completes, the completion hook must be a no-op.
+This is the c148 regression: the hook used to take the re-prompt case on
+an aborted request, orphaning a new request in the dying buffer."
+  (let ((timeout-result nil)
+        (hook-result "not-called")
+        (buf (generate-new-buffer "test-timeout-skip"))
+        (completed-sym (make-symbol "completed"))
+        (timer-sym (make-symbol "timer"))
+        (tools-called-sym (make-symbol "tools-called"))
+        (turn-count-sym (make-symbol "turn-count")))
+    (set completed-sym nil)
+    (set timer-sym nil)
+    (set tools-called-sym nil)
+    (set turn-count-sym 0)
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (insert "some partial text"))
+          ;; Timeout completes the delegate first.
+          (iar--delegate-timeout-handler
+           buf (lambda (r) (setq timeout-result r)) "testagent" completed-sym 1 30
+           nil nil)
+          ;; Now the completion hook fires (as gptel-abort's ABRT
+          ;; transition would): with COMPLETED-SYM set it must do
+          ;; NOTHING -- no re-prompt, no second callback, no turn bump.
+          (let ((fn (iar--delegate-completion-fn
+                     buf (lambda (r) (setq hook-result r))
+                     "testagent" completed-sym timer-sym 30
+                     tools-called-sym turn-count-sym 15 nil nil))
+                (start (point-min))
+                (end (point-max)))
+            (funcall fn start end)
+            (should (string-match-p "TIMEOUT after 30s" timeout-result))
+            (should (equal hook-result "not-called")) ; callback NOT called again
+            (should (= (symbol-value turn-count-sym) 0)) ; no re-prompt turn
+            (should (null (symbol-value timer-sym))))) ; no re-prompt timer
+      (when (buffer-live-p buf) (kill-buffer buf)))))

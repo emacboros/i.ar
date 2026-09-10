@@ -65,13 +65,25 @@ default and landed in the reviewer's audit tree)."
   "Handle a delegate timeout.
 This function is called by a timer when the sub-agent hasn't completed
 within TIMEOUT-SECS.  It aborts the gptel request and calls CALLBACK
-with a timeout message or partial response.
+ONCE with a timeout message or partial response.
 
 COMPLETED-SYM is a symbol whose value is checked dynamically (not a
-static boolean).  This is critical: gptel-abort may trigger the
-completion hook which sets the symbol to t before the fallback lambda
-runs.  Using a symbol ensures the fallback sees the updated value
-and avoids a double-callback race."
+static boolean).
+
+c149 (2026-09-10, aria c148 failure): the old design aborted first and
+completed via a 1s fallback timer, assuming gptel-abort's ABRT
+transition would land the completion hook in a terminal case.  It does
+not: the completion hook sees an empty response (no tools, no marker)
+and takes the RE-PROMPT case -- which leaves COMPLETED-SYM nil and
+schedules a new request in the dying buffer.  The fallback then
+double-callbacks the parent, the re-prompted request is orphaned when
+the buffer-kill timer fires, and its curl sentinel/filter hits the dead
+buffer (set-buffer nil -> \"Wrong type argument: stringp, nil\"; the
+fork's stream-cleanup then kill-buffers the current buffer).  Observed
+live: aria c148 (2026-09-10 02:15 UTC) died exit 255 ten seconds after
+its reviewer delegate timed out.  Fix: mark completed BEFORE the abort,
+call the callback synchronously once, and let the completion hook's
+entry guard skip the aborted request entirely."
   (cond
    ((not (buffer-live-p buf))
     (unless (symbol-value completed-sym)
@@ -81,38 +93,35 @@ and avoids a double-callback race."
                (format "Delegate '%s' buffer was killed before completion." agent))))
    ((symbol-value completed-sym))  ; Already done, nothing to do
    (t
+    ;; c149: mark completed BEFORE aborting. The completion hook fires
+    ;; from gptel-abort's ABRT transition, sees an empty response, and
+    ;; would otherwise take the re-prompt case (2b) -- re-prompting a
+    ;; request we are killing and leaving COMPLETED-SYM nil for the
+    ;; fallback to double-callback on. With the flag set first, the
+    ;; completion hook's entry guard skips everything and this handler
+    ;; is the SINGLE completion path.
+    (set completed-sym t)
     (gptel-abort buf)
-    ;; Fallback: if gptel-abort doesn't trigger the post-response hook,
-    ;; force completion after a brief delay.  Check the symbol's current
-    ;; value (not a captured snapshot) so that if the completion hook
-    ;; fired between gptel-abort and this fallback, we skip the callback.
-    ;; Set completed-sym to t before calling the callback to prevent a
-    ;; double-callback if the completion hook fires after the fallback.
-    (run-with-timer
-     1 nil
-     (lambda ()
-       (unless (symbol-value completed-sym)
-         (set completed-sym t)
-         (iar--delegate-restore-parent-defaults parent-agent-sym parent-file-sym)
-         (let ((partial
-                (when (buffer-live-p buf)
-                  (with-current-buffer buf
-                    (save-restriction
-                      (widen)
-                      (if (and resp-start (< resp-start (point-max)))
-                          (buffer-substring-no-properties resp-start (point-max))
-                        ""))))))
-           ;; Delay buffer kill to avoid "Selecting deleted buffer" in sentinel
-           (run-with-timer
-            3 nil
-            (lambda ()
-              (when (buffer-live-p buf) (kill-buffer buf))))
-           (funcall callback
-                    (if (and partial (iar--non-blank-p partial))
-                        (format "[TIMEOUT after %ds -- partial response captured]\n\n%s"
-                                timeout-secs partial)
-                      (format "[TIMEOUT after %ds -- no response was generated before timeout]"
-                              timeout-secs))))))))))
+    (iar--delegate-restore-parent-defaults parent-agent-sym parent-file-sym)
+    (let ((partial
+           (when (buffer-live-p buf)
+             (with-current-buffer buf
+               (save-restriction
+                 (widen)
+                 (if (and resp-start (< resp-start (point-max)))
+                     (buffer-substring-no-properties resp-start (point-max))
+                   ""))))))
+      ;; Delay buffer kill to avoid "Selecting deleted buffer" in sentinel
+      (run-with-timer
+       3 nil
+       (lambda ()
+         (when (buffer-live-p buf) (kill-buffer buf))))
+      (funcall callback
+               (if (and partial (iar--non-blank-p partial))
+                   (format "[TIMEOUT after %ds -- partial response captured]\n\n%s"
+                           timeout-secs partial)
+                 (format "[TIMEOUT after %ds -- no response was generated before timeout]"
+                         timeout-secs)))))))
 
 ;;; Async tool function
 
@@ -269,6 +278,9 @@ It distinguishes three cases:
                                  agent timeout-secs)))))
 
            ;; Case 2b: No tools called, no marker, under max turns -- re-prompt.
+           ;; c149 belt: re-check COMPLETED-SYM inside the timer -- a timeout
+           ;; (or a race) may have completed this delegate between the hook
+           ;; firing and the timer running; never re-prompt a dead request.
            ((< turn-count max-turns)
             (set turn-count-sym (1+ turn-count))
             (set tools-called-sym nil)   ; Reset for next turn
