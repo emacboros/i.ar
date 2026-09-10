@@ -328,13 +328,23 @@ estimate of the NEXT request's size (each request re-sends the
 accumulated context). Reset to nil at cycle start by
 `iar--reqlog-reset-last'.")
 
+(defvar iar--reqlog-last-tool-specs nil
+  "Tool-use call specs of the most recently dumped request (list).
+Set by `iar--reqlog-dump' from the fork's :tool-use -- the same plist
+list the PARSE line serializes, kept raw so readers can discriminate
+on names AND args (the terminal-echo close detector reads the LAST
+spec's :name and :args; the log line's 300-char arg cap would mangle
+long args). Reset to nil at cycle start by `iar--reqlog-reset-last'.
+nil means the last request carried no tool calls (or no data).")
+
 (defun iar--reqlog-reset-last ()
   "Reset the last-request stop/tokens-out shared state to nil.
 Called at cycle start so a stale value from a previous cycle (or a
 delegate's request) is never read as this cycle's first response."
   (setq iar--reqlog-last-stop nil
         iar--reqlog-last-tokens-out nil
-        iar--reqlog-last-tokens-in nil))
+        iar--reqlog-last-tokens-in nil
+        iar--reqlog-last-tool-specs nil))
 
 (defun iar--reqlog-dump (process)
   "Dump raw response tail + parse result for PROCESS. Best-effort.
@@ -394,7 +404,8 @@ still readable."
               ;; that just completed, not a stale one.
               (setq iar--reqlog-last-stop stop
                     iar--reqlog-last-tokens-out tok-out
-                    iar--reqlog-last-tokens-in tok-in)
+                    iar--reqlog-last-tokens-in tok-in
+                    iar--reqlog-last-tool-specs (and (listp tool-use) tool-use))
               (iar--reqlog-append
                "REQ %s PARSE status=%s tools=%d specs=%s error=%s stop=%s tokens_in=%s tokens_out=%s"
                id (or status "?")

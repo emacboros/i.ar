@@ -31,6 +31,7 @@
 ;; truncated-output guard compiles clean.
 (defvar iar--reqlog-last-stop nil)
 (defvar iar--reqlog-last-tokens-out nil)
+(defvar iar--reqlog-last-tool-specs nil)
 (declare-function iar--reqlog-reset-last "iar-request-log.el")
 ;; (iar--cycle-empty-response-p reads the same shared state; defined
 ;; below alongside the truncated-output guard it sits next to.)
@@ -570,6 +571,58 @@ distinguishes them. The nemotron streaming anomaly rate is ~1/900
        (integerp iar--reqlog-last-tokens-out)
        (= iar--reqlog-last-tokens-out 0)))
 
+(defun iar--cycle-terminal-echo-p (start end)
+  "Return the close symbol if the response region START..END is a
+TERMINAL-SENTINEL ECHO: the model's ONLY act in this response was a
+tool call whose command echoes the close sentinel, with no model
+text around it. Returns \='loop for a LOOP_COMPLETE echo, \='cycle
+for a CYCLE_COMPLETE echo, nil otherwise.
+
+aria-0030 (2026-09-10): nemotron reads \"signal CYCLE_COMPLETE\" as
+an ACTION -- it calls execute_code_local with `echo
+\"CYCLE_COMPLETE\"' as its closing move. The sentinel detector
+(iar--cycle-complete-p) searches MODEL TEXT ONLY (c132 discipline:
+a sentinel inside a tool span is a rehearsal, not an ending), so
+the echo never registered and the cycle granted more turns -- 12
+echo turns, ~31% of one continuo cycle's burn, pure ceremony
+between \"done working\" and \"close registered\". The echo's tool
+result IS the sentinel in the tool channel; this predicate makes
+the listener speak the speaker's language (law 38).
+
+Two conditions, BOTH required:
+- The response region's model text (iar--cycle-response-text,
+  which excludes ignore + tool spans) is empty or separators-only
+  (< 20 chars trimmed, the same threshold as
+  iar--cycle-thinking-only-response-p). A response with real text
+  plus an echo is mid-work, not a close.
+- The JUST-COMPLETED request's LAST tool-use spec (published by
+  iar-request-log as iar--reqlog-last-tool-specs) is
+  execute_code_local with CYCLE_COMPLETE/LOOP_COMPLETE in its
+  args. Last-spec, not any-spec: the close is the final act.
+
+False-close risk is accepted on census evidence: zero echo-only
+responses mid-work in any REQUESTS.log census (echoes appear only
+at cycle end, reqs 38-58 of 60 in the worst batch). A mid-work
+echo-only response closes the cycle early -- never yet observed.
+Reads iar--reqlog-last-tool-specs, which the dump publishes :before
+the post-response handler runs, so it always describes THIS
+response's request, never a stale one."
+  (when (and (integerp start) (integerp end) (<= start end))
+    (let ((text (and (< start end)
+                     (iar--cycle-response-text start end))))
+      (when (and text (< (length (string-trim text)) 20)
+                 (listp iar--reqlog-last-tool-specs)
+                 iar--reqlog-last-tool-specs)
+        (let* ((last-spec (car (last iar--reqlog-last-tool-specs)))
+               (name (and (plistp last-spec) (plist-get last-spec :name)))
+               (args (and (plistp last-spec) (plist-get last-spec :args))))
+          (when (and (equal name "execute_code_local")
+                     (stringp args)
+                     (string-match-p "CYCLE_COMPLETE\\|LOOP_COMPLETE" args))
+            (if (and (string-match-p "LOOP_COMPLETE" args)
+                     (not (string-match-p "CYCLE_COMPLETE" args)))
+                'loop 'cycle)))))))
+
 (defun iar--fence-state-writeback (state)
   "Write the mutated fence STATE back to its owning global.
 The fences alias the active state as (or iar--cycle-state
@@ -920,6 +973,22 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                     (if (eq (iar--cycle-complete-p (current-buffer) start end)
                             'loop)
                         2 0)))
+             ((iar--cycle-terminal-echo-p start end)
+              ;; aria-0030 terminal-echo close (2026-09-10): the
+              ;; response's only act was a tool call echoing the
+              ;; sentinel -- the echo's tool result IS the close in
+              ;; the tool channel. Same authority as the text
+              ;; sentinel (law 38: speak the listener's language, or
+              ;; make the listener speak the speaker's). Placed
+              ;; BEFORE max-turns: a close is a close, even a turn
+              ;; that exhausted the budget trying to close. LOOP
+              ;; echo -> exit 2 (task done), CYCLE echo -> exit 0.
+              (let ((close-kind (iar--cycle-terminal-echo-p start end)))
+                (message "[%s] Terminal sentinel echo (tool channel, %s) -- closing cycle"
+                         agent (if (eq close-kind 'loop) "LOOP" "CYCLE"))
+                (setf (plist-get iar--cycle-state :completed) t)
+                (setf (plist-get iar--cycle-state :exit-code)
+                      (if (eq close-kind 'loop) 2 0))))
              ((>= turn-count max-turns)
               ;; Max turns checked BEFORE any lenient match -- the old
               ;; lenient string-match against the whole buffer matched
