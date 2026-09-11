@@ -1582,9 +1582,19 @@ a hardcoded copy here drifted from them the moment either changed.")
   "Create a fresh one-shot state plist.
 WALL-TIMEOUT and :start-time: the shared clock source (see
 `iar--cycle-make-state' -- one t0 for the fence and the trailer)."
+  ;; :request-count 0: the c39 burn mirror (iar--usage-parse-from-curl)
+  ;; does (cl-incf (plist-get iar--one-shot-state :request-count)) on
+  ;; every request. Without the key, plist-get returns nil and cl-incf
+  ;; signals wrong-type-argument number-or-marker-p nil -- demoted to
+  ;; "Warning: token parse from curl failed" by the advice's
+  ;; condition-case. One warning PER REQUEST (nocturne first runs:
+  ;; 164 in one log), and the mirror never incremented. Cycle state
+  ;; always had the key (iar--cycle-make-state) -- which is why the
+  ;; storm was one-shot-only and misread as a deepseek chunk-shape
+  ;; problem in the gptel fork (c218 forensics, corrected c219).
   (list :agent agent :buffer buf :max-turns max-turns
         :start-time (current-time) :wall-timeout wall-timeout
-        :turn-count 0 :tool-call-count 0 :cap-blocks 0
+        :turn-count 0 :tool-call-count 0 :request-count 0 :cap-blocks 0
         :cap-warned nil
         :completed nil :exit-code 0 :final-response nil))
 
