@@ -1128,9 +1128,15 @@ Failures: ${FAILURES}"
     # checkout injects one-cycle-old memory (the 09-10 continuo
     # stale-premise loop, ~13.4M tokens). The pull must precede
     # assembly, not ride inside the cycle.
-    powner=$(stat -c %U "${PERSONALIZATION_DIR}" 2>/dev/null || echo "")
-    if [ -n "$powner" ] && [ "$powner" != "root" ] && command -v runuser >/dev/null 2>&1; then
-        if ! runuser -u "$powner" -- git -C "${PERSONALIZATION_DIR}" pull --ff-only >> "${LOG_FILE}" 2>&1; then
+    # runuser needs root; the service normally runs AS the owner
+    # (nacho, rootless podman) -- only escalate when actually root.
+    if [ "$(id -u)" = "0" ]; then
+        powner=$(stat -c %U "${PERSONALIZATION_DIR}" 2>/dev/null || echo "")
+        if [ -n "$powner" ] && [ "$powner" != "root" ] && command -v runuser >/dev/null 2>&1; then
+            if ! runuser -u "$powner" -- git -C "${PERSONALIZATION_DIR}" pull --ff-only >> "${LOG_FILE}" 2>&1; then
+                warn "pull-before-assembly: ff-only pull failed (diverged or offline) -- cycle proceeds on local state"
+            fi
+        elif ! git -C "${PERSONALIZATION_DIR}" pull --ff-only >> "${LOG_FILE}" 2>&1; then
             warn "pull-before-assembly: ff-only pull failed (diverged or offline) -- cycle proceeds on local state"
         fi
     elif ! git -C "${PERSONALIZATION_DIR}" pull --ff-only >> "${LOG_FILE}" 2>&1; then
