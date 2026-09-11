@@ -90,6 +90,7 @@ When NO-THINK is non-nil, append think:false to disable model thinking
                                    "nemotron-3-ultra:cloud"
                                    "gemma4:cloud"
                                    "deepseek-v4-flash:cloud"
+                                   "deepseek-v4.1-flash:cloud"
                                    "deepseek-v4-pro:cloud"
                                    "glm-5.3:cloud"
                                    "glm-5.3-flash:cloud")
