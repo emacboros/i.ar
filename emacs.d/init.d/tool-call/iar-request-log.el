@@ -394,6 +394,15 @@ Never signals."
         (if (vectorp msgs) (length msgs) "NA"))
     (error "NA")))
 
+(defun iar--reqlog-json-str (v)
+  "Return V as a JSON-safe scalar string. Symbols -> symbol-name
+(gptel-model is interned; json-serialize rejects symbol values --
+the c211 full-dump failure, wrong-type-argument json-value-p).
+Strings pass through; anything else -> prin1-to-string."
+  (cond ((symbolp v) (symbol-name v))
+        ((stringp v) v)
+        (t (prin1-to-string v))))
+
 (defun iar--reqlog-full-dir ()
   "Directory for full-injection dumps: REQUESTS-full/ next to REQUESTS.log."
   (expand-file-name "REQUESTS-full" (iar--reqlog-log-dir)))
@@ -423,7 +432,10 @@ dumps to `iar-request-log-full-max-files'."
              (payload (list
                        :id id
                        :time (format-time-string "%Y-%m-%dT%H:%M:%SZ" nil t)
-                       :model (plist-get info :model)
+                       ;; gptel-model is a SYMBOL (intern'd model name);
+                       ;; json-serialize rejects symbols as values
+                       ;; (wrong-type-argument json-value-p). Stringify.
+                       :model (iar--reqlog-json-str (plist-get info :model))
                        :backend (and (plist-get info :backend)
                                      (gptel-backend-name
                                       (plist-get info :backend)))
