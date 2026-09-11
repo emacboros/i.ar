@@ -292,3 +292,19 @@ Mirrors iar-context-hard-cap-blocks."
   :type 'integer
   :safe #'integerp
   :group 'iar)
+;; =============================================================================
+;; Request Log Full Capture -- TEMPORARY (c211 law-40 live test)
+;; =============================================================================
+;; ENABLED for one cycle to verify the c210 capture flag actually
+;; dumps a full REQ-*.json in production (deployed != active until a
+;; real request writes a file). REVERT TO nil after verification.
+;; Roadmap item (1), cycle 211, 2026-09-11.
+
+(defcustom iar-request-log-full-capture t
+  "When non-nil, dump the FULL request payload (all messages) to
+REQUESTS-full/ next to REQUESTS.log at START time -- one JSON file
+per request (REQ-<id>.json). TEMPORARILY t for the c211 law-40 live
+test; revert to nil after a REQ-*.json lands and is verified."
+  :type 'boolean
+  :safe #'booleanp
+  :group 'iar)
