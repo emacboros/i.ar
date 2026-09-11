@@ -17,7 +17,10 @@ set -euo pipefail
 # in parallel without collisions.
 # =============================================================================
 
-REPO_DIR="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
+# IAR_REPO_DIR override (relay 0041): when executed from a frozen
+# /tmp copy, BASH_SOURCE points at the copy -- the override pins the
+# real repo for sourcing, mounts, and self-modification.
+REPO_DIR="${IAR_REPO_DIR:-$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")}"
 
 source "${REPO_DIR}/metaconfig/header.sh"
 [[ -f "${REPO_DIR}/utils/telegram.sh" ]] && source "${REPO_DIR}/utils/telegram.sh"
