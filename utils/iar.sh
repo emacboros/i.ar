@@ -1120,6 +1120,21 @@ Failures: ${FAILURES}"
     # Clean up any stale container from previous cycle
     cleanup_container
 
+    # Pull BEFORE assembly (relay 0034, session XV ratified):
+    # prompt assembly reads this checkout at cycle start -- a stale
+    # checkout injects one-cycle-old memory (the 09-10 continuo
+    # stale-premise loop, ~13.4M tokens). The pull must precede
+    # assembly, not ride inside the cycle.
+    local powner
+    powner=
+    if [ -n "" ] && [ "" != "root" ] && command -v runuser >/dev/null 2>&1; then
+        if ! runuser -u "" -- git -C "" pull --ff-only origin main >> "" 2>&1; then
+            warn "pull-before-assembly: ff-only pull failed (diverged or offline) -- cycle proceeds on local state"
+        fi
+    elif ! git -C "" pull --ff-only origin main >> "" 2>&1; then
+        warn "pull-before-assembly: ff-only pull failed (diverged or offline) -- cycle proceeds on local state"
+    fi
+
     # Reset working tree BEFORE the cycle (relay 0040, aria c190):
     # two agents share one checkout; either agent's uncommitted edits
     # are the other's floor. The failure-branch reset (below) only
