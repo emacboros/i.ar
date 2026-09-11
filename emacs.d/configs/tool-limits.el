@@ -300,11 +300,11 @@ Mirrors iar-context-hard-cap-blocks."
 ;; real request writes a file). REVERT TO nil after verification.
 ;; Roadmap item (1), cycle 211, 2026-09-11.
 
-(defcustom iar-request-log-full-capture t
+(defcustom iar-request-log-full-capture nil
   "When non-nil, dump the FULL request payload (all messages) to
 REQUESTS-full/ next to REQUESTS.log at START time -- one JSON file
-per request (REQ-<id>.json). TEMPORARILY t for the c211 law-40 live
-test; revert to nil after a REQ-*.json lands and is verified."
+per request (REQ-<id>.json). REVERTED to nil 2026-09-11 c212 after live verification
+(REQ-*.json landed full, both agents)."
   :type 'boolean
   :safe #'booleanp
   :group 'iar)
