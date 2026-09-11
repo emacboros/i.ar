@@ -175,3 +175,55 @@ in one project must not share tasks/<project>/."
 
 (provide 'test-agent-utils)
 ;;; test-agent-utils.el ends here
+;;; --- task-path prefix-doubling guard (2026-09-11, aria c208) ---
+;; Regression: agents passing "project/personality/..." paths produced
+;; doubled on-disk trees (tasks/iar/continuo/iar/continuo/...).
+
+(ert-deftest test-agent-utils-strip-agent-prefix-strips ()
+  "Should strip a leading project/personality prefix."
+  (with-temp-buffer
+    (let ((iar--current-project "iar")
+          (iar--current-personality "continuo"))
+      (should (string= "tasks/context-budget-integration"
+                       (iar--task-path-strip-agent-prefix
+                        "iar/continuo/tasks/context-budget-integration"))))))
+
+(ert-deftest test-agent-utils-strip-agent-prefix-leaves-plain ()
+  "Should leave plain paths untouched."
+  (with-temp-buffer
+    (let ((iar--current-project "iar")
+          (iar--current-personality "continuo"))
+      (should (string= "failure-reduction/context-budget-rule"
+                       (iar--task-path-strip-agent-prefix
+                        "failure-reduction/context-budget-rule"))))))
+
+(ert-deftest test-agent-utils-strip-agent-prefix-other-agent-prefix ()
+  "A DIFFERENT agent's prefix is content, not a prefix -- leave it."
+  (with-temp-buffer
+    (let ((iar--current-project "iar")
+          (iar--current-personality "continuo"))
+      (should (string= "aria/aria-something"
+                       (iar--task-path-strip-agent-prefix
+                        "aria/aria-something"))))))
+
+(ert-deftest test-agent-utils-strip-agent-prefix-no-personality ()
+  "No personality active: nothing to strip, path unchanged."
+  (with-temp-buffer
+    (let ((iar--current-project "iar")
+          (iar--current-personality nil))
+      (should (string= "iar/continuo/tasks/x"
+                       (iar--task-path-strip-agent-prefix
+                        "iar/continuo/tasks/x"))))))
+
+(ert-deftest test-agent-utils-resolve-task-dir-no-doubling ()
+  "End-to-end: resolving an agent-prefixed path must NOT double it.
+The doubled path was tasks/iar/continuo/iar/continuo/... on disk."
+  (with-temp-buffer
+    (let ((iar--current-project "iar")
+          (iar--current-personality "continuo"))
+      (let ((result (iar--resolve-task-dir
+                     "iar/continuo/tasks/context-budget-integration")))
+        (should (string-match-p "tasks/iar/continuo/tasks/context-budget-integration" result))
+        (should-not (string-match-p "iar/continuo/iar/continuo" result))))))
+
+(provide 'test-agent-utils)

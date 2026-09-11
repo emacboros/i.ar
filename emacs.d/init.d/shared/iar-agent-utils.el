@@ -126,6 +126,7 @@ Uses `iar--current-project-name' and `iar--current-personality-name'."
 TASK-PATH is a slash-separated path like i-ar-expansion/one-shot-model.
 Returns the resolved directory path, or signals an error on invalid
 input or path traversal."
+  (setq task-path (iar--task-path-strip-agent-prefix task-path))
   (iar--validate-task-path task-path)
   (let* ((project-dir (iar--resolve-project-tasks-dir))
          (full-path (expand-file-name task-path project-dir)))
@@ -136,6 +137,7 @@ input or path traversal."
 TASK-PATH is a slash-separated path where the last segment is the filename.
 Returns the resolved file path with .org extension, or signals an error
 on invalid input or path traversal."
+  (setq task-path (iar--task-path-strip-agent-prefix task-path))
   (iar--validate-task-path task-path)
   (let* ((project-dir (iar--resolve-project-tasks-dir))
          (full-path (expand-file-name (concat task-path ".org") project-dir)))
@@ -153,5 +155,29 @@ For a/b/c returns a/b. For a returns nil (top-level task)."
   "Return the last segment of TASK-PATH.
 For a/b/c returns c. For a returns a."
   (car (last (split-string task-path "/" t))))
+
+(provide 'iar-agent-utils)
+;;; --- Task path prefix-doubling guard (2026-09-11, aria c208) ---
+;; Regression for the doubled-path fossil layer: agents sometimes pass
+;; a task path that ALREADY includes the project/personality prefix
+;; ("iar/continuo/..."), producing tasks/<project>/<personality>/iar/
+;; <project>/<personality>/... on disk. Untracked (gitignored), so the
+;; fossils were invisible to git-based sweeps while staying readable by
+;; find-based wake protocols. See knowledge/aria/
+;; doubled-task-path-mechanism-2026-09-11.md.
+
+(defun iar--task-path-strip-agent-prefix (task-path)
+  "Strip a leading \"<project>/<personality>/\" prefix from TASK-PATH.
+Agents frequently pass paths that already carry the project and
+personality segments; expanding such a path onto the per-agent tasks
+root doubles the prefix. Returns the path with the redundant prefix
+removed, or TASK-PATH unchanged if it does not start with it."
+  (let* ((project (ignore-errors (iar--current-project-name)))
+         (personality (ignore-errors (iar--current-personality-name)))
+         (prefix (and project personality
+                      (format "%s/%s/" project personality))))
+    (if (and prefix (string-prefix-p prefix task-path))
+        (substring task-path (length prefix))
+      task-path)))
 
 (provide 'iar-agent-utils)
