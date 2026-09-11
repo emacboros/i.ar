@@ -343,3 +343,111 @@ iar-request-log-enabled); direct calls write regardless."
   (should (progn (iar--reqlog-setup) (iar--reqlog-setup) t)))
 
 (provide 'test-request-log)
+
+;;; --- full-injection capture (c210) ---
+
+(ert-deftest test-reqlog-full-dump-writes-payload ()
+  "Full capture writes REQ-<id>.json with the full messages vector."
+  (let* ((tmpdir (make-temp-file "reqlog-full-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar--reqlog-agent "testagent")
+         (iar--current-project "testproject")
+         (msgs (vector (list :role "user" :content "first")
+                       (list :role "assistant" :content "second")))
+         (path (expand-file-name
+                "audit/testproject/testagent/REQUESTS-full/REQ-test-1.json"
+                tmpdir)))
+    (unwind-protect
+        (progn
+          (iar--reqlog-full-dump "test-1" (list :model "m") msgs)
+          (should (file-exists-p path))
+          (with-temp-buffer
+            (insert-file-contents path)
+            (let ((json-object-type 'plist))
+              (let ((payload (json-read-from-string (buffer-string))))
+                (should (equal (plist-get payload :id) "test-1"))
+                (should (equal (plist-get payload :model) "m"))
+                (should (= (plist-get payload :msgs) 2))
+                (should (= (length (plist-get payload :messages)) 2))
+                (should (equal (plist-get (aref (plist-get payload :messages) 0)
+                                          :content)
+                               "first"))))))
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-reqlog-full-dump-never-signals ()
+  "Degenerate inputs: dump is best-effort, never signals."
+  (let* ((tmpdir (make-temp-file "reqlog-full-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar--reqlog-agent "testagent")
+         (iar--current-project "testproject"))
+    (unwind-protect
+        (progn
+          ;; nil messages: writes with :msgs nil, no signal.
+          (iar--reqlog-full-dump "test-2" nil nil)
+          (should (file-exists-p
+                   (expand-file-name
+                    "audit/testproject/testagent/REQUESTS-full/REQ-test-2.json"
+                    tmpdir)))
+          ;; unencodable content: caught, message only.
+          (iar--reqlog-full-dump
+           "test-3" nil (vector (list :role "user"
+                                      :content (make-symbol "weird")))))
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-reqlog-full-prune-keeps-newest ()
+  "Prune keeps only the newest MAX-FILES dumps."
+  (let* ((tmpdir (make-temp-file "reqlog-prune-" t))
+         (dir (expand-file-name "REQUESTS-full" tmpdir)))
+    (make-directory dir t)
+    (unwind-protect
+        (progn
+          (dotimes (i 5)
+            (let ((coding-system-for-write 'utf-8-unix))
+              (write-region "{}" nil
+                            (expand-file-name (format "REQ-id-%d.json" i) dir)
+                            nil 'silent)
+              ;; Ensure distinct mtimes (same-second writes tie).
+              (set-file-times
+               (expand-file-name (format "REQ-id-%d.json" i) dir)
+               (encode-time (+ 1700000000 (* i 10)) 0 0 1 1 2026))))
+          (iar--reqlog-full-prune dir 3)
+          (should (= (length (directory-files dir nil "\\`REQ-.*\\.json\\'"))
+                     3))
+          ;; The newest three survive (ids 2,3,4 -- oldest 0,1 pruned).
+          (should (file-exists-p (expand-file-name "REQ-id-4.json" dir)))
+          (should (file-exists-p (expand-file-name "REQ-id-3.json" dir)))
+          (should (file-exists-p (expand-file-name "REQ-id-2.json" dir)))
+          (should-not (file-exists-p (expand-file-name "REQ-id-0.json" dir))))
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-reqlog-full-prune-nil-disables ()
+  "nil max-files: pruning disabled, files untouched."
+  (let* ((tmpdir (make-temp-file "reqlog-prune-" t))
+         (dir (expand-file-name "REQUESTS-full" tmpdir)))
+    (make-directory dir t)
+    (unwind-protect
+        (progn
+          (write-region "{}" nil (expand-file-name "REQ-a.json" dir)
+                        nil 'silent)
+          (iar--reqlog-full-prune dir nil)
+          (should (file-exists-p (expand-file-name "REQ-a.json" dir))))
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-reqlog-full-prune-missing-dir-quiet ()
+  "Prune on a nonexistent directory: no signal, no creation."
+  (should (progn (iar--reqlog-full-prune "/nonexistent/reqlog-prune" 10) t)))
+
+(ert-deftest test-reqlog-path-after-dir-refactor ()
+  "iar--reqlog-path still resolves correctly via the log-dir refactor."
+  (let* ((tmpdir (make-temp-file "reqlog-path-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar--reqlog-agent "testagent")
+         (iar--current-project "testproject"))
+    (unwind-protect
+        (should (equal (iar--reqlog-path)
+                       (expand-file-name
+                        "audit/testproject/testagent/REQUESTS.log" tmpdir)))
+      (delete-directory tmpdir :recursive))))

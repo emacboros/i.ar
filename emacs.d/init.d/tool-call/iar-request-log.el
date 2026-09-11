@@ -31,6 +31,14 @@
 ;;                      aborts and human aborts -- both go through
 ;;                      gptel-abort)
 ;;
+;;   Full capture (iar-request-log-full-capture, off by default):
+;;   when enabled, the COMPLETE request payload (all messages) is
+;;   written to REQUESTS-full/REQ-<id>.json at START time -- the
+;;   payload the model saw, durable even if the request hangs and
+;;   the watchdog kills it. Closes the instrument gap where the
+;;   START tail (6 msgs / 4k chars) cannot answer "what exactly
+;;   did the model see". Pruned to iar-request-log-full-max-files.
+;;
 ;; Mechanism (all advice, idempotent setup):
 ;;   - :after  gptel-curl-get-response      -> START (register REQ id
 ;;     for the process via gptel--request-alist fsm match)
@@ -75,6 +83,18 @@ Owned by configs/tool-limits.el. nil disables the cap.")
 (defvar iar-request-log-body-chars nil
   "Maximum characters of raw response body tail per RESPONSE entry.
 Owned by configs/tool-limits.el. nil disables the cap.")
+(defvar iar-request-log-full-capture nil
+  "When non-nil, dump the FULL request payload (all messages) to
+REQUESTS-full/ next to REQUESTS.log at START time -- one JSON file
+per request (REQ-<id>.json). Owned by configs/tool-limits.el.
+Diagnostic flag, OFF by default: each dump carries the entire
+conversation (large), so enable it while hunting a specific
+anomaly, not always-on. The dump is written pre-response, so it
+exists even when the request hangs and the watchdog kills it.")
+(defvar iar-request-log-full-max-files 200
+  "Maximum number of full-injection dumps retained per agent.
+Oldest REQ-*.json files are pruned after each write.
+Owned by configs/tool-limits.el. nil disables pruning.")
 
 (defvar iar--reqlog-counter 0
   "Request counter for this Emacs session. REQ ids in REQUESTS.log.")
@@ -192,8 +212,8 @@ but this function tolerates any shape). Returns \"none\" when empty,
 ;;; Log writing
 ;;; ---------------------------------------------------------
 
-(defun iar--reqlog-path ()
-  "Path to REQUESTS.log for the current agent.
+(defun iar--reqlog-log-dir ()
+  "Directory holding this agent's REQUESTS.log (and REQUESTS-full/).
 Mirrors the USAGE.log / cycle.log location scheme.
 Falls back to the request buffer's agent name: the curl process
 buffers are not the conversation buffer, so `iar--get-agent-name'
@@ -212,9 +232,12 @@ gone, so they use the captured name."
                                (default-value 'iar--current-project)))
                       (getenv "IAR_PROJECT")
                       "iar")))
-    (expand-file-name
-     (format "%s/%s/REQUESTS.log" project agent)
-     (expand-file-name iar-audit-path iar-personalization-path))))
+    (expand-file-name (format "%s/%s" project agent)
+                      (expand-file-name iar-audit-path iar-personalization-path))))
+
+(defun iar--reqlog-path ()
+  "Path to REQUESTS.log for the current agent."
+  (expand-file-name "REQUESTS.log" (iar--reqlog-log-dir)))
 
 (defvar iar--reqlog-agent nil
   "Agent name captured at request start (START advice).
@@ -301,6 +324,8 @@ live -- process buffers and later events cannot resolve it."
                               id (or backend "?") (or model "?") count
                               (iar--reqlog-roles messages 6)
                               (iar--reqlog-payload-tail messages))
+          (when iar-request-log-full-capture
+            (iar--reqlog-full-dump id info messages))
           (dolist (entry gptel--request-alist)
             (when (eq (cadr entry) fsm)
               (puthash (car entry) id iar--reqlog-processes)))))
@@ -368,6 +393,49 @@ Never signals."
                        (plist-get (plist-get info :data) :messages))))
         (if (vectorp msgs) (length msgs) "NA"))
     (error "NA")))
+
+(defun iar--reqlog-full-dir ()
+  "Directory for full-injection dumps: REQUESTS-full/ next to REQUESTS.log."
+  (expand-file-name "REQUESTS-full" (iar--reqlog-log-dir)))
+
+(defun iar--reqlog-full-prune (dir max-files)
+  "Keep only the newest MAX-FILES REQ-*.json files in DIR.
+Best-effort: never signals. nil/non-positive MAX-FILES disables."
+  (when (and (integerp max-files) (> max-files 0)
+             (file-directory-p dir))
+    (condition-case nil
+        (let* ((files (directory-files dir t "\\`REQ-.*\\.json\\'"))
+               (sorted (sort files #'file-newer-than-file-p))
+               (excess (nthcdr max-files sorted)))
+          (dolist (f excess)
+            (ignore-errors (delete-file f))))
+      (error nil))))
+
+(defun iar--reqlog-full-dump (id info messages)
+  "Write the full request payload for REQ ID to REQUESTS-full/.
+INFO is the fsm info (model/backend); MESSAGES the full :messages
+vector -- the payload the model SAW, captured pre-response so it
+survives watchdog kills. Best-effort: never signals. Prunes old
+dumps to `iar-request-log-full-max-files'."
+  (condition-case err
+      (let* ((dir (iar--reqlog-full-dir))
+             (path (expand-file-name (format "REQ-%s.json" id) dir))
+             (payload (list
+                       :id id
+                       :time (format-time-string "%Y-%m-%dT%H:%M:%SZ" nil t)
+                       :model (plist-get info :model)
+                       :backend (and (plist-get info :backend)
+                                     (gptel-backend-name
+                                      (plist-get info :backend)))
+                       :msgs (and (vectorp messages) (length messages))
+                       :messages messages)))
+        (make-directory dir t)
+        (let ((coding-system-for-write 'utf-8-unix))
+          (write-region (gptel--json-encode payload) nil path nil 'silent))
+        (iar--reqlog-full-prune dir iar-request-log-full-max-files))
+    (error
+     (message "[request-log] full dump failed: %s"
+              (error-message-string err)))))
 
 (defun iar--reqlog-dump (process)
   "Dump raw response tail + parse result for PROCESS. Best-effort.
