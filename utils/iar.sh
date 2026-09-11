@@ -1130,10 +1130,10 @@ Failures: ${FAILURES}"
     # assembly, not ride inside the cycle.
     powner=$(stat -c %U "${PERSONALIZATION_DIR}" 2>/dev/null || echo "")
     if [ -n "$powner" ] && [ "$powner" != "root" ] && command -v runuser >/dev/null 2>&1; then
-        if ! runuser -u "$powner" -- git -C "${PERSONALIZATION_DIR}" pull --ff-only origin main >> "${LOG_FILE}" 2>&1; then
+        if ! runuser -u "$powner" -- git -C "${PERSONALIZATION_DIR}" pull --ff-only >> "${LOG_FILE}" 2>&1; then
             warn "pull-before-assembly: ff-only pull failed (diverged or offline) -- cycle proceeds on local state"
         fi
-    elif ! git -C "${PERSONALIZATION_DIR}" pull --ff-only origin main >> "${LOG_FILE}" 2>&1; then
+    elif ! git -C "${PERSONALIZATION_DIR}" pull --ff-only >> "${LOG_FILE}" 2>&1; then
         warn "pull-before-assembly: ff-only pull failed (diverged or offline) -- cycle proceeds on local state"
     fi
 
