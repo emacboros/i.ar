@@ -129,6 +129,10 @@
 ;; on per-request input tokens, mirroring the tool-call cap architecture.
 ;; Loads AFTER iar-request-log (reads iar--reqlog-last-tokens-in).
 (load (expand-file-name "iar-context-fence.el" init-tool-call-dir))
+;; Msgs fence (relay 0035 option B): per-request message-count caps,
+;; mirroring the context fence. Loads AFTER iar-request-log (reads
+;; iar--reqlog-last-msgs) and AFTER iar-context-fence (same pattern).
+(load (expand-file-name "iar-msgs-fence.el" init-tool-call-dir))
 
 ;; Request watchdog (Track A1) -- abort stalled gptel requests.
 ;; No request-level timeout existed in the stack; a dead stream hung

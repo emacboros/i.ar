@@ -246,3 +246,49 @@ Mirrors iar-cycle-tool-call-hard-cap."
   :type 'integer
   :safe #'integerp
   :group 'iar)
+
+;; =============================================================================
+;; Msgs Fence (relay 0035 option B, aria c203)
+;; =============================================================================
+
+(defcustom iar-msgs-fence t
+  "When non-nil, fence cycles/one-shots on per-request message count.
+Mirrors the context-size fence on the msgs dimension (relay 0035
+option B): the behavioral msgs>=400 rule becomes a structural
+backstop -- the plumbing checks it, the model never polls.
+Data source: iar--reqlog-last-msgs (published by iar-request-log.el).
+Interactive sessions are NOT fenced.
+Set to nil to disable."
+  :type '(choice (const :tag "Enable msgs fence" t)
+                 (const :tag "Disable msgs fence" nil))
+  :safe #'booleanp
+  :group 'iar)
+
+(defcustom iar-msgs-soft-cap 400
+  "Message count (of the last completed request) at which the soft
+warn fires: one call blocked with a converge notice, then pass.
+400 (c201 census): aria p90=336 max=398 (n=828), continuo max=160
+(n=470), zero requests >=400 ever on either side. The warn fires
+just past the observed production max -- a cycle reaching 400 msgs
+is past every shape the census saw. nil disables the soft warn."
+  :type '(choice (integer :tag "Soft cap msgs")
+                 (const :tag "Disabled" nil))
+  :safe #'iar--positive-integer-or-nil-p
+  :group 'iar)
+
+(defcustom iar-msgs-hard-cap 600
+  "Message count at which every non-memory tool call is blocked with
+the landing instruction. 600 = 1.5x the soft cap; a backstop, not a
+working bound (the soft warn + the context fence + the tool-call cap
+are the working bounds). nil disables the hard cap."
+  :type '(choice (integer :tag "Hard cap msgs")
+                 (const :tag "Disabled" nil))
+  :safe #'iar--positive-integer-or-nil-p
+  :group 'iar)
+
+(defcustom iar-msgs-hard-cap-blocks 5
+  "Ignored hard-cap blocks before the run is force-ended (exit 1).
+Mirrors iar-context-hard-cap-blocks."
+  :type 'integer
+  :safe #'integerp
+  :group 'iar)

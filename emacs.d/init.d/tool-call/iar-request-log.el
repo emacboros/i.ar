@@ -337,6 +337,14 @@ spec's :name and :args; the log line's 300-char arg cap would mangle
 long args). Reset to nil at cycle start by `iar--reqlog-reset-last'.
 nil means the last request carried no tool calls (or no data).")
 
+(defvar iar--reqlog-last-msgs nil
+  "Message count of the most recently dumped request (integer).
+Set by `iar--reqlog-dump' from `iar--reqlog-msgs-count' (NA -> nil:
+the fence must never fire on absence of data). Read by the msgs
+fence (iar-msgs-fence.el) as the pre-call estimate of the NEXT
+request's message count. Reset to nil at cycle start by
+`iar--reqlog-reset-last'.")
+
 (defun iar--reqlog-reset-last ()
   "Reset the last-request stop/tokens-out shared state to nil.
 Called at cycle start so a stale value from a previous cycle (or a
@@ -344,7 +352,8 @@ delegate's request) is never read as this cycle's first response."
   (setq iar--reqlog-last-stop nil
         iar--reqlog-last-tokens-out nil
         iar--reqlog-last-tokens-in nil
-        iar--reqlog-last-tool-specs nil))
+        iar--reqlog-last-tool-specs nil
+        iar--reqlog-last-msgs nil))
 
 (defun iar--reqlog-msgs-count (info)
   "Return the message count of the request described by FSM INFO.
@@ -416,10 +425,15 @@ still readable."
               ;; :before gptel-curl--stream-cleanup, i.e. BEFORE the
               ;; post-response handler -- so the guard sees the request
               ;; that just completed, not a stale one.
-              (setq iar--reqlog-last-stop stop
-                    iar--reqlog-last-tokens-out tok-out
-                    iar--reqlog-last-tokens-in tok-in
-                    iar--reqlog-last-tool-specs (and (listp tool-use) tool-use))
+              (let ((msgs (iar--reqlog-msgs-count info)))
+                (setq iar--reqlog-last-stop stop
+                      iar--reqlog-last-tokens-out tok-out
+                      iar--reqlog-last-tokens-in tok-in
+                      iar--reqlog-last-tool-specs (and (listp tool-use) tool-use)
+                      ;; Publish the message count for the msgs fence.
+                      ;; NA (unavailable) -> nil: the fence never fires
+                      ;; on absence of data (same contract as tokens).
+                      iar--reqlog-last-msgs (and (integerp msgs) msgs)))
               (iar--reqlog-append
                "REQ %s PARSE status=%s tools=%d specs=%s error=%s stop=%s tokens_in=%s tokens_out=%s msgs=%s"
                id (or status "?")
