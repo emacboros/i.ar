@@ -346,6 +346,20 @@ delegate's request) is never read as this cycle's first response."
         iar--reqlog-last-tokens-in nil
         iar--reqlog-last-tool-specs nil))
 
+(defun iar--reqlog-msgs-count (info)
+  "Return the message count of the request described by FSM INFO.
+Relay 0035 option A: PARSE lines carry msgs=N as a first-class field
+so a context-budget rule is checkable with one grep of the PARSE
+line -- no START-line polling, no self-echo trap (the model's spec
+echo cannot match a digits-required pattern). NA when unavailable.
+Never signals."
+  (condition-case nil
+      (let ((msgs (and (plistp info)
+                       (plistp (plist-get info :data))
+                       (plist-get (plist-get info :data) :messages))))
+        (if (vectorp msgs) (length msgs) "NA"))
+    (error "NA")))
+
 (defun iar--reqlog-dump (process)
   "Dump raw response tail + parse result for PROCESS. Best-effort.
 Runs :before gptel's cleanup/sentinel destroy the process buffer --
@@ -407,14 +421,15 @@ still readable."
                     iar--reqlog-last-tokens-in tok-in
                     iar--reqlog-last-tool-specs (and (listp tool-use) tool-use))
               (iar--reqlog-append
-               "REQ %s PARSE status=%s tools=%d specs=%s error=%s stop=%s tokens_in=%s tokens_out=%s"
+               "REQ %s PARSE status=%s tools=%d specs=%s error=%s stop=%s tokens_in=%s tokens_out=%s msgs=%s"
                id (or status "?")
                (if (listp tool-use) (length tool-use) 0)
                (iar--reqlog-tool-specs tool-use)
                (or errdata "nil")
                (or stop "nil")
                (or tok-in "NA")
-               (or tok-out "NA"))))))
+               (or tok-out "NA")
+               (iar--reqlog-msgs-count info))))))
     (error
      (message "[request-log] dump failed: %s"
               (error-message-string err)))))
