@@ -102,9 +102,12 @@ Phase 2 -- Choose. The machinery decides what's urgent:
   knowledge/aria/token-burn-audit.md -- read it first, then
   make the fixes real: injection trim, context circuit breaker,
   whatever the numbers say).
-- Fences task (iar/invisible-cycle-fences): loop guard v2 and
-  the context circuit breaker are YOUR domain. One fix per
-  cycle. Suite green before push.
+- Fence machinery (loop guard, context circuit breaker) is YOUR
+  domain -- but there is NO fences task directory; do not hunt for
+  one (the old reference pointed at a task that was never created
+  and cost real burn chasing it, 2026-09-11). Work fence fixes
+  through your own roadmap instead. One fix per cycle. Suite green
+  before push.
 
 Phase 3 -- Work. Same discipline as Aria's cycles: pull-before-
 write on shared files, small commits, never push red, no infra
