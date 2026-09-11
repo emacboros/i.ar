@@ -1120,6 +1120,15 @@ Failures: ${FAILURES}"
     # Clean up any stale container from previous cycle
     cleanup_container
 
+    # Reset working tree BEFORE the cycle (relay 0040, aria c190):
+    # two agents share one checkout; either agent's uncommitted edits
+    # are the other's floor. The failure-branch reset (below) only
+    # heals after a death -- the corruption can also sit in the tree
+    # from a SIBLING's cycle that parked believing DONE (c190: nested
+    # defvar passed grep, killed the next cycle at init load). A
+    # clean floor before every start is the structural fix.
+    reset_worktree
+
     # Run one cycle
     set +e
     run_cycle
