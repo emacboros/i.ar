@@ -500,11 +500,17 @@ fi
 # Logging (loop and one-shot mode)
 # =============================================================================
 if [[ "${MODE}" == "loop" || "${MODE}" == "one-shot" ]]; then
-    # Nested layout (matches LAST-CYCLE.txt home): audit/iar/<agent>/
+    # Audit layout: audit/<project>/<agent>/ -- the elisp path builders
+    # (iar--usage-write-log, iar--reqlog-log-dir, iar--cycle-log-append)
+    # all resolve audit/<iar--current-project-name>/<agent>. iar.sh must
+    # match or the wrapper artifacts (this log, LAST-CYCLE.txt) split
+    # from the elisp audit tree (nocturne doubled-path finding, aria
+    # c223: project=nocturne because projects/nocturne.org exists, while
+    # aria/continuo have no projects/<name>.org and resolve to 'iar').
     if [[ "${MODE}" == "loop" ]]; then
-        LOG_FILE="${PERSONALIZATION_DIR}/audit/iar/${AGENT_NAME}/cycle-$(date +%Y-%m-%d).log"
+        LOG_FILE="${PERSONALIZATION_DIR}/audit/${PROJECT_NAME}/${AGENT_NAME}/cycle-$(date +%Y-%m-%d).log"
     else
-        LOG_FILE="${PERSONALIZATION_DIR}/audit/iar/${AGENT_NAME}/oneshot-$(date +%Y-%m-%d).log"
+        LOG_FILE="${PERSONALIZATION_DIR}/audit/${PROJECT_NAME}/${AGENT_NAME}/oneshot-$(date +%Y-%m-%d).log"
     fi
     mkdir -p "$(dirname "${LOG_FILE}")"
 else
@@ -597,7 +603,7 @@ reset_worktree() {
 # any self-improvement thread. Priority #1 (Nacho, 2026-09-03):
 # cycles must run without failures; a failure left unfixed is the
 # next failure's cause.
-LAST_CYCLE_FILE="${PERSONALIZATION_DIR}/audit/iar/${AGENT_NAME}/LAST-CYCLE.txt"
+LAST_CYCLE_FILE="${PERSONALIZATION_DIR}/audit/${PROJECT_NAME}/${AGENT_NAME}/LAST-CYCLE.txt"
 
 write_last_cycle() {
     local status="$1"   # ok | failed
