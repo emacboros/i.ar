@@ -5,7 +5,15 @@
 ;; the suite. These tests pin: (1) it returns t on success and writes
 ;; the line, (2) it never signals when the write path is broken
 ;; (exit path must not break), (3) it is idempotent in effect with
-;; the kill-emacs-hook write (two calls = two lines, both parseable).
+;; the kill-emacs-hook write.
+;; c262 UPDATE: "idempotent in effect" now means ONE line, not two.
+;; The c258-c259 USAGE.log doubling census showed the second write
+;; (kill-emacs-hook) landing as an unstaged duplicate that the next
+;; belt commit's `git add -f' swept into history (root cause: c262 --
+;; reset_worktree resets REPO_DIR (i.ar), never the personalization
+;; tree). The dedupe guard in iar--usage-write-log kills the dup at
+;; birth: same timestamp+counts line already last => skip. Tests
+;; updated: two identical writes = one line; a DIFFERENT line appends.
 
 (require 'ert)
 
@@ -56,7 +64,8 @@
       (delete-directory tmpdir :recursive))))
 
 (ert-deftest test-tool-call-usage-write-log-now-idempotent-with-hook ()
-  "Two writes (pre-exit + hook net) = two lines, both parseable."
+  "Two writes (pre-exit + hook net) with the SAME stamp+counts = ONE
+line (c262 dedupe guard: the dup dies at birth)."
   (let* ((tmpdir (make-temp-file "usage-now-" t))
          (iar-personalization-path tmpdir)
          (iar-audit-path "audit")
@@ -70,12 +79,34 @@
           (with-temp-buffer
             (insert-file-contents
              (expand-file-name "audit/testproject/testagent/USAGE.log" tmpdir))
-            (should (equal (count-lines (point-min) (point-max)) 2))
-            ;; Both lines carry the full field set (newline guard holds).
-            (goto-char (point-min))
-            (should (looking-at "^\\[.*\\] requests=[0-9]+ input=[0-9]+ output=[0-9]+ total=[0-9]+ model="))
-            (forward-line 1)
+            (should (equal (count-lines (point-min) (point-max)) 1))
             (should (looking-at "^\\[.*\\] requests=[0-9]+ input=[0-9]+ output=[0-9]+ total=[0-9]+ model="))))
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-tool-call-usage-write-log-dedupe-different-line-appends ()
+  "A DIFFERENT line (new counts) still appends after a dedupe skip."
+  (let* ((tmpdir (make-temp-file "usage-dedupe-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar--current-agent-name "testagent")
+         (iar--current-project "testproject"))
+    (unwind-protect
+        (progn
+          (iar--usage-reset)
+          (setq iar--usage-requests 5 iar--usage-input-tokens 200
+                iar--usage-output-tokens 80 iar--usage-model "m")
+          (should (eq (iar--usage-write-log) t))
+          ;; Identical second write: skipped (nil = honest no-op).
+          (should (eq (iar--usage-write-log) nil))
+          ;; Changed counts: appends.
+          (setq iar--usage-requests 9 iar--usage-input-tokens 300)
+          (should (eq (iar--usage-write-log) t))
+          (with-temp-buffer
+            (insert-file-contents
+             (expand-file-name "audit/testproject/testagent/USAGE.log" tmpdir))
+            (should (equal (count-lines (point-min) (point-max)) 2))
+            (should (string-match-p "requests=5 " (buffer-string)))
+            (should (string-match-p "requests=9 " (buffer-string)))))
       (delete-directory tmpdir :recursive))))
 
 (ert-deftest test-tool-call-usage-write-log-now-glued-file-safe ()

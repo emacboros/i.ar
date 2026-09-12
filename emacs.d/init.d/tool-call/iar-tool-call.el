@@ -282,6 +282,23 @@ unparseable -- two epochs' lines glued into one (c45/c46 finding)."
               path (error-message-string err))
      nil)))
 
+(defun iar--usage-last-line (path)
+  "Return the last non-empty line of PATH (newline stripped), or
+empty string. Best-effort: missing/unreadable file returns empty
+string (the dedupe guard then lets the write through)."
+  (condition-case _err
+      (when (and (file-exists-p path)
+                 (> (nth 7 (file-attributes path)) 0))
+        (with-temp-buffer
+          (insert-file-contents-literally path)
+          ;; strip trailing newlines, then take the final line
+          (goto-char (point-max))
+          (skip-chars-backward "\n")
+          (let ((end (point)))
+            (beginning-of-line)
+            (buffer-substring-no-properties (point) end))))
+    (error "")))
+
 (defun iar--usage-write-log ()
   "Write usage summary to audit/<agent>/USAGE.log.
 Best-effort: errors are demoted to messages (kill-emacs-hook must
@@ -301,17 +318,28 @@ orphaned 02:33:26 close-write)."
              (log-path (expand-file-name "USAGE.log" log-dir)))
         (make-directory log-dir t)
         (iar--ensure-trailing-newline log-path)
-        (let ((totals (iar--usage-totals)))
-          (with-temp-buffer
-            (insert (format "[%s] requests=%d input=%d output=%d total=%d model=%s\n"
-                            (format-time-string "%Y-%m-%d %H:%M:%S")
-                            (plist-get totals :requests)
-                            (plist-get totals :input-tokens)
-                            (plist-get totals :output-tokens)
-                            (plist-get totals :total-tokens)
-                            (plist-get totals :model)))
-            (append-to-file (point-min) (point-max) log-path))
-            t))
+        (let* ((totals (iar--usage-totals))
+               (line (format "[%s] requests=%d input=%d output=%d total=%d model=%s\n"
+                             (format-time-string "%Y-%m-%d %H:%M:%S")
+                             (plist-get totals :requests)
+                             (plist-get totals :input-tokens)
+                             (plist-get totals :output-tokens)
+                             (plist-get totals :total-tokens)
+                             (plist-get totals :model))))
+          ;; c262 dedupe guard: belt#2 (iar--usage-write-log-now) and the
+          ;; kill-emacs-hook both call this function with the SAME
+          ;; timestamp+counts within one close. The second append used to
+          ;; land as an unstaged duplicate that the next belt commit's
+          ;; `git add -f' swept into history (the USAGE.log doubling
+          ;; census, c258-c259; root cause c262: reset_worktree resets
+          ;; REPO_DIR (i.ar), never the personalization tree, so the dup
+          ;; was never wiped). Guard: if the file's last line is already
+          ;; identical, skip the append -- the dup dies at birth.
+          (if (string-equal (substring line 0 -1) ; strip the trailing newline for comparison
+                            (iar--usage-last-line log-path))
+              nil                        ; duplicate: skipped, honest no-op
+            (append-to-file line nil log-path)
+            t)))
     (error
      (message "Warning: usage log write failed: %s"
               (error-message-string err))

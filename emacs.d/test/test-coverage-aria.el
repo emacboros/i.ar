@@ -61,7 +61,9 @@
       (delete-directory tmpdir :recursive))))
 
 (ert-deftest test-tool-call-usage-write-log-appends ()
-  "Two writes append; the log accumulates lines."
+  "Distinct writes append; the log accumulates lines. (c262: two
+IDENTICAL same-second writes dedupe to one -- see
+test-tool-call-usage-write-log-now-idempotent-with-hook.)"
   (let* ((tmpdir (make-temp-file "usage-test-" t))
          (iar-personalization-path tmpdir)
          (iar-audit-path "audit")
@@ -71,6 +73,9 @@
         (progn
           (iar--usage-reset)
           (iar--usage-write-log)
+          ;; Change the counts so the second line differs (a same-
+          ;; stamp+counts second write is deduped by the c262 guard).
+          (setq iar--usage-requests (1+ iar--usage-requests))
           (iar--usage-write-log)
           (with-temp-buffer
             (insert-file-contents
