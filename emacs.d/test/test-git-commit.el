@@ -204,3 +204,91 @@
 
 (provide 'test-git-commit)
 ;;; test-git-commit.el ends here
+;;; --- Resurrection guard tests (c270) ---
+
+(ert-deftest test-git-commit-refuses-rolling-transcript ()
+  "A tracked-but-ignored audit/<agent>/cycle.log swept by add -A must
+be unstaged, not committed (c270 resurrection vector)."
+  (with-git-fixture
+    ;; Simulate the ACTUAL c270 stale-checkout state: the transcript
+    ;; IS tracked (the untrack never landed on this checkout), the
+    ;; .gitignore exists, and the transcript grows every cycle.  add -A
+    ;; stages its growth because a tracked file ignores .gitignore.
+    (make-directory (expand-file-name "audit/iar/aria" test-git--tmpdir) t)
+    (with-temp-file (expand-file-name "audit/iar/aria/cycle.log" test-git--tmpdir)
+      (insert "raw transcript v1\n"))
+    (with-temp-file (expand-file-name ".gitignore" test-git--tmpdir)
+      (insert "audit/*\n"))
+    (let ((default-directory test-git--tmpdir))
+      (call-process "git" nil nil nil "add" "-f" "audit/iar/aria/cycle.log")
+      (call-process "git" nil nil nil "commit" "-m" "track transcript (mistake)"))
+    ;; Transcript grows (next cycle appends) and another file changes.
+    (with-temp-file (expand-file-name "audit/iar/aria/cycle.log" test-git--tmpdir)
+      (insert "raw transcript v1\nraw transcript v2\n"))
+    (with-temp-file (expand-file-name "README.md" test-git--tmpdir)
+      (insert "# Test Repo\nupdated\n"))
+    (let ((result (iar--tool-git-commit test-git--tmpdir "sweep commit")))
+      (should (stringp result))
+      (should (string-match-p "Success" result))
+      (should (string-match-p "refused to stage" result))
+      (should (string-match-p "audit/iar/aria/cycle.log" result)))
+    ;; The transcript must NOT be in HEAD's tree (guard unstaged it;
+    ;; since it was tracked, the commit records the deletion -- the
+    ;; resurrection is undone, which is exactly the c270 fix).
+    (let ((default-directory test-git--tmpdir)
+          (out (generate-new-buffer " *git-ls-tree*")))
+      (unwind-protect
+          (progn
+            (call-process "git" nil out nil "ls-tree" "-r" "HEAD" "--name-only")
+            (with-current-buffer out
+              (should-not (string-match-p "audit/iar/aria/cycle.log"
+                                          (buffer-string)))))
+        (kill-buffer out)))
+    ;; The transcript file itself must survive on disk (untracked now).
+    (should (file-exists-p
+             (expand-file-name "audit/iar/aria/cycle.log" test-git--tmpdir)))
+    ;; The legitimate file change must have been committed too.
+    (let ((default-directory test-git--tmpdir)
+          (out (generate-new-buffer " *git-ls-tree2*")))
+      (unwind-protect
+          (progn
+            (call-process "git" nil out nil "ls-tree" "-r" "HEAD" "--name-only")
+            (with-current-buffer out
+              (should (string-match-p "README.md" (buffer-string)))))
+        (kill-buffer out)))))
+
+(ert-deftest test-git-commit-dated-transcript-still-commits ()
+  "Dated transcripts (cycle-YYYY-MM-DD.log) are belt-discipline
+artifacts, tracked intentionally -- the guard must NOT refuse them."
+  (with-git-fixture
+    (make-directory (expand-file-name "audit/iar/aria" test-git--tmpdir) t)
+    (with-temp-file (expand-file-name "audit/iar/aria/cycle-2026-09-13.log" test-git--tmpdir)
+      (insert "dated transcript\n"))
+    (with-temp-file (expand-file-name ".gitignore" test-git--tmpdir)
+      (insert "audit/*\n"))
+    (let ((default-directory test-git--tmpdir))
+      (call-process "git" nil nil nil "add" "-f" "audit/iar/aria/cycle-2026-09-13.log")
+      (call-process "git" nil nil nil "commit" "-m" "belt: dated transcript"))
+    (with-temp-file (expand-file-name "audit/iar/aria/cycle-2026-09-13.log" test-git--tmpdir)
+      (insert "dated transcript\nmore lines\n"))
+    (let ((result (iar--tool-git-commit test-git--tmpdir "belt: dated transcript grows")))
+      (should (stringp result))
+      (should (string-match-p "Success" result))
+      (should-not (string-match-p "refused to stage" result)))
+    (let ((default-directory test-git--tmpdir)
+          (out (generate-new-buffer " *git-show*")))
+      (unwind-protect
+          (progn
+            (call-process "git" nil out nil "show" "--stat" "--format=" "HEAD")
+            (with-current-buffer out
+              (should (string-match-p "cycle-2026-09-13.log" (buffer-string)))))
+        (kill-buffer out)))))
+
+(ert-deftest test-git-commit-guard-silent-when-clean ()
+  "No refused paths -> no refusal note in the result."
+  (with-git-fixture
+    (with-temp-file (expand-file-name "new-file.txt" test-git--tmpdir)
+      (insert "New content\n"))
+    (let ((result (iar--tool-git-commit test-git--tmpdir "Add new file")))
+      (should (string-match-p "Success" result))
+      (should-not (string-match-p "refused" result)))))

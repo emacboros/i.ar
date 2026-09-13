@@ -11,6 +11,16 @@
 ;; needing execute_code_local for git operations.  It uses call-process
 ;; directly -- no shell, no injection surface.
 ;;
+;; Resurrection guard (c270): a stale checkout that still has a
+;; gitignored rolling transcript (audit/<agent>/cycle.log) tracked
+;; re-adds it on every `git add -A' -- a tracked file ignores
+;; .gitignore, so the 85MB transcript came back on every commit (109
+;; commits carried ~6.7GiB of blobs before the re-untrack).  After
+;; add -A, staged paths matching `iar-git-commit-refuse-pattern' are
+;; unstaged and reported.  Dated transcripts (cycle-YYYY-MM-DD.log)
+;; deliberately do NOT match: those are tracked intentionally via the
+;; belt discipline.
+;;
 ;; Audit: every commit is logged to the central audit log.
 
 (require 'iar-tool-call)
@@ -21,6 +31,14 @@
   "Default git author name for agent commits.")
 (defvar iar-git-author-email nil
   "Default git author email for agent commits.")
+
+(defvar iar-git-commit-refuse-pattern "\\`audit/.*cycle\\.log\\'"
+  "Staged paths matching this regexp are unstaged before commit.
+These are the rolling raw session transcripts (audit/<agent>/cycle.log):
+gitignored by policy and never wanted in git.  The only way they get
+staged is a stale checkout that still tracks them (the c270
+resurrection vector).  Dated transcripts (cycle-YYYY-MM-DD.log) do not
+match and remain committable via `git add -f' (belt discipline).")
 
 (defun iar--git-run (repo-dir &rest args)
   "Run git with ARGS in REPO-DIR.
@@ -49,6 +67,23 @@ be set (missing config)."
       (and (= 0 (car name-check))
            (= 0 (car email-check))))))
 
+(defun iar--git-unstage-refused (repo-dir)
+  "Unstage staged paths in REPO-DIR matching `iar-git-commit-refuse-pattern'.
+Returns the list of unstaged paths (empty if none).  Runs after
+`git add -A' and before the commit.  This is the c270 resurrection
+guard: a tracked-but-ignored rolling transcript swept back in by
+add -A on every commit in a stale checkout."
+  (let* ((staged-result (iar--git-run repo-dir "diff" "--cached" "--name-only"))
+         (staged (when (= 0 (car staged-result))
+                   (split-string (cdr staged-result) "\n" t)))
+         (offenders (seq-filter
+                     (lambda (path)
+                       (string-match-p iar-git-commit-refuse-pattern path))
+                     staged)))
+    (dolist (path offenders)
+      (iar--git-run repo-dir "rm" "--cached" "--quiet" path))
+    offenders))
+
 (defun iar--tool-git-commit (repo_path message)
   "Stage all changes and commit in REPO_PATH with MESSAGE.
 Returns a string starting with Success: or Error:."
@@ -70,22 +105,28 @@ Returns a string starting with Success: or Error:."
       (let ((add-result (iar--git-run repo-dir "add" "-A")))
         (if (/= 0 (car add-result))
             (format "Error: git add -A failed: %s" (cdr add-result))
-          (let ((status-result (iar--git-run repo-dir "diff" "--cached" "--quiet")))
+          (let* ((refused (iar--git-unstage-refused repo-dir))
+                 (refused-note (if refused
+                                   (format "\nNote: refused to stage gitignored transcript file(s): %s"
+                                           (mapconcat #'identity refused ", "))
+                                 ""))
+                 (status-result (iar--git-run repo-dir "diff" "--cached" "--quiet")))
             (if (= 0 (car status-result))
-                "Success: No changes to commit. Working tree is clean."
+                (format "Success: No changes to commit. Working tree is clean.%s"
+                        refused-note)
               (let* ((commit-result (iar--git-run repo-dir "commit" "-m" message))
                      (exit-code (car commit-result))
                      (output (cdr commit-result)))
                 (if (= 0 exit-code)
-                    (format "Success: Committed in %s\n%s"
-                            repo-dir (string-trim output))
+                    (format "Success: Committed in %s\n%s%s"
+                            repo-dir (string-trim output) refused-note)
                   (format "Error: git commit failed (exit %d): %s"
                           exit-code output)))))))))))
 
 (iar-tool-register
  (gptel-make-tool
   :name "git_commit"
-  :description "Stage all changes and commit in a git repo. Git identity auto-configured."
+  :description "Stage all changes and commit in a git repo. Git identity auto-configured. Refuses to stage gitignored rolling transcripts (audit/*/cycle.log)."
   :args (list '(:name "repo_path" :type "string" :description "Absolute path to repo root (must contain .git).")
               '(:name "message" :type "string" :description "Commit message describing what was changed. Keep it concise but descriptive."))
   :function #'iar--tool-git-commit))
