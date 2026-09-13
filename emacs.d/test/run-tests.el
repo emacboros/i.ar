@@ -170,11 +170,24 @@
     (kill-emacs 1))
   (message "Stowaway guard: static %d == registered %d, OK" static-count registered-count))
 
+;; c274: optional filter via IAR_TEST_FILTER env var (test-name
+;; regexp). All test files still LOAD (stowaway guard stays active);
+;; the filter only restricts which tests RUN. Set by run-tests.sh's
+;; filter mode (kept simple: env var, not a positional arg, so the
+;; batch entry point stays `emacs --batch -l test/run-tests.el`).
+;; Selector shape: (member NAME...) built from matching names --
+;; this ERT's ert-select-tests has no `predicate' selector clause.
 (let ((selector
-       (if (undercover-enabled-p)
-           '(not (or (tag :reload) "test-reload-os-rebuilds-tools"
-                     "test-reload-os-returns-success"))
-         t)))
+       (cond ((getenv "IAR_TEST_FILTER")
+              (cons 'member
+                    (cl-loop for test in (ert-select-tests t t)
+                             when (string-match-p (getenv "IAR_TEST_FILTER")
+                                                  (symbol-name (ert-test-name test)))
+                             collect (ert-test-name test))))
+             ((undercover-enabled-p)
+              '(not (or (tag :reload) "test-reload-os-rebuilds-tools"
+                        "test-reload-os-returns-success")))
+             (t t))))
   (if noninteractive
       (let ((stats (ert-run-tests-batch selector)))
         ;; Force coverage report write (only if coverage is active)
