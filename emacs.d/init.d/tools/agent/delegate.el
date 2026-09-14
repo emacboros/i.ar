@@ -380,14 +380,22 @@ so the user can watch progress in real time."
             (expand-file-name (format "%s.org" agent)
                               (expand-file-name iar-personalities-path user-emacs-directory)))
       (setq-local iar--delegate-depth (1+ parent-depth))
+      ;; Apply tool gating from project FIRST...
+      (when tools
+        (setq-local gptel-tools tools))
+      ;; ...then the depth strip LAST (c308, 2026-09-14): the strip
+      ;; used to run BEFORE the project set, which overwrote the
+      ;; stripped list and nullified the depth guard for any agent
+      ;; whose project #+TOOLS includes delegate (agent-assistant
+      ;; does). Live consequence: continuo's 09-14 cycle spawned a
+      ;; recursive pipeline cascade to depth 5+, the 600s delegate
+      ;; timeouts then raced live sub-agent requests, and the cycle
+      ;; died exit 255 (wrong-type-argument in timer/sentinel).
       (when (>= iar--delegate-depth iar-delegate-max-depth)
         (setq-local gptel-tools
                     (cl-remove-if (lambda (tool)
                                     (equal (gptel-tool-name tool) "delegate"))
                                   (copy-sequence gptel-tools))))
-      ;; Apply tool gating from project
-      (when tools
-        (setq-local gptel-tools tools))
 
       ;; Tool call tracker: set tools-called flag when any tool is called.
       ;; This lets the completion hook distinguish between a genuine final

@@ -963,3 +963,38 @@ an aborted request, orphaning a new request in the dying buffer."
             (should (= (symbol-value turn-count-sym) 0)) ; no re-prompt turn
             (should (null (symbol-value timer-sym))))) ; no re-prompt timer
       (when (buffer-live-p buf) (kill-buffer buf)))))
+
+;;; --- Depth strip ordering (c308, 2026-09-14) ---
+
+(ert-deftest test-delegate-depth-strip-survives-project-tools ()
+  "The depth strip must run AFTER the project tool-gating set.
+c308: the strip used to run BEFORE `(when tools (setq-local
+gptel-tools tools))', which overwrote the stripped list and
+nullified the depth guard for any agent whose project #+TOOLS
+includes delegate (agent-assistant does). Live consequence:
+continuo's 09-14 cycle spawned a recursive pipeline cascade past
+the depth limit and died exit 255 on the timeout race."
+  (let ((iar-delegate-max-depth 3)
+        (delegate-tool (gptel-make-tool :name "delegate" :function (lambda (_cb) "x")))
+        (other-tool (gptel-make-tool :name "read_file" :function (lambda () "y"))))
+    (with-temp-buffer
+      (setq-local iar--delegate-depth 3)
+      (setq-local gptel-tools (list delegate-tool-stub other-tool))
+      ;; Simulate the spawn body's ordering: project set, then strip.
+      (let ((tools (list delegate-tool-stub other-tool)))
+        (when tools (setq-local gptel-tools tools))
+        (when (>= iar--delegate-depth iar-delegate-max-depth)
+          (setq-local gptel-tools
+                      (cl-remove-if (lambda (tool)
+                                      (equal (gptel-tool-name tool) "delegate"))
+                                    (copy-sequence gptel-tools)))))
+      (should-not (cl-find-if (lambda (tool)
+                                (equal (gptel-tool-name tool) "delegate"))
+                              gptel-tools))
+      (should (cl-find-if (lambda (tool)
+                            (equal (gptel-tool-name tool) "read_file"))
+                          gptel-tools)))))
+
+(defvar delegate-tool-stub
+  (gptel-make-tool :name "delegate" :function (lambda (_cb) "x"))
+  "Stub delegate tool for depth-strip tests.")
