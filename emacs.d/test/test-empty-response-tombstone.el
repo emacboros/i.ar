@@ -115,9 +115,12 @@ response never trips the empty guard."
     (should-not (iar--cycle-empty-response-p))))
 
 (ert-deftest test-empty-response-failed-request-path-unchanged ()
-  "The failed-request path (start == end) keeps its strike logic -- the
-0/0 guard must not intercept it (a failed request has no PARSE data;
-reqlog state is nil here)."
+  "The failed-request path (start == end) counts its strike and, with
+NO live successor (empty request alist, no process), ends the cycle
+immediately -- the c326 dead-cycle guard (a failed request can never
+reach strike 3: gptel re-sends only after a tool result, so the old
+behavior idled the full 1800s stall window; the 09-13 quota storm
+burned 16 cycles x 30min that way)."
   (let ((buf (get-buffer-create "*test-empty-resp3*"))
         (sent 0))
     (unwind-protect
@@ -126,14 +129,42 @@ reqlog state is nil here)."
               (iar--one-shot-state nil)
               (iar--cycle-error-strikes 0)
               (iar--reqlog-last-stop nil)
-              (iar--reqlog-last-tokens-out nil))
+              (iar--reqlog-last-tokens-out nil)
+              (gptel--request-alist nil))
           (with-current-buffer buf (erase-buffer) (insert (make-string 100 ?x)))
           (cl-letf (((symbol-function 'gptel-send)
                      (lambda () (cl-incf sent))))
             (with-current-buffer buf
               (let ((start (point)))
                 (iar--cycle-post-response-handler start start))))  ; start == end: FAILED
-          ;; Strike counted, not completed (1 strike < 3).
+          ;; Strike counted AND cycle ended (dead-cycle guard).
+          (should (= 1 iar--cycle-error-strikes))
+          (should (plist-get iar--cycle-state :completed))
+          (should (= 1 (plist-get iar--cycle-state :exit-code))))
+      (kill-buffer buf))))
+
+(ert-deftest test-empty-response-failed-request-with-successor-waits ()
+  "A failed request with a LIVE successor (delegate FSM in the alist)
+does NOT end the cycle -- the delegate may still land its work."
+  (let ((buf (get-buffer-create "*test-empty-resp4*"))
+        (delegate-buf (get-buffer-create "*test-empty-resp4-delegate*")))
+    (unwind-protect
+        (let ((iar-cycle-context-limit-chars 100000)
+              (iar--cycle-state (iar--cycle-make-state "test" buf "Continue." 40))
+              (iar--one-shot-state nil)
+              (iar--cycle-error-strikes 0)
+              (iar--reqlog-last-stop nil)
+              (iar--reqlog-last-tokens-out nil)
+              ;; Live delegate: fsm in WAIT state (non-terminal).
+              (fake-fsm (gptel-make-fsm :state 'WAIT))
+              (gptel--request-alist nil))
+          (setf (alist-get :fake-proc gptel--request-alist)
+                (cons fake-fsm #'ignore))
+          (with-current-buffer buf (erase-buffer) (insert (make-string 100 ?x)))
+          (with-current-buffer buf
+            (let ((start (point)))
+              (iar--cycle-post-response-handler start start)))
           (should (= 1 iar--cycle-error-strikes))
           (should-not (plist-get iar--cycle-state :completed)))
-      (kill-buffer buf))))
+      (kill-buffer buf)
+      (kill-buffer delegate-buf))))

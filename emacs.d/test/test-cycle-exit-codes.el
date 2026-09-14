@@ -49,27 +49,30 @@ iar.sh treats exit 0 as a normal cycle end (loop continues)."
 An early mention of the sentinel (e.g. quoting the prompt) is not a
 completion signal -- only the new response region counts."
   (let ((buf (iar--test-cycle-setup-buffer
-              "old turn said LOOP_COMPLETE\nnew turn: still working\n")))
+              "old turn said LOOP_COMPLETE\nnew turn: still working")))
     (unwind-protect
         (with-current-buffer buf
-          (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
+          (let ((iar--cycle-state (iar--cycle-make-state "test" buf "Continue." 40)))
             ;; New response = only the second line
-            (iar--cycle-post-response-handler
-             (save-excursion (goto-char (point-max)) (line-beginning-position))
-             (point-max))
+            (cl-letf (((symbol-function 'gptel-send) (lambda ())))
+              (iar--cycle-post-response-handler
+               (save-excursion (goto-char (point-max)) (line-beginning-position))
+               (point-max)))
             (should-not (plist-get iar--cycle-state :completed))))
       (kill-buffer buf))))
 
 (ert-deftest test-cycle-exit-code-cycle-complete-region-only ()
   "CYCLE_COMPLETE outside the new-response region must not complete."
   (let ((buf (iar--test-cycle-setup-buffer
-              "old turn said CYCLE_COMPLETE\nnew turn: continuing\n")))
+              "old turn said CYCLE_COMPLETE\nnew turn: continuing")))
     (unwind-protect
         (with-current-buffer buf
-          (let ((iar--cycle-state (iar--cycle-make-state "test" buf nil 40)))
-            (iar--cycle-post-response-handler
-             (save-excursion (goto-char (point-max)) (line-beginning-position))
-             (point-max))
+          (let ((iar--cycle-state (iar--cycle-make-state "test" buf "Continue." 40)))
+            (cl-letf (((symbol-function 'gptel-send) (lambda ()))
+                      (gptel--request-alist nil))
+              (iar--cycle-post-response-handler
+               (save-excursion (goto-char (point-max)) (line-beginning-position))
+               (point-max)))
             (should-not (plist-get iar--cycle-state :completed))))
       (kill-buffer buf))))
 

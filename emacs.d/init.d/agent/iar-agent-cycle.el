@@ -1063,6 +1063,24 @@ until timeout (c67 zombie: 13m48s dead air after the arm)."
           ;; and the run idled until timeout: the c67 zombie.)
           nil)))))
 
+(defun iar--request-successor-live-p (buf)
+  "Return non-nil if a live request successor exists after a failed
+request: any FSM in `gptel--request-alist' still in a non-terminal
+state (delegates, sub-agents), or a live process attached to BUF.
+A failed request produces no tool result, so gptel never re-sends
+after it -- when nothing else is live, the cycle is dead and the
+event loop would otherwise idle the full 1800s stall window (the
+2026-09-13 quota storm: 16 cycles x 30min of sophon wall-clock on
+requests that could never succeed)."
+  (or (get-buffer-process buf)
+      (and (boundp 'gptel--request-alist)
+           (cl-some (lambda (entry)
+                      (let ((fsm (cadr entry))) ; entry = (key fsm . cleanup)
+                        (and fsm
+                             (not (memq (gptel-fsm-state fsm)
+                                        '(ERRS ABRT DONE))))))
+                    gptel--request-alist))))
+
 (defun iar--cycle-post-response-handler (start end)
   "Post-response handler for cycle. START and END are buffer positions
 delimiting the new response (gptel convention). START == END means the
@@ -1083,10 +1101,22 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
               (cl-incf iar--cycle-error-strikes)
               (message "[%s] Cycle request FAILED (strike %d/3)"
                        agent iar--cycle-error-strikes)
-              (when (>= iar--cycle-error-strikes 3)
+              (cond
+               ((>= iar--cycle-error-strikes 3)
                 (message "[%s] Three failed requests in a row -- ending cycle" agent)
                 (setf (plist-get iar--cycle-state :completed) t)
-                (setf (plist-get iar--cycle-state :exit-code) 1)))
+                (setf (plist-get iar--cycle-state :exit-code) 1))
+               ;; Dead-cycle guard (c326): a failed request with no
+               ;; live successor can never reach strike 3 -- gptel
+               ;; re-sends only after a tool result, and a failed
+               ;; request has none. End the cycle NOW instead of
+               ;; idling the full 1800s stall window (09-13 quota
+               ;; storm: 16 cycles x 30min each, 8h of wall-clock on
+               ;; dead requests).
+               ((not (iar--request-successor-live-p (plist-get iar--cycle-state :buffer)))
+                (message "[%s] Request failed with no live successor -- ending cycle (no 1800s idle wait)" agent)
+                (setf (plist-get iar--cycle-state :completed) t)
+                (setf (plist-get iar--cycle-state :exit-code) 1))))
           ;; ---- SUCCESS PATH ----
           (setq iar--cycle-error-strikes 0)
           (cl-incf (plist-get iar--cycle-state :turn-count))
@@ -1722,10 +1752,18 @@ marks as completed with exit code 1."
           (cl-incf iar--one-shot-error-strikes)
           (message "[%s] One-shot request FAILED (strike %d/3)"
                    agent iar--one-shot-error-strikes)
-          (when (>= iar--one-shot-error-strikes 3)
+          (cond
+           ((>= iar--one-shot-error-strikes 3)
             (message "[%s] Three failed requests in a row -- ending one-shot" agent)
             (setf (plist-get iar--one-shot-state :completed) t)
-            (setf (plist-get iar--one-shot-state :exit-code) 1)))
+            (setf (plist-get iar--one-shot-state :exit-code) 1))
+           ;; Dead-run guard (c326): same shape as the cycle path --
+           ;; a failed request with no live successor ends the run
+           ;; immediately instead of idling the 1800s stall window.
+           ((not (iar--request-successor-live-p (plist-get iar--one-shot-state :buffer)))
+            (message "[%s] Request failed with no live successor -- ending one-shot (no 1800s idle wait)" agent)
+            (setf (plist-get iar--one-shot-state :completed) t)
+            (setf (plist-get iar--one-shot-state :exit-code) 1))))
       ;; ---- SUCCESS PATH ----
       (setq iar--one-shot-error-strikes 0)
       (cl-incf (plist-get iar--one-shot-state :turn-count))
