@@ -170,38 +170,93 @@ line (c262 dedupe guard: the dup dies at birth)."
       (delete-directory tmpdir :recursive))))
 
 (ert-deftest test-tool-call-usage-write-log-now-commit-does-not-sweep ()
-  "Belt #2 commit targets ONLY USAGE.log -- never sweeps siblings."
+  "Belt #2b (c292): the belt commits the agent's OWN record files
+(JOURNAL.org rides the belt now) but NEVER a sibling agent's files.
+c292 finding: continuo's close protocol has no commit step -- 9 of 10
+runs left her record uncommitted and its durability rode aria's
+belt-syncing. The belt now carries the agent's record; the old
+same-agent-JOURNAL-must-stay-dirty contract is INVERTED. The
+sibling-protection contract survives: another agent's dirty files
+stay out of this commit."
   (let* ((tmpdir (make-temp-file "usage-sweep-" t))
          (repo-dir (expand-file-name "repo" tmpdir))
          (iar-personalization-path repo-dir)
          (iar-audit-path "audit")
          (iar--current-agent-name "testagent")
          (iar--current-project "testproject")
-         (sibling-file (expand-file-name "audit/testproject/testagent/JOURNAL.org" repo-dir)))
+         (own-journal (expand-file-name "audit/testproject/testagent/JOURNAL.org" repo-dir))
+         (sibling-journal (expand-file-name "audit/testproject/sibling/JOURNAL.org" repo-dir)))
     (unwind-protect
         (progn
-          (make-directory (file-name-directory sibling-file) t)
-          (with-temp-file sibling-file (insert "sibling uncommitted work\n"))
+          (make-directory (file-name-directory own-journal) t)
+          (make-directory (file-name-directory sibling-journal) t)
+          (with-temp-file own-journal (insert "own v1\n"))
+          (with-temp-file sibling-journal (insert "sibling v1\n"))
           (let ((default-directory repo-dir))
             (call-process "git" nil nil nil "init" "-q")
             (call-process "git" nil nil nil "config" "user.name" "Test")
             (call-process "git" nil nil nil "config" "user.email" "t@i.ar")
             (call-process "git" nil nil nil "add" "-A")
             (call-process "git" nil nil nil "commit" "-qm" "init"))
-          ;; Modify the sibling file AFTER init -- it must stay
-          ;; uncommitted through belt #2's commit.
-          (with-temp-file sibling-file (insert "sibling NEW uncommitted work\n"))
+          ;; Modify BOTH after init: the agent's own journal (must ride
+          ;; the belt now) and the sibling's journal (must NOT).
+          (with-temp-file own-journal (insert "own v2 -- rides the belt\n"))
+          (with-temp-file sibling-journal (insert "sibling v2 -- stays out\n"))
           (iar--usage-reset)
           (setq iar--usage-requests 1 iar--usage-input-tokens 10
                 iar--usage-output-tokens 5 iar--usage-model "m")
           (should (eq (iar--usage-write-log-now) t))
-          ;; The sibling's change is NOT in the belt #2 commit.
-          (let ((default-directory repo-dir))
-            (call-process "git" nil nil nil "status" "--porcelain"))
+          ;; OWN journal change IS committed (belt #2b).
           (with-temp-buffer
             (let ((default-directory repo-dir))
-              (call-process "git" nil t nil "diff" "--" "audit/testproject/testagent/JOURNAL.org"))
-            (should (string-match-p "sibling NEW" (buffer-string)))))
+              (call-process "git" nil t nil "show" "--stat" "HEAD"))
+            (should (string-match-p "JOURNAL.org" (buffer-string))))
+          (with-temp-buffer
+            (let ((default-directory repo-dir))
+              (call-process "git" nil t nil "show" "HEAD:audit/testproject/testagent/JOURNAL.org"))
+            (should (string-match-p "own v2" (buffer-string))))
+          ;; SIBLING journal change is NOT in the commit (still dirty).
+          (with-temp-buffer
+            (let ((default-directory repo-dir))
+              (call-process "git" nil t nil "diff" "--" "audit/testproject/sibling/JOURNAL.org"))
+            (should (string-match-p "sibling v2" (buffer-string)))))
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-tool-call-usage-write-log-now-belt2b-never-sweeps-cycle-log ()
+  "Belt #2b stages a FIXED record-file list: the rolling cycle.log
+(86MB, the c270 resurrection class) and scratch files never ride it."
+  (let* ((tmpdir (make-temp-file "usage-cyclog-" t))
+         (repo-dir (expand-file-name "repo" tmpdir))
+         (iar-personalization-path repo-dir)
+         (iar-audit-path "audit")
+         (iar--current-agent-name "testagent")
+         (iar--current-project "testproject")
+         (cyclog (expand-file-name "audit/testproject/testagent/cycle.log" repo-dir))
+         (scratch (expand-file-name "audit/testproject/testwrite" repo-dir)))
+    (unwind-protect
+        (progn
+          (make-directory (file-name-directory cyclog) t)
+          (make-directory scratch t)
+          (with-temp-file cyclog (insert "rolling transcript -- huge\n"))
+          (with-temp-file (expand-file-name "junk.txt" scratch) (insert "scratch\n"))
+          (let ((default-directory repo-dir))
+            (call-process "git" nil nil nil "init" "-q")
+            (call-process "git" nil nil nil "config" "user.name" "Test")
+            (call-process "git" nil nil nil "config" "user.email" "t@i.ar")
+            (with-temp-file (expand-file-name ".gitignore" repo-dir)
+              (insert "audit/*\n"))
+            (call-process "git" nil nil nil "add" "-A")
+            (call-process "git" nil nil nil "commit" "-qm" "init"))
+          (iar--usage-reset)
+          (setq iar--usage-requests 1 iar--usage-input-tokens 10
+                iar--usage-output-tokens 5 iar--usage-model "m")
+          (should (eq (iar--usage-write-log-now) t))
+          ;; Neither cycle.log nor scratch is tracked after the belt.
+          (let ((default-directory repo-dir))
+            (with-temp-buffer
+              (call-process "git" nil t nil "ls-files" "audit/testproject/testagent/")
+              (should (not (string-match-p "cycle\.log" (buffer-string))))
+              (should (not (string-match-p "testwrite" (buffer-string)))))))
       (delete-directory tmpdir :recursive))))
 
 (ert-deftest test-tool-call-usage-write-log-now-force-stage-untracked ()

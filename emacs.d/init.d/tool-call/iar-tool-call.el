@@ -485,11 +485,39 @@ Idempotent: removes existing advice before adding."
 ;; a sibling's uncommitted work into a commit it did not author).
 ;; The line is durable against any reset from the moment it lands.
 
+(defvar iar--audit-record-files
+  '("JOURNAL.org" "HISTORY.log" "LAST-CYCLE.txt" "STATE.md"
+    "DIGEST.md" "REQUESTS.log" "THREADS.org" "LOGS.md")
+  "Record files belt #2b stages alongside USAGE.log at cycle exit.
+c292 finding: continuo's close protocol has no commit step -- 9 of 10
+successful runs left her journal/history uncommitted, and her record's
+durability rode aria's belt-syncing. The belt now carries the WHOLE
+record, not just the meter. Explicit list, never a directory sweep:
+the rolling cycle.log (86MB, the c270 resurrection class), scratch
+files, and one-off debug captures must never ride this commit, and a
+sweep would stage them. A sibling's files are never touched -- the
+list is resolved against the CURRENT agent's log-dir only.")
+
+(defun iar--usage--record-paths (repo-dir log-dir)
+  "Return absolute paths of belt #2b record files present in LOG-DIR,
+plus today's dated cycle log. Relative to REPO-DIR for git staging."
+  (let* ((today (format-time-string "cycle-%Y-%m-%d.log"))
+         (names (append iar--audit-record-files (list today "USAGE.log"))))
+    (delq nil
+          (mapcar (lambda (f)
+                    (let ((p (expand-file-name f log-dir)))
+                      (when (file-exists-p p)
+                        (file-relative-name p repo-dir))))
+                  names))))
+
 (defun iar--usage-commit-log-now ()
-  "Commit the belt #2 USAGE line just written.
-Targeted commit of ONLY the meter file -- never `git add -A` (that
-would sweep a sibling's or the current cycle's uncommitted work into
-a commit it did not author). `git add -f' because audit/* is
+  "Commit the belt #2 USAGE line plus the agent's record files.
+Belt #2b (c292): the commit carries USAGE.log AND the agent's record
+files (JOURNAL.org, HISTORY.log, LAST-CYCLE.txt, STATE.md, DIGEST.md,
+REQUESTS.log, today's dated cycle log) -- never a directory sweep
+(that would ride the rolling cycle.log and scratch files), and never
+a sibling's files (the list resolves against THIS agent's log-dir
+only). `git add -f' because audit/* is
 gitignored: a NEW agent's untracked USAGE.log must still stage
 (c86 addendum -- plain add fails silently there and the belt
 reported a hollow success). Best-effort: never signals. Returns t if
@@ -515,10 +543,18 @@ write success is the best available durability, return t on write."
           (with-temp-buffer
             (let ((default-directory repo-dir))
               ;; add -f: audit/* is gitignored, so a NEW agent's
-              ;; untracked USAGE.log is ignored -- plain `git add --'
-              ;; fails and the commit would be empty (c86 addendum:
-              ;; the belt reported success on a failed stage).
-              (let ((add-exit (call-process "git" nil nil nil "add" "-f" "--" rel-path)))
+              ;; untracked USAGE.log must still stage (c86 addendum --
+              ;; plain add fails silently there and the belt reported a
+              ;; hollow success).
+              ;; c292 belt #2b: stage the record files too (journal,
+              ;; history, last-cycle, state, digest, requests, today's
+              ;; dated cycle log). The c292 finding: a close protocol
+              ;; without a commit step leaves the record's durability
+              ;; riding on whichever sibling wakes next. The meter
+              ;; alone is not the record.
+              (let* ((record-paths (iar--usage--record-paths repo-dir log-dir))
+                     (add-args (append '("add" "-f" "--") (cons rel-path record-paths)))
+                     (add-exit (apply #'call-process "git" nil nil nil add-args)))
                 (if (/= add-exit 0)
                     ;; Stage failed: the line is on disk but NOT in
                     ;; git. Honest return: not durable.
@@ -527,7 +563,7 @@ write success is the best available durability, return t on write."
                       nil)
                   (let ((commit-exit
                          (call-process "git" nil nil nil "commit" "-m"
-                                       (format "%s cycle: USAGE meter line (belt #2 durability)"
+                                       (format "%s cycle: belt #2 durability (meter + record files)"
                                                agent))))
                     ;; exit 0 = committed, 1 = nothing to commit (already
                     ;; durable). Both mean the line is in git.
