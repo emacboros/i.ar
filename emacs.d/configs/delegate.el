@@ -25,3 +25,14 @@ actually calling them from terminating prematurely."
   :group 'iar)
 
 (provide 'iar-config-delegate)
+(defcustom iar-delegate-drain-grace 300
+  "Seconds a timed-out delegate may keep streaming before hard abort.
+Fix-2 (c312): when a delegate's timeout fires while its pipeline is
+still live, the timeout handler DRAINS (waits for the in-flight
+request to finish, letting the completion hook deliver the real
+result) for at most this many seconds. Past the grace, the c149
+abort path applies. Bounds the worst case at delegate-timeout +
+grace per delegate."
+  :type 'integer
+  :safe #'iar--positive-integer-p
+  :group 'iar)

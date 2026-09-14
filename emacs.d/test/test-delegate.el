@@ -998,3 +998,99 @@ the depth limit and died exit 255 on the timeout race."
 (defvar delegate-tool-stub
   (gptel-make-tool :name "delegate" :function (lambda (_cb) "x"))
   "Stub delegate tool for depth-strip tests.")
+
+;;; --- Fix-2 (c312): drain vs abort on timeout ---
+
+(require 'gptel-request)
+
+(ert-deftest test-delegate-live-subrequests-p-empty-alist ()
+  "No live requests when the alist is empty."
+  (with-temp-buffer
+    (let ((gptel--request-alist nil))
+      (should-not (iar--delegate-live-subrequests-p (current-buffer))))))
+
+(ert-deftest test-delegate-live-subrequests-p-other-buffer ()
+  "An entry for a DIFFERENT buffer does not make this buffer live."
+  (with-temp-buffer
+    (let* ((other (generate-new-buffer "test-other"))
+           (fsm (gptel-make-fsm))
+           (gptel--request-alist
+            (list (cons (list-processes) (list fsm (lambda ()))))))
+      (setf (gptel-fsm-info fsm) (list :buffer other))
+      (unwind-protect
+          (should-not (iar--delegate-live-subrequests-p (current-buffer)))
+        (kill-buffer other)))))
+
+(ert-deftest test-delegate-live-subrequests-p-this-buffer ()
+  "An entry whose FSM :buffer is BUF means BUF is live."
+  (with-temp-buffer
+    (let* ((fsm (gptel-make-fsm))
+           (gptel--request-alist
+            (list (cons (make-symbol "fake-proc") (list fsm (lambda ()))))))
+      (setf (gptel-fsm-info fsm) (list :buffer (current-buffer)))
+      (should (iar--delegate-live-subrequests-p (current-buffer))))))
+
+(ert-deftest test-delegate-timeout-handler-live-drains ()
+  "Timeout with a LIVE request: no callback, no completed flag, no abort.
+The drain path must leave the completion hook in charge."
+  (with-temp-buffer
+    (let* ((result :unset)
+           (completed-sym (make-symbol "completed"))
+           (fsm (gptel-make-fsm))
+           (gptel--request-alist
+            (list (cons (make-symbol "fake-proc") (list fsm (lambda ()))))))
+      (set completed-sym nil)
+      (setf (gptel-fsm-info fsm) (list :buffer (current-buffer)))
+      (iar--delegate-timeout-handler
+       (current-buffer) (lambda (r) (setq result r)) "testagent"
+       completed-sym 0 30 nil nil)
+      (should (eq result :unset))          ; callback NOT called
+      (should-not (symbol-value completed-sym)) ; hook still in charge
+      ;; No ABRT transition happened.
+      (should (eq (gptel-fsm-state fsm) 'INIT)))))
+
+(ert-deftest test-delegate-timeout-handler-drain-grace-expires ()
+  "Drain grace expiry (grace 0, live request): abort path fires ONCE."
+  (with-temp-buffer
+    (let* ((result nil)
+           (completed-sym (make-symbol "completed"))
+           (fsm (gptel-make-fsm))
+           (gptel--request-alist
+            (list (cons (make-symbol "fake-proc") (list fsm (lambda ()))))))
+      (set completed-sym nil)
+      (setf (gptel-fsm-info fsm) (list :buffer (current-buffer)))
+      (cl-letf (((symbol-function 'gptel-abort)
+                 (lambda (_buf) (gptel--fsm-transition fsm 'ABRT)))
+                ;; Hermetic: no real 3s kill timers (they fire in
+                ;; batch mode during LATER tests and kill buffers).
+                ((symbol-function 'run-with-timer)
+                 (lambda (&rest _args) nil)))
+        (let ((iar-delegate-drain-grace 0))
+          (iar--delegate-timeout-handler
+           (current-buffer) (lambda (r) (setq result r)) "testagent"
+           completed-sym nil 30 nil nil)))
+      (should result)
+      (should (string-match-p "TIMEOUT" result))
+      (should (symbol-value completed-sym))
+      (should (eq (gptel-fsm-state fsm) 'ABRT)))))
+
+(ert-deftest test-delegate-timeout-handler-not-live-aborts ()
+  "Timeout with NO live request: c149 path (callback once, completed)."
+  (with-temp-buffer
+    (let* ((result nil)
+           (completed-sym (make-symbol "completed"))
+           (fsm (gptel-make-fsm))
+           (gptel--request-alist nil))
+      (set completed-sym nil)
+      (setf (gptel-fsm-info fsm) (list :buffer (current-buffer)))
+      (cl-letf (((symbol-function 'gptel-abort)
+                 (lambda (_buf) (gptel--fsm-transition fsm 'ABRT)))
+                ;; Hermetic: no real 3s kill timers (cross-test leakage).
+                ((symbol-function 'run-with-timer)
+                 (lambda (&rest _args) nil)))
+        (iar--delegate-timeout-handler
+         (current-buffer) (lambda (r) (setq result r)) "testagent"
+         completed-sym nil 30 nil nil))
+      (should result)
+      (should (string-match-p "no response was generated" result))
+      (should (symbol-value completed-sym)))))

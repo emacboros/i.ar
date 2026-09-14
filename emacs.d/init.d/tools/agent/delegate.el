@@ -58,6 +58,107 @@ default and landed in the reviewer's audit tree)."
   (when (and parent-file-sym (boundp parent-file-sym))
     (setq-default iar--current-agent-file (symbol-value parent-file-sym))))
 
+;; Defined in configs/delegate.el (loaded before init.d modules).
+;; Forward-declared: owned by configs/delegate.el.
+(defvar iar-delegate-drain-grace 300
+  "Seconds a timed-out delegate may keep streaming before hard abort.
+Defined in configs/delegate.el; see defcustom there for the full doc.")
+
+(defvar iar--delegate-drain-ticks nil
+  "Hash table: delegate buffer -> drain ticks used.
+Weak on keys so dead buffers are collected. Used by the
+timeout handler's drain loop to enforce the drain grace.")
+
+(defun iar--delegate-live-subrequests-p (buf)
+  "Return non-nil if BUF has a live gptel request.
+Mirrors gptel-abort's own lookup: an entry in
+`gptel--request-alist' whose FSM :buffer is BUF means a curl
+request is actively streaming against this buffer. A delegate
+with no live request is between turns (re-prompt timer armed)
+or already done -- aborting it is safe."
+  (and (boundp 'gptel--request-alist)
+       gptel--request-alist
+       (cl-find-if
+        (lambda (entry)
+          ;; entry: (PROCESS . (FSM ABORT-FN))
+          (and (buffer-live-p buf)
+               (eq (thread-first (cadr entry)
+                                 (gptel-fsm-info)
+                                 (plist-get :buffer))
+                   buf)))
+        gptel--request-alist)))
+
+(defun iar--delegate-drain-or-abort (buf callback agent completed-sym
+                                        resp-start timeout-secs
+                                        parent-agent-sym parent-file-sym)
+  "Fix-2 (c312): if BUF is still streaming, DRAIN instead of abort.
+A delegate that outlives its timeout while its pipeline is
+mid-flight is doing real work; aborting it orphans the
+sub-agents whose timers/sentinels then race the kill path
+(c308 cascade crash, exit 255). Drain: re-check every second;
+when the request completes, the completion hook delivers the
+real result through the NORMAL path (completed-sym stays nil
+so the hook is not skipped). If the drain exceeds
+`iar-delegate-drain-grace' seconds, fall through to the c149
+abort path -- the pipeline had its chance."
+  (if (not (iar--delegate-live-subrequests-p buf))
+      ;; Not live: nothing mid-stream, abort path is safe (c149).
+      (iar--delegate-timeout-abort buf callback completed-sym
+                                   resp-start timeout-secs
+                                   parent-agent-sym parent-file-sym)
+    ;; Live: drain. Do NOT set completed-sym -- the completion
+    ;; hook must still fire on DONE and deliver the result.
+    (let* ((drain-table (or iar--delegate-drain-ticks
+                            (setq iar--delegate-drain-ticks
+                                  (make-hash-table :test 'eq :weakness 'key))))
+           (ticks (1+ (gethash buf drain-table 0))))
+      (if (> ticks iar-delegate-drain-grace)
+          (progn
+            (remhash buf drain-table)
+            (message "[delegate] %s drain grace (%ds) expired with request still live -- aborting"
+                     agent iar-delegate-drain-grace)
+            (iar--delegate-timeout-abort buf callback completed-sym
+                                         resp-start timeout-secs
+                                         parent-agent-sym parent-file-sym))
+        (puthash buf ticks drain-table)
+        (run-with-timer
+         1 nil
+         (lambda ()
+           (when (and (not (symbol-value completed-sym))
+                      (buffer-live-p buf))
+             (iar--delegate-drain-or-abort
+              buf callback agent completed-sym resp-start timeout-secs
+              parent-agent-sym parent-file-sym))))))))
+
+(defun iar--delegate-timeout-abort (buf callback completed-sym
+                                      resp-start timeout-secs
+                                      parent-agent-sym parent-file-sym)
+  "The c149 abort path, extracted: mark completed, abort, callback ONCE.
+Called by the timeout handler when the delegate buffer has no live
+request, and by the drain path when the grace expires."
+  (set completed-sym t)
+  (gptel-abort buf)
+  (iar--delegate-restore-parent-defaults parent-agent-sym parent-file-sym)
+  (let ((partial
+         (when (buffer-live-p buf)
+           (with-current-buffer buf
+             (save-restriction
+               (widen)
+               (if (and resp-start (< resp-start (point-max)))
+                   (buffer-substring-no-properties resp-start (point-max))
+                 ""))))))
+    ;; Delay buffer kill to avoid "Selecting deleted buffer" in sentinel
+    (run-with-timer
+     3 nil
+     (lambda ()
+       (when (buffer-live-p buf) (kill-buffer buf))))
+    (funcall callback
+             (if (and partial (iar--non-blank-p partial))
+                 (format "[TIMEOUT after %ds -- partial response captured]\n\n%s"
+                         timeout-secs partial)
+               (format "[TIMEOUT after %ds -- no response was generated before timeout]"
+                       timeout-secs)))))
+
 (defun iar--delegate-timeout-handler (buf callback agent completed-sym
                                                resp-start timeout-secs
                                                parent-agent-sym
@@ -93,35 +194,15 @@ entry guard skip the aborted request entirely."
                (format "Delegate '%s' buffer was killed before completion." agent))))
    ((symbol-value completed-sym))  ; Already done, nothing to do
    (t
-    ;; c149: mark completed BEFORE aborting. The completion hook fires
-    ;; from gptel-abort's ABRT transition, sees an empty response, and
-    ;; would otherwise take the re-prompt case (2b) -- re-prompting a
-    ;; request we are killing and leaving COMPLETED-SYM nil for the
-    ;; fallback to double-callback on. With the flag set first, the
-    ;; completion hook's entry guard skips everything and this handler
-    ;; is the SINGLE completion path.
-    (set completed-sym t)
-    (gptel-abort buf)
-    (iar--delegate-restore-parent-defaults parent-agent-sym parent-file-sym)
-    (let ((partial
-           (when (buffer-live-p buf)
-             (with-current-buffer buf
-               (save-restriction
-                 (widen)
-                 (if (and resp-start (< resp-start (point-max)))
-                     (buffer-substring-no-properties resp-start (point-max))
-                   ""))))))
-      ;; Delay buffer kill to avoid "Selecting deleted buffer" in sentinel
-      (run-with-timer
-       3 nil
-       (lambda ()
-         (when (buffer-live-p buf) (kill-buffer buf))))
-      (funcall callback
-               (if (and partial (iar--non-blank-p partial))
-                   (format "[TIMEOUT after %ds -- partial response captured]\n\n%s"
-                           timeout-secs partial)
-                 (format "[TIMEOUT after %ds -- no response was generated before timeout]"
-                         timeout-secs)))))))
+    ;; Fix-2 (c312): if the delegate is STILL STREAMING (pipeline
+    ;; mid-flight), drain instead of aborting -- aborting a live
+    ;; request orphans sub-agents whose timers/sentinels race the
+    ;; kill path (c308 cascade crash). If nothing is live, the
+    ;; c149 abort path applies (mark completed BEFORE abort, single
+    ;; callback, completion hook's entry guard skips the ABRT).
+    (iar--delegate-drain-or-abort
+     buf callback agent completed-sym resp-start timeout-secs
+     parent-agent-sym parent-file-sym))))
 
 ;;; Async tool function
 
