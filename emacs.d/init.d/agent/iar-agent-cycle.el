@@ -704,8 +704,43 @@ the next request is sent. Returns nil otherwise."
                 (setq state (plist-put state :exit-code
                                        (if (eq closep 'loop) 2 0)))
                 (iar--fence-state-writeback state)
+                ;; c320 terminal-echo orphan fix: the close exits the
+                ;; event loop BEFORE the curl sentinel/cleanup advices
+                ;; fire, so the final request's RESPONSE+PARSE lines
+                ;; never land (census: 76/76 continuo cycles 09-11..14,
+                ;; aria 0 -- the echo close is continuo's ONLY exit).
+                ;; Dump the live request NOW, while the process buffer
+                ;; and FSM info still exist (the ABORT-advice pattern,
+                ;; iar-request-log.el). Best-effort: a close must never
+                ;; fail because the witness hiccuped.
+                (condition-case err
+                    (iar--cycle-echo-close-dump buf)
+                  (error
+                   (message "[request-log] echo-close dump failed: %s"
+                            (error-message-string err))))
                 (list :block
                       "Terminal echo close registered -- cycle ending now.")))))))))
+
+(defun iar--cycle-echo-close-dump (buf)
+  "Dump the live request process for cycle buffer BUF (c320).
+Finds the gptel--request-alist entry whose FSM :buffer is BUF with a
+live process, and calls iar--reqlog-dump on it -- the same pattern as
+the ABORT advice (iar-request-log.el). Called from the terminal-echo
+close BEFORE the event loop exits, because the curl sentinel/cleanup
+advices that normally write the final request's RESPONSE+PARSE lines
+never fire on that path (the close exits first, kill-emacs kills the
+process). No live entry -> no-op: the request already completed
+normally and its lines landed the usual way."
+  (let ((entry (cl-find-if
+                (lambda (e)
+                  (eq (thread-first (cadr e)
+                                    (gptel-fsm-info)
+                                    (plist-get :buffer))
+                      buf))
+                gptel--request-alist)))
+    (when (and entry (process-live-p (car entry)))
+      (message "[request-log] echo-close: dumping final request before exit")
+      (iar--reqlog-dump (car entry)))))
 
 (defun iar--fence-state-writeback (state)
   "Write the mutated fence STATE back to its owning global.
