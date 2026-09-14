@@ -451,3 +451,114 @@ iar-request-log-enabled); direct calls write regardless."
                        (expand-file-name
                         "audit/testproject/testagent/REQUESTS.log" tmpdir)))
       (delete-directory tmpdir :recursive))))
+;;; --- fix 3 (c311): per-fsm agent attribution ---
+
+(ert-deftest test-reqlog-attribution-two-agents-interleaved ()
+  "Fix 3 (c311): RESPONSE/PARSE events attribute per-PROCESS, not to
+the process-global `iar--reqlog-agent'. Simulate two interleaved
+requests (agent-a starts, agent-b starts, then BOTH complete): each
+event must land in its own agent's log even though the global was
+overwritten by agent-b's START."
+  (let* ((tmpdir (make-temp-file "reqlog-test-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar--current-project "testproject")
+         (iar-request-log-enabled t)
+         (proc-a (make-symbol "proc-a"))
+         (proc-b (make-symbol "proc-b")))
+    (unwind-protect
+        (progn
+          ;; agent-a's START: sets the global to agent-a, registers proc-a
+          (let ((iar--current-agent-name "agent-a"))
+            (puthash proc-a "REQ-1" iar--reqlog-processes)
+            (puthash proc-a "agent-a" iar--reqlog-process-agents)
+            (setq iar--reqlog-agent "agent-a"))
+          ;; agent-b's START: OVERWRITES the global (the race)
+          (let ((iar--current-agent-name "agent-b"))
+            (puthash proc-b "REQ-2" iar--reqlog-processes)
+            (puthash proc-b "agent-b" iar--reqlog-process-agents)
+            (setq iar--reqlog-agent "agent-b"))
+          ;; agent-a's RESPONSE completes LAST: under the old code it
+          ;; would land in agent-b's log (global now says agent-b).
+          ;; The dump path needs a live process buffer with an HTTP
+          ;; response in it; simulate agent-a's process buffer.
+          (with-temp-buffer
+            (insert "HTTP/1.1 200 OK\r\n\r\n{\"done\":true}")
+            (let ((buf (current-buffer)))
+              (cl-letf (((symbol-function 'process-buffer)
+                         (lambda (_p) buf)))
+                ;; dump reads gptel--request-alist for the fsm; empty
+                ;; alist = no PARSE section, RESPONSE only. That is the
+                ;; attribution surface under test.
+                (let ((gptel--request-alist nil))
+                  (iar--reqlog-dump proc-a)))))
+          ;; agent-a's RESPONSE must be in agent-a's log
+          (let ((path-a (expand-file-name
+                         "audit/testproject/agent-a/REQUESTS.log" tmpdir))
+                (path-b (expand-file-name
+                         "audit/testproject/agent-b/REQUESTS.log" tmpdir)))
+            (should (file-exists-p path-a))
+            (with-temp-buffer
+              (insert-file-contents path-a)
+              (should (string-match-p "REQ REQ-1 RESPONSE" (buffer-string))))
+            ;; and agent-b's log must NOT contain agent-a's event
+            (when (file-exists-p path-b)
+              (with-temp-buffer
+                (insert-file-contents path-b)
+                (should-not (string-match-p "REQ REQ-1" (buffer-string)))))))
+      (clrhash iar--reqlog-processes)
+      (clrhash iar--reqlog-process-agents)
+      (setq iar--reqlog-agent nil)
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-reqlog-attribution-parse-override ()
+  "Fix 3 (c311): the PARSE append honors the per-process agent override."
+  (let* ((tmpdir (make-temp-file "reqlog-test-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar--current-project "testproject")
+         (iar-request-log-enabled t))
+    (unwind-protect
+        (progn
+          ;; global says agent-b (stale, overwritten); override says
+          ;; agent-a: the append must land in agent-a's log.
+          (setq iar--reqlog-agent "agent-b")
+          (let ((iar--reqlog-agent-override "agent-a"))
+            (iar--reqlog-append "REQ T-1 PARSE status=200 tools=0 specs=none error=nil stop=stop tokens_in=1 tokens_out=1 msgs=1"))
+          (let ((path-a (expand-file-name
+                         "audit/testproject/agent-a/REQUESTS.log" tmpdir))
+                (path-b (expand-file-name
+                         "audit/testproject/agent-b/REQUESTS.log" tmpdir)))
+            (should (file-exists-p path-a))
+            (with-temp-buffer
+              (insert-file-contents path-a)
+              (should (string-match-p "REQ T-1 PARSE" (buffer-string))))
+            (should-not (file-exists-p path-b))))
+      (setq iar--reqlog-agent-override nil)
+      (setq iar--reqlog-agent nil)
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-reqlog-attribution-nil-override-falls-back ()
+  "Fix 3 (c311): nil override (unregistered process) falls back to the
+global -- old behavior preserved for events with no process hash."
+  (let* ((tmpdir (make-temp-file "reqlog-test-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar--current-project "testproject")
+         (iar-request-log-enabled t))
+    (unwind-protect
+        (progn
+          (setq iar--reqlog-agent "fallback-agent")
+          (let ((iar--reqlog-agent-override nil))
+            (iar--reqlog-append "REQ T-2 PARSE status=200 tools=0 specs=none error=nil stop=stop tokens_in=1 tokens_out=1 msgs=1"))
+          (let ((path (expand-file-name
+                       "audit/testproject/fallback-agent/REQUESTS.log" tmpdir)))
+            (should (file-exists-p path))
+            (with-temp-buffer
+              (insert-file-contents path)
+              (should (string-match-p "REQ T-2 PARSE" (buffer-string))))))
+      (setq iar--reqlog-agent-override nil)
+      (setq iar--reqlog-agent nil)
+      (delete-directory tmpdir :recursive))))
+
+(provide 'test-request-log)

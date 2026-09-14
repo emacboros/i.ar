@@ -112,6 +112,24 @@ Census law: segment per-cycle by the epoch, not by msgs markers.")
   "Hash: request process -> REQ id. Weakness \='key: entries die with
 the process, no cleanup needed (same pattern as the watchdog).")
 
+(defvar iar--reqlog-process-agents (make-hash-table :test 'eq :weakness 'key)
+  "Hash: request process -> agent name captured at START.
+Fix 3 (c311, attribution race): `iar--reqlog-agent' is a process-
+GLOBAL -- under concurrent sub-agents (delegation) every START
+overwrites it, so RESPONSE/PARSE events landed in whichever agent's
+log was written most recently (verified live 2026-09-14: continuo's
+-172 RESPONSE sat in agent-assistant's log). Per-fsm attribution:
+the START advice stores the agent name HERE, keyed by process, and
+the lifecycle advices resolve it per-process instead of reading the
+global. Weakness \='key: entries die with the process.")
+
+(defvar iar--reqlog-agent-override nil
+  "Dynamic per-request agent-name override (fix 3, c311).
+The lifecycle advices (RESPONSE/PARSE/FILTER-ERROR/ABORT) bind this
+around their `iar--reqlog-append' calls from the per-process hash;
+`iar--reqlog-log-dir' prefers it over the stale global. nil = old
+behavior (global fallback).")
+
 ;;; ---------------------------------------------------------
 ;;; Pure helpers (unit tested)
 ;;; ---------------------------------------------------------
@@ -223,7 +241,9 @@ captures the name from the FSM's :buffer while it is live and
 stores it in `iar--reqlog-agent'; later events (RESPONSE, PARSE,
 FILTER-ERROR, ABORT) run after the conversation buffer may be
 gone, so they use the captured name."
-  (let* ((agent (or (and (boundp 'iar--reqlog-agent) iar--reqlog-agent)
+  (let* ((agent (or (and (boundp 'iar--reqlog-agent-override)
+                         iar--reqlog-agent-override)
+                     (and (boundp 'iar--reqlog-agent) iar--reqlog-agent)
                      (iar--get-agent-name)
                      "unknown"))
          (project (or (and (boundp 'iar--current-project)
@@ -328,7 +348,11 @@ live -- process buffers and later events cannot resolve it."
             (iar--reqlog-full-dump id info messages))
           (dolist (entry gptel--request-alist)
             (when (eq (cadr entry) fsm)
-              (puthash (car entry) id iar--reqlog-processes)))))
+              (puthash (car entry) id iar--reqlog-processes)
+              ;; Fix 3 (c311): attribute this process to the agent
+              ;; captured above -- later events resolve per-process.
+              (puthash (car entry) iar--reqlog-agent
+                       iar--reqlog-process-agents)))))
     (error
      (message "[request-log] start advice failed: %s"
               (error-message-string err)))))
@@ -458,6 +482,10 @@ still readable."
   (condition-case err
       (when iar-request-log-enabled
         (let* ((id (or (gethash process iar--reqlog-processes) 0))
+               ;; Fix 3 (c311): resolve THIS request's agent per-process
+               ;; instead of trusting the process-global (attribution
+               ;; race under concurrent sub-agents).
+               (agent (gethash process iar--reqlog-process-agents))
                (buf (process-buffer process))
                (entry (alist-get process gptel--request-alist))
                (fsm (car entry))
@@ -472,10 +500,11 @@ still readable."
                      (body (if (string-match "\r?\n\r?\n" raw)
                                (substring raw (match-end 0))
                              raw)))
-                (iar--reqlog-append "REQ %s RESPONSE http=%s body_tail=%s"
-                                    id status
-                                    (iar--reqlog-cap body
-                                                     iar-request-log-body-chars)))))
+                (let ((iar--reqlog-agent-override agent))
+                  (iar--reqlog-append "REQ %s RESPONSE http=%s body_tail=%s"
+                                      id status
+                                      (iar--reqlog-cap body
+                                                       iar-request-log-body-chars))))))
           (when info
             (let* ((tool-use (plist-get info :tool-use))
                    (errdata (plist-get info :error))
@@ -514,16 +543,17 @@ still readable."
                       ;; NA (unavailable) -> nil: the fence never fires
                       ;; on absence of data (same contract as tokens).
                       iar--reqlog-last-msgs (and (integerp msgs) msgs)))
-              (iar--reqlog-append
-               "REQ %s PARSE status=%s tools=%d specs=%s error=%s stop=%s tokens_in=%s tokens_out=%s msgs=%s"
-               id (or status "?")
-               (if (listp tool-use) (length tool-use) 0)
-               (iar--reqlog-tool-specs tool-use)
-               (or errdata "nil")
-               (or stop "nil")
-               (or tok-in "NA")
-               (or tok-out "NA")
-               (iar--reqlog-msgs-count info))))))
+              (let ((iar--reqlog-agent-override agent))
+                (iar--reqlog-append
+                 "REQ %s PARSE status=%s tools=%d specs=%s error=%s stop=%s tokens_in=%s tokens_out=%s msgs=%s"
+                 id (or status "?")
+                 (if (listp tool-use) (length tool-use) 0)
+                 (iar--reqlog-tool-specs tool-use)
+                 (or errdata "nil")
+                 (or stop "nil")
+                 (or tok-in "NA")
+                 (or tok-out "NA")
+                 (iar--reqlog-msgs-count info)))))))
     (error
      (message "[request-log] dump failed: %s"
               (error-message-string err)))))
@@ -543,10 +573,12 @@ and Emacs see exactly the behavior they saw without this advice."
     (error
      (condition-case nil
          (when iar-request-log-enabled
-           (let ((id (or (gethash process iar--reqlog-processes) 0)))
-             (iar--reqlog-append "REQ %s FILTER-ERROR %s chunk=%s"
-                                 id (error-message-string err)
-                                 (iar--reqlog-cap output 1000))))
+           (let ((id (or (gethash process iar--reqlog-processes) 0))
+                 (agent (gethash process iar--reqlog-process-agents)))
+             (let ((iar--reqlog-agent-override agent))
+               (iar--reqlog-append "REQ %s FILTER-ERROR %s chunk=%s"
+                                   id (error-message-string err)
+                                   (iar--reqlog-cap output 1000)))))
        (error nil))
      (signal (car err) (cdr err)))))
 
@@ -565,10 +597,12 @@ aborts (the watchdog calls gptel-abort) and human aborts."
                       gptel--request-alist)))
           (when entry
             (let* ((process (car entry))
-                   (id (or (gethash process iar--reqlog-processes) 0)))
+                   (id (or (gethash process iar--reqlog-processes) 0))
+                   (agent (gethash process iar--reqlog-process-agents)))
               (when (process-live-p process)
-                (iar--reqlog-append "REQ %s ABORT (partial response follows)"
-                                    id)
+                (let ((iar--reqlog-agent-override agent))
+                  (iar--reqlog-append "REQ %s ABORT (partial response follows)"
+                                      id))
                 (iar--reqlog-dump process))))))
     (error
      (message "[request-log] abort advice failed: %s"
