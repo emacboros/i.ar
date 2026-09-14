@@ -500,9 +500,22 @@ list is resolved against the CURRENT agent's log-dir only.")
 
 (defun iar--usage--record-paths (repo-dir log-dir)
   "Return absolute paths of belt #2b record files present in LOG-DIR,
-plus today's dated cycle log. Relative to REPO-DIR for git staging."
+plus today's AND yesterday's dated cycle logs. Relative to REPO-DIR
+for git staging."
   (let* ((today (format-time-string "cycle-%Y-%m-%d.log"))
-         (names (append iar--audit-record-files (list today "USAGE.log"))))
+         ;; c293: the WRAPPER (iar.sh) names the dated cycle log with
+         ;; SOPHON-LOCAL date; this belt runs on the container UTC
+         ;; clock. In the sophon 21:00-23:59 window (= UTC 00:00-02:59)
+         ;; the wrapper writes YESTERDAY's dated log while the belt
+         ;; staged only TODAY's -- the run's cycle log never rode any
+         ;; belt (observed: continuo 00:56Z run, sophon 21:56 local,
+         ;; her cycle-2026-09-13.log left dirty). Staging both dates
+         ;; is TZ-proof and costs nothing (missing files are skipped).
+         (yesterday (format-time-string "cycle-%Y-%m-%d.log"
+                                        (time-subtract (current-time)
+                                                       (days-to-time 1))))
+         (names (append iar--audit-record-files
+                        (list today yesterday "USAGE.log"))))
     (delq nil
           (mapcar (lambda (f)
                     (let ((p (expand-file-name f log-dir)))
