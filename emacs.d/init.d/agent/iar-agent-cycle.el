@@ -742,6 +742,33 @@ normally and its lines landed the usual way."
       (message "[request-log] echo-close: dumping final request before exit")
       (iar--reqlog-dump (car entry)))))
 
+(defun iar--cycle-exit-dump ()
+  "Dump any live request still in `gptel--request-alist' (c323).
+Fix v2 of the terminal-echo orphan (c322 live verification): the
+orphan is NOT the echo request -- the echo completes normally (its
+PARSE even shows the close firing); the orphan is the POST-CLOSE
+RE-SEND. gptel's tool loop re-sends after every tool result,
+including a BLOCKED one, so the terminal-echo close (which blocks
+the echo call) leaves one more request in flight. The event loop
+then sees :completed and kill-emacs's with that request mid-flight
+-- START logged, RESPONSE+PARSE never (the curl sentinel never
+fires). Called from the exit paths of `iar-run-cycle' and
+`iar-run-one-shot' BEFORE kill-emacs: the last moment the process
+buffer and FSM info still exist. Dumps EVERY live entry (a
+delegate's request can also be in flight at exit). Best-effort:
+an exit must never fail because the witness hiccuped."
+  (condition-case err
+      (when (boundp 'gptel--request-alist)
+        (dolist (entry gptel--request-alist)
+          (let ((proc (car entry)))
+            (when (and (process-live-p proc)
+                       (gethash proc iar--reqlog-processes))
+              (message "[request-log] exit: dumping request in flight before exit")
+              (iar--reqlog-dump proc)))))
+    (error
+     (message "[request-log] exit dump failed: %s"
+              (error-message-string err)))))
+
 (defun iar--fence-state-writeback (state)
   "Write the mutated fence STATE back to its owning global.
 The fences alias the active state as (or iar--cycle-state
@@ -1442,6 +1469,14 @@ Tools are gated by the project's #+TOOLS metadata."
           ;; USAGE line landed in the reviewer's log).
           (with-current-buffer cycle-buf
             (iar--usage-write-log-now))
+          ;; c323 orphan fix v2: dump any request still in flight
+          ;; (the post-close re-send, a delegate's request, a summary
+          ;; request racing the grace window) BEFORE kill-emacs
+          ;; destroys the process buffers. The c320 close-time dump
+          ;; was a production no-op: at close time the live request
+          ;; was the ECHO's, already dead -- the orphan is the
+          ;; request sent AFTER the close (c322 live census).
+          (iar--cycle-exit-dump)
           (setq iar--cycle-state nil)
           (kill-emacs exit-code))))))
 
@@ -1869,5 +1904,8 @@ Tools are gated by the project's #+TOOLS metadata."
           ;; same c57 reason (agent resolution from current buffer).
           (with-current-buffer os-buf
             (iar--usage-write-log-now))
+          ;; c323 orphan fix v2: same exit-dump as the cycle path --
+          ;; the one-shot exit has the same in-flight-request window.
+          (iar--cycle-exit-dump)
           (setq iar--one-shot-state nil)
           (kill-emacs exit-code))))))
