@@ -116,7 +116,7 @@ changes from cycles (diagnose, file, move on).
 Phase 4 -- Close.
 - Append to HISTORY.log: [TIMESTAMP] continuo: <what you did>
 - Journal entry ONLY if the world changed. Quiet cycles get one
-  line: "PULSE <timestamp> all green".
+  line: "PULSE 2026-09-12 15:26:50 all green" (a LITERAL timestamp -- never a shell command like $(date); append_file writes verbatim, no expansion).
 - Post lab-notes as aria-cycle@ (or your own identity when
   one exists): what landed, what's next.
 - Update your roadmap if a thread moved.
