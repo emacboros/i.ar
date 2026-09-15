@@ -321,3 +321,37 @@ the line (c86 addendum -- add -f force-stage)."
                 iar--usage-output-tokens 5 iar--usage-model "m")
           (should (eq (iar--usage-write-log-now) nil)))
       (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-tool-call-usage-write-log-now-refusal-honest-nil ()
+  "c364: a pre-commit hook REFUSAL must return nil, not be conflated
+with 'nothing to commit' (exit 1). Production case: continuo
+2026-09-15 10:35Z -- the HISTORY-CLOCK guard refused her belt commit
+(fabricated timestamp), the belt read exit 1 as durable-success, and
+her record rode undurable until a sibling healed it."
+  (let* ((tmpdir (make-temp-file "usage-refusal-" t))
+         (repo-dir (expand-file-name "repo" tmpdir))
+         (iar-personalization-path repo-dir)
+         (iar-audit-path "audit")
+         (iar--current-agent-name "testagent")
+         (iar--current-project "testproject"))
+    (unwind-protect
+        (progn
+          (make-directory repo-dir)
+          (let ((default-directory repo-dir))
+            (call-process "git" nil nil nil "init" "-q")
+            (call-process "git" nil nil nil "config" "user.name" "Test")
+            (call-process "git" nil nil nil "config" "user.email" "t@i.ar")
+            ;; A pre-commit hook that ALWAYS refuses (prints REFUSED,
+            ;; exits 1) -- the guard shape.
+            (make-directory ".git/hooks" :parents)
+            (with-temp-file ".git/hooks/pre-commit"
+              (insert "#!/bin/sh\necho 'REFUSED by test guard' >&2\nexit 1\n"))
+            (call-process "chmod" nil nil nil "+x" ".git/hooks/pre-commit")
+            (call-process "git" nil nil nil "add" "-A")
+            (call-process "git" nil nil nil "commit" "-qm" "init"))
+          (iar--usage-reset)
+          (setq iar--usage-requests 3 iar--usage-input-tokens 100
+                iar--usage-output-tokens 40 iar--usage-model "m")
+          ;; The belt must report NOT durable (nil), not hollow-success.
+          (should (eq (iar--usage-write-log-now) nil)))
+      (delete-directory tmpdir :recursive))))

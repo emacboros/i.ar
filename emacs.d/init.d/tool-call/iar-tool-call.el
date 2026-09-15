@@ -574,13 +574,31 @@ write success is the best available durability, return t on write."
                     (progn
                       (message "Warning: pre-exit usage commit failed: git add -f exited %d" add-exit)
                       nil)
-                  (let ((commit-exit
-                         (call-process "git" nil nil nil "commit" "-m"
-                                       (format "%s cycle: belt #2 durability (meter + record files)"
+                  (let* ((commit-out (generate-new-buffer " *belt-commit-out*"))
+                         (commit-exit
+                          (apply #'call-process "git" nil (list commit-out t) nil
+                                 "commit" "-m"
+                                 (list (format "%s cycle: belt #2 durability (meter + record files)"
                                                agent))))
-                    ;; exit 0 = committed, 1 = nothing to commit (already
-                    ;; durable). Both mean the line is in git.
-                    (or (= commit-exit 0) (= commit-exit 1)))))))))
+                         (commit-text (with-current-buffer commit-out
+                                        (prog1 (buffer-string) (kill-buffer)))))
+                    ;; c364: exit 1 is AMBIGUOUS -- "nothing to commit"
+                    ;; (already durable, fine) vs a pre-commit hook
+                    ;; REFUSAL (the HISTORY-CLOCK guard rejecting a
+                    ;; fabricated timestamp; production case continuo
+                    ;; 2026-09-15 10:35Z: the guard refused her belt
+                    ;; commit, the belt read exit 1 as success, the
+                    ;; record stayed undurable AND the refused blob sat
+                    ;; staged in the shared index). A refusal must
+                    ;; return nil, not t. Distinguish by output: the
+                    ;; guard prints REFUSED to stderr (merged here).
+                    (if (and (= commit-exit 1)
+                             (string-match-p "REFUSED" commit-text))
+                        (progn
+                          (message "Warning: belt #2 commit REFUSED by hook (guard fired) -- record NOT durable this cycle: %s"
+                                   (car (split-string commit-text "\n")))
+                          nil)
+                      (or (= commit-exit 0) (= commit-exit 1))))))))))
     (error
      (message "Warning: pre-exit usage commit failed: %s"
               (error-message-string err))
