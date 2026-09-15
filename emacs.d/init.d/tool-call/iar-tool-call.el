@@ -528,6 +528,80 @@ for git staging."
                         (file-relative-name p repo-dir))))
                   names))))
 
+(defun iar--belt-clock-now-string ()
+  "Current UTC timestamp from date(1) -- CLOCK-FROM-TOOL law (c362):
+timestamps in records come from the clock, never model generation."
+  (string-trim
+   (with-temp-buffer
+     (call-process "date" nil t nil "-u" "+%Y-%m-%d %H:%M:%S UTC")
+     (buffer-string))))
+
+(defun iar--belt-annotate-refused-lines (repo-dir commit-text candidate-paths)
+  "Annotate the refused fabricated lines in the working tree.
+REPO-DIR is the personalization checkout; COMMIT-TEXT is the merged
+stdout+stderr of the refused commit (the guard prints each offending
+line as \"  <line>\"); CANDIDATE-PATHS are repo-relative audit files
+to search (the belt passes its own record paths -- never a hardcoded
+agent list). For every refused line found, locate it in the
+working-tree audit file by exact leading match and append the CLOCK
+FABRICATION annotation marker in place (c362 policy: annotate, never
+erase). Returns the number of lines annotated (0 = nothing matched).
+
+The marker carries the REAL time from date(1) (CLOCK-FROM-TOOL law):
+the belt is a mechanism, and a mechanism that writes timestamps must
+read the clock, not guess it."
+  (let* ((refused-lines
+          (let ((lines (split-string commit-text "\n"))
+                (out nil)
+                (in-refusal nil))
+            (dolist (l lines)
+              (cond
+               ((string-match-p "REFUSED by HISTORY-CLOCK guard" l)
+                (setq in-refusal t))
+               ((and in-refusal (string-match-p "^  \\[" l)
+                     ;; stop collecting at the guard's trailing prose
+                     (string-match-p "^  \\[[0-9]\\{4\\}-" l))
+                (push (string-trim l) out))
+               ((and in-refusal (string-prefix-p "A log timestamp" l))
+                (setq in-refusal nil))))
+            (nreverse out)))
+         (now (iar--belt-clock-now-string))
+         (annotated 0))
+    (dolist (refused refused-lines)
+      (let* ((prefix (substring refused 0 (min 40 (length refused))))
+             (candidates (copy-sequence candidate-paths))
+             (hit nil))
+        (while (and candidates (not hit))
+          (let* ((rel (car candidates))
+                 (path (expand-file-name rel repo-dir)))
+            (if (not (file-exists-p path))
+                (setq candidates (cdr candidates))
+              (with-temp-buffer
+                (insert-file-contents path)
+                (goto-char (point-min))
+                (if (re-search-forward
+                     (concat "^" (regexp-quote prefix)) nil t)
+                    (let ((bol (line-beginning-position))
+                          (eol (line-end-position)))
+                      ;; annotate only if not already annotated
+                      (if (progn
+                            (goto-char bol)
+                            (re-search-forward
+                             "CLOCK FABRICATION" eol t))
+                          ;; already annotated: move to the next candidate
+                          ;; (c368: the skip path must pop, or the while
+                          ;; spins forever on the same line)
+                          (setq candidates (cdr candidates))
+                        (goto-char eol)
+                        (insert
+                         (format " [CLOCK FABRICATION -- caught by pre-commit guard (%s, belt #2d auto-annotate): model-generated timestamp; the append actually happened %s. Annotated in place per c362 policy.]"
+                                 (format-time-string "%Y-%m-%d" (current-time))
+                                 now))
+                        (write-region (point-min) (point-max) path nil 'silent)
+                        (setq hit t annotated (1+ annotated))))
+                  (setq candidates (cdr candidates)))))))))
+    annotated))
+
 (defun iar--usage-commit-log-now ()
   "Commit the belt #2 USAGE line plus the agent's record files.
 Belt #2b (c292): the commit carries USAGE.log AND the agent's record
@@ -599,10 +673,73 @@ write success is the best available durability, return t on write."
                     ;; guard prints REFUSED to stderr (merged here).
                     (prog1 (if (and (= commit-exit 1)
                                     (string-match-p "REFUSED" commit-text))
-                               (progn
-                                 (message "Warning: belt #2 commit REFUSED by hook (guard fired) -- record NOT durable this cycle: %s"
-                                          (car (split-string commit-text "\n")))
-                                 nil)
+                               ;; c368 belt #2d: a refusal used to leave the
+                               ;; refused blob STAGED in the shared index --
+                               ;; the stuck-staged residue (production
+                               ;; 2026-09-15 11:53Z: continuo's future line
+                               ;; sat staged, invisible to the blame-based
+                               ;; clock audit, blocking every later commit
+                               ;; of that file; her next belt would refuse
+                               ;; again -- a silent cascade, LAST-CYCLE.txt
+                               ;; still ok). Heal at the action site:
+                               ;; annotate the refused line in place (c362
+                               ;; policy, CLOCK-FROM-TOOL timestamp), retry
+                               ;; ONCE with the audited escape, and if the
+                               ;; retry also fails, UN-STAGE so the next
+                               ;; cycle starts unstuck.
+                               (let* ((n (iar--belt-annotate-refused-lines
+                                          repo-dir commit-text
+                                          (cons rel-path record-paths)))
+                                      ;; Re-stage the annotated working-tree
+                                      ;; files BEFORE the retry: the commit
+                                      ;; takes the INDEX, and the index still
+                                      ;; holds the unannotated blob (c368
+                                      ;; test finding). let* binds in order,
+                                      ;; so this runs before retry-exit.
+                                      (_ (when (> n 0)
+                                           (dolist (p (cons rel-path record-paths))
+                                             (call-process "git" nil nil nil
+                                                           "add" "-f" "--" p))))
+                                      (retry-out (generate-new-buffer
+                                                  " *belt-retry-out*"))
+                                      (retry-exit
+                                       (let ((process-environment
+                                              (cons (copy-sequence process-environment)
+                                                    process-environment)))
+                                         (setenv "IAR_ALLOW_CLOCK" "1")
+                                         (apply #'call-process "git" nil
+                                                (list retry-out t) nil
+                                                "commit" "-m"
+                                                (list (format "%s cycle: belt #2 durability (meter + record files)"
+                                                              agent)))))
+                                      (retry-text (with-current-buffer retry-out
+                                                    (prog1 (buffer-string)
+                                                      (kill-buffer retry-out)))))
+                                 (if (= retry-exit 0)
+                                     (progn
+                                       (message "Belt #2d: refused commit annotated (%d line(s)) and retried with IAR_ALLOW_CLOCK=1 -- record durable" n)
+                                       t)
+                                   ;; retry failed: un-stage the record
+                                   ;; paths (un-stuck) and report honestly.
+                                   ;; One path at a time, failures ignored:
+                                   ;; a single nonexistent pathspec would
+                                   ;; abort the batch restore and leave the
+                                   ;; rest staged (c368 test finding).
+                                   ;; git rm --cached, not restore --staged:
+                                   ;; restore needs a resolvable HEAD, and a
+                                   ;; repo with NO commits (fresh checkout,
+                                   ;; empty test repo) fails with 128 while
+                                   ;; the staged blob stays stuck (c368 test
+                                   ;; finding). rm --cached works without
+                                   ;; HEAD; failures ignored per-path.
+                                   (dolist (p (cons rel-path record-paths))
+                                     (call-process "git" nil nil nil
+                                                   "rm" "--cached" "-q" "--"
+                                                   p))
+                                   (message "Warning: belt #2 commit REFUSED by hook (guard fired); annotate+retry failed (annotated %d, retry exit %d) -- record NOT durable, staged paths UN-STAGED: %s"
+                                            n retry-exit
+                                            (car (split-string retry-text "\n")))
+                                   nil))
                              (or (= commit-exit 0) (= commit-exit 1)))
                       ;; c367 belt #2c: PUSH the belt commit to the
                       ;; configured remotes. The commit is durable on
