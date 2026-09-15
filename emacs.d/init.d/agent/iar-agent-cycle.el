@@ -929,6 +929,51 @@ positions are both the cursor position at the time of the
 request\"). Three strikes -> abort the cycle. Reset on any
 successful response.")
 
+(defvar iar--cycle-retry-count 0
+  "Transient-error retries used this cycle (c357).
+A transient transport failure (5xx, connection reset, malformed
+JSON, curl non-zero exit) is a DIFFERENT failure class from the
+quota storm the dead-cycle guard was built for (c326): a 429 will
+never succeed on retry, but a 502 usually does. Transient failures
+get their own retry budget (IAR-CYCLE-TRANSIENT-RETRIES, default 3)
+with exponential backoff; permanent failures (429, quota, model
+not found) still end the cycle immediately. Reset at cycle start
+and on any successful response.")
+
+(defconst iar-cycle-transient-retries 3
+  "Max transient-failure retries per cycle before giving up.
+Backoff is exponential: 30s, 90s, 270s (worst case +390s of a
+3600s cycle budget).")
+
+(defun iar--request-transient-error-p ()
+  "Return non-nil if the last request failed with a TRANSIENT error.
+Reads the FSM info (gptel--fsm-last, buffer-local in the cycle
+buffer) and classifies the error: transport-level failures that a
+retry can plausibly fix. PERMANENT failures (429 quota, model not
+found, auth) return nil -- retrying those burns wall-clock (the
+c326 storm lesson). Returns nil when no error data exists (unknown
+class -> do not retry; the dead-cycle guard keeps its teeth)."
+  (when (and (boundp 'gptel--fsm-last) (gptel-fsm-p gptel--fsm-last))
+    (let* ((info (gptel-fsm-info gptel--fsm-last))
+           (status (or (plist-get info :status) ""))
+           (err (plist-get info :error))
+           (both (concat status " "
+                         (cond
+                          ((stringp err) err)
+                          ((and (listp err) (plist-get err :message))
+                           (gptel--to-string (plist-get err :message)))
+                          (t "")))))
+      (cond
+       ;; PERMANENT first: quota/rate-limit and model errors never retry.
+       ((string-match-p "429\\|Too Many Requests\\|rate.limit\\|quota" both) nil)
+       ((string-match-p "404\\|not found\\|model.*not\\|unauthorized\\|401\\|403" both) nil)
+       ;; TRANSIENT: server-side 5xx, gateway errors, connection-level
+       ;; failures, malformed/truncated responses.
+       ((string-match-p "50[0-4]\\|Bad Gateway\\|Service Unavailable\\|Gateway Timeout" both) t)
+       ((string-match-p "Curl failure\\|connection reset\\|connection refused\\|timed out\\|Malformed JSON" both) t)
+       ;; Unknown class: no retry (fail safe, guard keeps its teeth).
+       (t nil)))))
+
 (defun iar--cycle-context-over-limit-p (state)
   "Return the cycle buffer size if STATE's buffer exceeds the
 context limit, nil otherwise. Shared by the pre-tool-call breaker
@@ -1138,19 +1183,40 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                 (message "[%s] Three failed requests in a row -- ending cycle" agent)
                 (setf (plist-get iar--cycle-state :completed) t)
                 (setf (plist-get iar--cycle-state :exit-code) 1))
+               ;; Transient retry (c357): a 5xx / connection-level
+               ;; failure is a DIFFERENT class from the c326 quota
+               ;; storm -- a 429 never succeeds on retry, a 502
+               ;; usually does. Budgeted retries with exponential
+               ;; backoff, BEFORE the dead-cycle guard (the guard
+               ;; would otherwise kill the cycle on strike 1 and the
+               ;; retry would never happen). The re-send IS the live
+               ;; successor the guard looks for.
+               ((and (iar--request-transient-error-p)
+                     (< iar--cycle-retry-count iar-cycle-transient-retries))
+                (cl-incf iar--cycle-retry-count)
+                (let ((backoff (* 30 (expt 3 (1- iar--cycle-retry-count)))))
+                  (message "[%s] Transient error (retry %d/%d) -- backing off %ds, re-sending"
+                           agent iar--cycle-retry-count iar-cycle-transient-retries backoff)
+                  (sleep-for backoff)
+                  (with-current-buffer (plist-get iar--cycle-state :buffer)
+                    (goto-char (point-max))
+                    (insert (or (plist-get iar--cycle-state :continue) "Continue."))
+                    (gptel-send))))
                ;; Dead-cycle guard (c326): a failed request with no
                ;; live successor can never reach strike 3 -- gptel
                ;; re-sends only after a tool result, and a failed
                ;; request has none. End the cycle NOW instead of
                ;; idling the full 1800s stall window (09-13 quota
                ;; storm: 16 cycles x 30min each, 8h of wall-clock on
-               ;; dead requests).
+               ;; dead requests). PERMANENT failures (429, model
+               ;; errors) land here: no retry, honest exit.
                ((not (iar--request-successor-live-p (plist-get iar--cycle-state :buffer)))
                 (message "[%s] Request failed with no live successor -- ending cycle (no 1800s idle wait)" agent)
                 (setf (plist-get iar--cycle-state :completed) t)
                 (setf (plist-get iar--cycle-state :exit-code) 1))))
           ;; ---- SUCCESS PATH ----
-          (setq iar--cycle-error-strikes 0)
+          (setq iar--cycle-error-strikes 0
+                iar--cycle-retry-count 0)
           (cl-incf (plist-get iar--cycle-state :turn-count))
           ;; c39 fix (2026-09-07): the turn guard counted only
           ;; final-responses -- the increment lives in the
@@ -1408,7 +1474,8 @@ Tools are gated by the project's #+TOOLS metadata."
              agent-name timeout archetype project cycle-name)
     (iar--usage-reset)
     (setq iar--cycle-state (iar--cycle-make-state agent-name cycle-buf continue-prompt max-turns timeout)
-          iar--cycle-error-strikes 0)
+          iar--cycle-error-strikes 0
+          iar--cycle-retry-count 0)
     ;; Reset the shared last-request state so a stale value from a
     ;; previous cycle (or a delegate's request) is never read as this
     ;; cycle's first response by the truncated-output guard.
@@ -1771,6 +1838,10 @@ to handle content that mentions the delimiter text."
   "Consecutive failed-request strikes in the current one-shot run.
 See `iar--cycle-error-strikes' for the failed-request convention.")
 
+(defvar iar--one-shot-retry-count 0
+  "Transient-error retries used this one-shot run (c357).
+See `iar--cycle-retry-count' for the class split.")
+
 (defun iar--one-shot-post-response-handler (start end)
   "Post-response handler for one-shot mode. START and END are buffer
 positions delimiting the new response (gptel convention). START == END
@@ -1795,6 +1866,20 @@ marks as completed with exit code 1."
             (message "[%s] Three failed requests in a row -- ending one-shot" agent)
             (setf (plist-get iar--one-shot-state :completed) t)
             (setf (plist-get iar--one-shot-state :exit-code) 1))
+           ;; Transient retry (c357): same class split as the cycle
+           ;; path -- 5xx/connection failures retry with backoff,
+           ;; permanent failures (429, model errors) do not.
+           ((and (iar--request-transient-error-p)
+                 (< iar--one-shot-retry-count iar-cycle-transient-retries))
+            (cl-incf iar--one-shot-retry-count)
+            (let ((backoff (* 30 (expt 3 (1- iar--one-shot-retry-count)))))
+              (message "[%s] Transient error (retry %d/%d) -- backing off %ds, re-sending"
+                       agent iar--one-shot-retry-count iar-cycle-transient-retries backoff)
+              (sleep-for backoff)
+              (with-current-buffer (plist-get iar--one-shot-state :buffer)
+                (goto-char (point-max))
+                (insert "Continue.")
+                (gptel-send))))
            ;; Dead-run guard (c326): same shape as the cycle path --
            ;; a failed request with no live successor ends the run
            ;; immediately instead of idling the 1800s stall window.
@@ -1803,7 +1888,8 @@ marks as completed with exit code 1."
             (setf (plist-get iar--one-shot-state :completed) t)
             (setf (plist-get iar--one-shot-state :exit-code) 1))))
       ;; ---- SUCCESS PATH ----
-      (setq iar--one-shot-error-strikes 0)
+      (setq iar--one-shot-error-strikes 0
+            iar--one-shot-retry-count 0)
       (cl-incf (plist-get iar--one-shot-state :turn-count))
       ;; Log only the new response region
       (iar--cycle-log-append agent start end)
