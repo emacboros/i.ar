@@ -17,18 +17,31 @@
          (iar-personalization-path tmpdir)
          (iar-audit-path "audit")
          (iar--current-agent-name "testagent")
-         (iar--current-project "testproj"))
+         (iar--current-project "testproj")
+         (today (format-time-string "cycle-%Y-%m-%d.log"))
+         (yesterday (format-time-string "cycle-%Y-%m-%d.log"
+                                        (time-subtract (current-time)
+                                                       (days-to-time 1)))))
     (unwind-protect
         (progn
           (let ((log-dir (expand-file-name "audit/testproj/testagent" tmpdir)))
             (make-directory log-dir t)
             (with-temp-file (expand-file-name "USAGE.log" log-dir) (insert "x"))
-            (with-temp-file (expand-file-name "cycle-2026-09-13.log" log-dir) (insert "y"))
+            (with-temp-file (expand-file-name yesterday log-dir) (insert "y"))
             (let ((paths (iar--usage--record-paths tmpdir log-dir)))
-              (should (member "audit/testproj/testagent/cycle-2026-09-13.log" paths))
-              (should (member "audit/testproj/testagent/USAGE.log" paths))
+              (should (member (file-relative-name
+                               (expand-file-name yesterday log-dir)
+                               tmpdir)
+                              paths))
+              (should (member (file-relative-name
+                               (expand-file-name "USAGE.log" log-dir)
+                               tmpdir)
+                              paths))
               ;; today's log absent -> not staged (no phantom entries)
-              (should (not (member "audit/testproj/testagent/cycle-2026-09-14.log" paths))))))
+              (should (not (member (file-relative-name
+                                    (expand-file-name today log-dir)
+                                    tmpdir)
+                                   paths))))))
       (delete-directory tmpdir t))))
 
 (ert-deftest test-tool-call-belt2b-stages-both-dates ()
@@ -37,14 +50,25 @@
          (iar-personalization-path tmpdir)
          (iar-audit-path "audit")
          (iar--current-agent-name "testagent")
-         (iar--current-project "testproj"))
+         (iar--current-project "testproj")
+         (today (format-time-string "cycle-%Y-%m-%d.log"))
+         (yesterday (format-time-string "cycle-%Y-%m-%d.log"
+                                        (time-subtract (current-time)
+                                                       (days-to-time 1)))))
     (unwind-protect
         (progn
           (let ((log-dir (expand-file-name "audit/testproj/testagent" tmpdir)))
             (make-directory log-dir t)
-            (with-temp-file (expand-file-name "cycle-2026-09-13.log" log-dir) (insert "y"))
-            (with-temp-file (expand-file-name "cycle-2026-09-14.log" log-dir) (insert "t"))
+            (with-temp-file (expand-file-name "USAGE.log" log-dir) (insert "x"))
+            (with-temp-file (expand-file-name yesterday log-dir) (insert "y"))
+            (with-temp-file (expand-file-name today log-dir) (insert "t"))
             (let ((paths (iar--usage--record-paths tmpdir log-dir)))
-              (should (member "audit/testproj/testagent/cycle-2026-09-13.log" paths))
-              (should (member "audit/testproj/testagent/cycle-2026-09-14.log" paths)))))
+              (should (member (file-relative-name
+                               (expand-file-name yesterday log-dir)
+                               tmpdir)
+                              paths))
+              (should (member (file-relative-name
+                               (expand-file-name today log-dir)
+                               tmpdir)
+                              paths)))))
       (delete-directory tmpdir t))))
