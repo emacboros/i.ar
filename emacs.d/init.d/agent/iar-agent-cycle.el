@@ -768,6 +768,38 @@ an exit must never fail because the witness hiccuped."
     (error
      (message "[request-log] exit dump failed: %s"
               (error-message-string err)))))
+(defun iar--cycle-suppress-post-close-wait (orig fsm)
+  "Gate :around `gptel--handle-wait' (c348, relay 0069 option a).
+
+The empty-end class: the terminal-echo close sets :completed and
+blocks the echo call, but gptel's tool loop still transitions
+TRET -> WAIT and fires ONE MORE request (this function's callee).
+The model answers that post-completion question with an empty body
+(0/0, stop=stop), the tombstone kills a cycle that had already done
+its job, and the census records an empty-end (14 in continuo's log
+as of 09-15, every one immediately after the echo request -- c348
+full-population verification). The 0/0 was never the disease; it
+was the correct answer to a question nobody should have asked.
+
+This gate makes the question unaskable: when the active run is
+:completed, the WAIT handler does not fire -- no request is sent,
+nothing is left in flight, the event loop sees :completed and exits
+cleanly. Every legitimate WAIT passes through: the cycle's first
+request, the grace-window summary, the truncated-output landing,
+and the breaker's grace round-trip all fire while :completed is
+nil. Delegates and interactive sessions have no completed state of
+their own and are untouched. Best-effort, never signals: a gate
+failure must not break the request path."
+  (condition-case err
+      (let ((state (or iar--cycle-state iar--one-shot-state)))
+        (if (and state (plist-get state :completed))
+            (message "[%s] Post-close request suppressed (run already completed)"
+                     (or (plist-get state :agent) "unknown"))
+          (funcall orig fsm)))
+    (error
+     (message "[cycle] post-close gate error: %s" (error-message-string err))
+     ;; Fail open: fire the request rather than hang the loop.
+     (funcall orig fsm))))
 
 (defun iar--fence-state-writeback (state)
   "Write the mutated fence STATE back to its owning global.
@@ -1535,6 +1567,12 @@ Tools are gated by the project's #+TOOLS metadata."
 ;; pre-tool-call channel, which DOES run for every pending call.
 (remove-hook 'iar-pre-tool-call-functions #'iar--cycle-terminal-echo-close)
 (add-hook 'iar-pre-tool-call-functions #'iar--cycle-terminal-echo-close)
+;; c348 empty-end fix: gate the post-close re-send. Global :around
+;; advice (same rationale as the global hooks above: async sentinels
+;; run outside any buffer context). The gate is a no-op unless a run
+;; is :completed -- exactly the window between close and event-loop
+;; exit where the empty-end request used to fire.
+(advice-add 'gptel--handle-wait :around #'iar--cycle-suppress-post-close-wait)
 ;; Interactive fences (aria-0006): global post-response hook, no-op
 ;; unless iar-interactive-fences is on AND no cycle/one-shot state
 ;; owns the run. Default off -- ratification pending.
