@@ -485,6 +485,11 @@ Idempotent: removes existing advice before adding."
 ;; a sibling's uncommitted work into a commit it did not author).
 ;; The line is durable against any reset from the moment it lands.
 
+;; Forward-declared: owned by configs/git.el (loaded before init.d
+;; modules). The belt #2c push remotes (c367).
+(defvar iar-git-belt-push-remotes '("origin")
+  "Remotes the belt #2b pre-exit commit pushes to (c367).")
+
 (defvar iar--audit-record-files
   '("JOURNAL.org" "HISTORY.log" "LAST-CYCLE.txt" "STATE.md"
     "DIGEST.md" "REQUESTS.log" "THREADS.org" "LOGS.md")
@@ -592,13 +597,38 @@ write success is the best available durability, return t on write."
                     ;; staged in the shared index). A refusal must
                     ;; return nil, not t. Distinguish by output: the
                     ;; guard prints REFUSED to stderr (merged here).
-                    (if (and (= commit-exit 1)
-                             (string-match-p "REFUSED" commit-text))
-                        (progn
-                          (message "Warning: belt #2 commit REFUSED by hook (guard fired) -- record NOT durable this cycle: %s"
-                                   (car (split-string commit-text "\n")))
-                          nil)
-                      (or (= commit-exit 0) (= commit-exit 1))))))))))
+                    (prog1 (if (and (= commit-exit 1)
+                                    (string-match-p "REFUSED" commit-text))
+                               (progn
+                                 (message "Warning: belt #2 commit REFUSED by hook (guard fired) -- record NOT durable this cycle: %s"
+                                          (car (split-string commit-text "\n")))
+                                 nil)
+                             (or (= commit-exit 0) (= commit-exit 1)))
+                      ;; c367 belt #2c: PUSH the belt commit to the
+                      ;; configured remotes. The commit is durable on
+                      ;; the checkout; the push makes it VISIBLE (in
+                      ;; the bare repo every other reader pulls from).
+                      ;; Three sightings (c365/c366/c367: 2 unpushed
+                      ;; belt commits each morning) showed the push is
+                      ;; a separate act that silently does not happen.
+                      ;; Non-fatal: the commit already exists; the next
+                      ;; belt push retries. A push that fails while
+                      ;; another writer raced ahead is retried next
+                      ;; cycle too (non-ff).
+                      (dolist (remote iar-git-belt-push-remotes)
+                        (let ((push-out (generate-new-buffer " *belt-push-out*")))
+                          ;; HEAD, not a hard-coded branch: the belt
+                          ;; pushes whatever branch the checkout is on
+                          ;; (main in production; a test repo may be
+                          ;; master).
+                          (call-process "git" nil (list push-out t) nil
+                                        "push" remote "HEAD")
+                          (with-current-buffer push-out
+                            (let ((push-text (buffer-string)))
+                              (kill-buffer push-out)
+                              (unless (string-match-p "Everything up-to-date" push-text)
+                                (message "Belt #2c push to %s: %s" remote
+                                         (string-trim push-text)))))))))))))))
     (error
      (message "Warning: pre-exit usage commit failed: %s"
               (error-message-string err))

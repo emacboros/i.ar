@@ -24,4 +24,17 @@ user.email configured.  Can be set via IAR_GIT_AUTHOR_EMAIL env var."
   :type 'string
   :group 'iar)
 
+(defcustom iar-git-belt-push-remotes '("origin")
+  "Remotes the belt #2b pre-exit commit pushes to.
+c367 (2026-09-15): the belt committed but never pushed -- belt commits
+landed on the shared checkout and stayed invisible to everything that
+reads the bare repos (three sightings: c365 found 2, c366 found 2,
+c367 found 2 again; each healed by hand). The push is the missing link
+between durable (commit on the checkout) and visible (in the bare
+repo every other reader pulls). Push failure is NON-FATAL: the commit
+already exists; the next cycle's belt push retries. Set to nil to
+disable belt pushes (tests, non-remote checkouts)."
+  :type '(repeat string)
+  :group 'iar)
+
 (provide 'iar-config-git)
