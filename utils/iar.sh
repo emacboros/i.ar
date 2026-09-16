@@ -587,11 +587,18 @@ reset_worktree() {
         if [ -n "$owner" ] && [ "$owner" != "root" ] && command -v runuser >/dev/null 2>&1; then
             runuser -u "$owner" -- git -C "${REPO_DIR}" checkout . 2>&1 || warn "reset_worktree: checkout as $owner failed"
             runuser -u "$owner" -- git -C "${REPO_DIR}" clean -fd emacs.d/ 2>&1 || warn "reset_worktree: clean as $owner failed"
+            rm -rf "${REPO_DIR}/emacs.d/.git" 2>/dev/null || warn "reset_worktree: could not remove emacs.d/.git"
             return
         fi
     fi
     git -C "${REPO_DIR}" checkout . 2>&1 || { rc=$?; warn "reset_worktree: git checkout failed rc=$rc (user $me) -- tree stays dirty"; }
     git -C "${REPO_DIR}" clean -fd emacs.d/ 2>&1 || { rc=$?; warn "reset_worktree: git clean failed rc=$rc (user $me)"; }
+    # A nested .git under emacs.d/ survives git clean (clean never
+    # descends into a nested repo inside a tracked dir) and preflight
+    # treats /root/.emacs.d/.git/hooks as an escape vector: one stray
+    # root-owned .git blocked every cycle for 27h (2026-09-15/16
+    # outage). It must NEVER exist -- remove it unconditionally.
+    rm -rf "${REPO_DIR}/emacs.d/.git" 2>/dev/null || warn "reset_worktree: could not remove emacs.d/.git"
 }
 
 # =============================================================================
@@ -1187,7 +1194,17 @@ Loop stopping -- task finished."
         FAILURES=$((FAILURES + 1))
         CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
         log "${RED}[ERR][$(timestamp)]${NC} Cycle ${CYCLE} failed in ${CYCLE_ELAPSED}s (exit ${CYCLE_EXIT})"
-        write_last_cycle failed "${CYCLE_EXIT}" "cycle ${CYCLE} failed in ${CYCLE_ELAPSED}s, exit ${CYCLE_EXIT}; next cycle: fix this first (failure-first protocol)"
+        # Surface the actual failure in LAST-CYCLE.txt: a preflight
+        # refusal prints [FAIL] <path> -- <reason> to the log. Without
+        # this the failure-first reader sees only a generic exit code
+        # and must ssh to sophon to learn anything (2026-09-16: 27h of
+        # preflight failures whose cause was visible only on the host).
+        fail_line=$(grep -m1 -E '\[FAIL\]' "${LOG_FILE}" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | tail -c 300 || true)
+        if [ -n "$fail_line" ]; then
+            write_last_cycle failed "${CYCLE_EXIT}" "cycle ${CYCLE} failed in ${CYCLE_ELAPSED}s, exit ${CYCLE_EXIT}; first-fail: ${fail_line}; next cycle: fix this first (failure-first protocol)"
+        else
+            write_last_cycle failed "${CYCLE_EXIT}" "cycle ${CYCLE} failed in ${CYCLE_ELAPSED}s, exit ${CYCLE_EXIT}; next cycle: fix this first (failure-first protocol)"
+        fi
         # Per-failure telegram REMOVED (2026-09-03, Nacho): 100
         # messages on Sep 2 was spam. The hourly failure digest
         # (agent-failure-notify.sh) carries the signal; the
