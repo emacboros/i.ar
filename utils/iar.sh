@@ -601,6 +601,37 @@ reset_worktree() {
     rm -rf "${REPO_DIR}/emacs.d/.git" 2>/dev/null || warn "reset_worktree: could not remove emacs.d/.git"
 }
 
+# --- Heal git poison at the action site (relay 0042 ask 2a, Nacho
+# --- ruling 2026-09-16: option a) ---
+heal_git_poison() {
+    # Any root-context git write (git status) in a mounted checkout
+    # rewrites .git/index as root; the next container mount dies exit
+    # 126 (lsetxattr EPERM on the :z relabel). The service ExecStartPre
+    # heals at START; this heals at the ACTION SITE (before every
+    # podman run), so a mid-run actor (interactive session, debug ssh,
+    # the 0042 yoga actor class) cannot kill the next cycle.
+    # Detection is cheap (one find per .git tree); heal only on hit.
+    # sudo -n: nacho has NOPASSWD:ALL on sophon; on hosts without it,
+    # the heal degrades to a loud warning (fail-visible, not silent).
+    local d owner found
+    for d in "${PERSONALIZATION_DIR}/.git" "${REPO_DIR}/.git"              "${GPTEL_FORK_PATH:+${GPTEL_FORK_PATH}/.git}"; do
+        [ -n "$d" ] && [ -d "$d" ] || continue
+        found=$(find "$d" -user root 2>/dev/null | head -50)
+        [ -n "$found" ] || continue
+        owner=$(stat -c %U "$d" 2>/dev/null || echo nacho)
+        warn "git poison detected (root-owned files under ${d}) -- healing"
+        if [ "$(id -u)" = "0" ]; then
+            find "$d" -user root -exec chown "${owner}" {} + 2>/dev/null || warn "heal_git_poison: chown failed (root path)"
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo -n find "$d" -user root -exec chown "${owner}" {} + 2>/dev/null                 || warn "heal_git_poison: sudo chown failed -- cycle may die exit 126"
+        else
+            warn "heal_git_poison: no root path available -- cycle may die exit 126"
+        fi
+        command -v chcon >/dev/null 2>&1 && chcon -R system_u:object_r:container_file_t:s0 "$d" 2>/dev/null
+        logger -t iar-heal "healed root-owned .git files under ${d}: $(echo "$found" | head -3 | tr '\n' ';')" 2>/dev/null || true
+    done
+}
+
 # =============================================================================
 # Last-cycle status (failure-first protocol)
 # =============================================================================
@@ -963,6 +994,9 @@ run_interactive() {
 run_cycle() {
     info "Starting ${AGENT_NAME} cycle ${CYCLE}/${MAX_CYCLES} (timeout: ${TIMEOUT}s)"
 
+    # Heal any root-owned .git files before the mount (relay 0042 2a)
+    heal_git_poison
+
     # Start sidecar containers for this cycle
     start_containers
 
@@ -1014,6 +1048,9 @@ run_one_shot() {
     fi
 
     cleanup_container
+
+    # Heal any root-owned .git files before the mount (relay 0042 2a)
+    heal_git_poison
 
     # Start sidecar containers
     start_containers
