@@ -216,13 +216,29 @@ number is a lie."
 
 (defun iar--cycle-seq-block (project-name personality-name)
   "Return the CYCLE SEQ injection block for PERSONALITY-NAME, or "".
-Bumps the counter as a side effect (call once per cycle, from
-assembly -- the injection IS the bump)."
-  (let ((n (iar--cycle-seq-bump project-name personality-name)))
-    (if n
-        (format "\n\n=== CYCLE SEQ [%s] ===\n\nCYCLE SEQ: %d -- system-owned monotonic cycle counter. This is your cycle number. Use it in HISTORY lines, journal headers, and roadmap updates. NEVER derive a cycle number from context (digest/roadmap headers are stale copies of the past).\n\n=== END CYCLE SEQ ==="
-                personality-name n)
-      "")))
+READ-ONLY: reads the counter file that `iar--cycle-seq-bump' wrote.
+The bump lives at the ACTION SITE (iar-run-cycle, before assembly) --
+NOT here. c384 scar: bumping inside the injection path meant every
+assembly bumped -- suite runs (2 unbound tests), read_own_prompt
+re-assembly, delegate assembly -- so the counter counted assemblies,
+not cycles. A counter must be bumped where the event it counts
+happens. Missing file => empty block (cycle unnumbered, honest)."
+  (condition-case nil
+      (let* ((audit-base (expand-file-name iar-audit-path iar-personalization-path))
+             (path (expand-file-name
+                    (format "%s/%s/CYCLE-SEQ" project-name personality-name)
+                    audit-base))
+             (n (string-to-number
+                 (car (split-string
+                       (with-temp-buffer
+                         (insert-file-contents path)
+                         (buffer-string))
+                       "\n")))))
+        (if (> n 0)
+            (format "\n\n=== CYCLE SEQ [%s] ===\n\nCYCLE SEQ: %d -- system-owned monotonic cycle counter. This is your cycle number. Use it in HISTORY lines, journal headers, and roadmap updates. NEVER derive a cycle number from context (digest/roadmap headers are stale copies of the past).\n\n=== END CYCLE SEQ ==="
+                    personality-name n)
+          ""))
+    (error "")))
 
 ;;; --- Affect injection (valence layer, stage 1: one line) ---
 

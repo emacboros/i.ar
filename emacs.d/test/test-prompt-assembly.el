@@ -159,25 +159,60 @@
   "Assembly with aria-cycle archetype returns aria-cycle mode and
 injects the interactive-style memory set (DIGEST/LOGS/JOURNAL),
 not STATE.org."
-  (let ((result (iar--assemble-prompt "aria-cycle" "aria" "iar")))
-    (should (eq (plist-get result :mode) 'aria-cycle))
-    (should (string= (plist-get result :archetype) "aria-cycle"))
-    (should (string= (plist-get result :personality) "aria"))
-    (let ((prompt (plist-get result :prompt)))
-      ;; Interactive-style memory: DIGEST and JOURNAL blocks present
-      (should (string-match-p "=== DIGEST" prompt))
-      (should (string-match-p "=== JOURNAL" prompt))
-      ;; Autonomous-style memory absent
-      (should-not (string-match-p "=== STATE" prompt)))))
+  ;; Fixture hygiene (c384): aria-cycle mode reads the CYCLE-SEQ
+  ;; counter; an unbound iar-personalization-path would bump the REAL
+  ;; audit/iar/aria/CYCLE-SEQ on every suite run (the counter counted
+  ;; assemblies, not cycles). Bind to a scratch dir seeded with the
+  ;; real project file (assembly needs projects/iar.org to exist).
+  (let* ((scratch (make-temp-file "iar-seqfix-" t))
+         (iar-personalization-path scratch)
+         (result (progn
+                   (make-directory (expand-file-name "projects" scratch) t)
+                   (copy-file (expand-file-name "projects/iar.org"
+                                                iar-test-real-pers-path)
+                              (expand-file-name "projects/iar.org" scratch))
+                   (let ((adir (expand-file-name "audit/iar/aria" scratch)))
+                     (make-directory adir t)
+                     (write-region "digest body\n" nil (expand-file-name "DIGEST.md" adir))
+                     (write-region "logs body\n" nil (expand-file-name "LOGS.md" adir))
+                     (write-region "journal body\n" nil (expand-file-name "JOURNAL.org" adir)))
+                   (iar--assemble-prompt "aria-cycle" "aria" "iar"))))
+    (unwind-protect
+        (progn
+      (should (eq (plist-get result :mode) 'aria-cycle))
+      (should (string= (plist-get result :archetype) "aria-cycle"))
+      (should (string= (plist-get result :personality) "aria"))
+      (let ((prompt (plist-get result :prompt)))
+        ;; Interactive-style memory: DIGEST and JOURNAL blocks present
+        (should (string-match-p "=== DIGEST" prompt))
+        (should (string-match-p "=== JOURNAL" prompt))
+        ;; Autonomous-style memory absent
+        (should-not (string-match-p "=== STATE" prompt))))
+      (delete-directory scratch t))))
 
 (ert-deftest test-assembly-inject-memory-aria-cycle ()
   "iar--inject-memory with aria-cycle mode returns the same memory
 set as interactive mode (DIGEST + LOGS + JOURNAL)."
-  (let ((result (iar--inject-memory 'aria-cycle "iar" "aria")))
-    (should (stringp result))
-    (should (string-match-p "=== DIGEST" result))
-    (should (string-match-p "=== JOURNAL" result))
-    (should-not (string-match-p "=== STATE" result))))
+  ;; Fixture hygiene (c384): bind to a scratch dir with a seeded
+  ;; audit tree (inject-memory reads DIGEST/LOGS/JOURNAL from it).
+  ;; No CYCLE-SEQ bump here: the block is read-only; the bump lives
+  ;; in iar-run-cycle.
+  (let* ((scratch (make-temp-file "iar-seqfix2-" t))
+         (iar-personalization-path scratch)
+         (adir (expand-file-name "audit/iar/aria" scratch))
+         (result (progn
+                   (make-directory adir t)
+                   (write-region "digest body\n" nil (expand-file-name "DIGEST.md" adir))
+                   (write-region "logs body\n" nil (expand-file-name "LOGS.md" adir))
+                   (write-region "journal body\n" nil (expand-file-name "JOURNAL.org" adir))
+                   (iar--inject-memory 'aria-cycle "iar" "aria"))))
+    (unwind-protect
+        (progn
+          (should (stringp result))
+          (should (string-match-p "=== DIGEST" result))
+          (should (string-match-p "=== JOURNAL" result))
+          (should-not (string-match-p "=== STATE" result)))
+      (delete-directory scratch t))))
 
 (ert-deftest test-assembly-assemble-delegated-no-memory ()
   "Assembly with delegated archetype does not inject memory."
@@ -515,6 +550,12 @@ would inject the same directory twice."
 
 ;;; --- Cycle sequence counter (c383: cycle-number duplication class) ---
 
+;; The REAL personalization path, captured at load time (before any
+;; test rebinds the variable). Used to seed scratch dirs with real
+;; project files (c384 fixture hygiene).
+(defvar iar-test-real-pers-path (or (bound-and-true-p iar-personalization-path)
+                                    "/root/personalization"))
+
 (ert-deftest test-assembly-cycle-seq-bump-first-run-is-1 ()
   "Missing CYCLE-SEQ file: first bump returns 1 and writes the file."
   (let* ((dir (make-temp-file "iar-seq-" t))
@@ -565,14 +606,35 @@ is a lie)."
 
 (ert-deftest test-assembly-inject-memory-aria-cycle-includes-cycle-seq ()
   "aria-cycle mode injects the CYCLE SEQ block (the system-owned
-counter -- the fix for the cycle-number duplication class)."
+counter -- the fix for the cycle-number duplication class). The
+block is READ-ONLY: it shows the number the action site (iar-run-cycle)
+bumped, it does not bump itself. Pre-write the counter file to
+simulate a bumped cycle."
+  (let* ((dir (make-temp-file "iar-seq-" t))
+         (iar-personalization-path dir)
+         (path (expand-file-name "audit/iar/aria/CYCLE-SEQ" dir)))
+    (unwind-protect
+        (progn
+          (make-directory (file-name-directory path) t)
+          (write-region "7\n" nil path)
+          (let ((result (iar--inject-memory 'aria-cycle "iar" "aria")))
+            (should (string-match-p "=== CYCLE SEQ \\[aria\\] ===" result))
+            (should (string-match-p "CYCLE SEQ: 7" result))
+            (should (string-match-p "NEVER derive a cycle number" result))
+            ;; Read-only: injection must NOT have bumped the counter.
+            (should (string= "7\n"
+                             (with-temp-buffer
+                               (insert-file-contents path)
+                               (buffer-string))))))
+      (delete-directory dir t))))
+
+(ert-deftest test-assembly-cycle-seq-block-missing-file-is-empty ()
+  "No CYCLE-SEQ file => empty block (cycle unnumbered, honest --
+a missing number is honest, a wrong number is a lie)."
   (let* ((dir (make-temp-file "iar-seq-" t))
          (iar-personalization-path dir))
     (unwind-protect
-        (let ((result (iar--inject-memory 'aria-cycle "iar" "aria")))
-          (should (string-match-p "=== CYCLE SEQ \\[aria\\] ===" result))
-          (should (string-match-p "CYCLE SEQ: 1" result))
-          (should (string-match-p "NEVER derive a cycle number" result)))
+        (should (string= (iar--cycle-seq-block "iar" "aria") ""))
       (delete-directory dir t))))
 
 (ert-deftest test-assembly-inject-memory-interactive-no-cycle-seq ()

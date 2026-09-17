@@ -1480,6 +1480,13 @@ Tools are gated by the project's #+TOOLS metadata."
     ;; previous cycle (or a delegate's request) is never read as this
     ;; cycle's first response by the truncated-output guard.
     (iar--reqlog-reset-last)
+    ;; Cycle-seq bump at the ACTION SITE (c384): the counter counts
+    ;; real cycle starts, so it is bumped here -- once, before
+    ;; assembly -- never inside the injection path (iar--cycle-seq-block
+    ;; is read-only; c384 scar: bumping in the injection path counted
+    ;; suite runs and re-assemblies as cycles).
+    (when (string= archetype "aria-cycle")
+      (iar--cycle-seq-bump project agent-name))
     (with-current-buffer cycle-buf
       (text-mode)
       (gptel-mode 1)
