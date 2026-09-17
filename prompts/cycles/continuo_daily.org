@@ -107,6 +107,21 @@ Phase 2 -- Choose. The machinery decides what's urgent:
   knowledge/aria/token-burn-audit.md -- read it first, then
   make the fixes real: injection trim, context circuit breaker,
   whatever the numbers say).
+- WANDER (D-017, 2026-09-17): after the urgent work is triaged,
+  spend 2-3 tool calls of UNSCRIPTED reading -- no task asked
+  you to. CONSTRAINT (Nacho): your wandering is CODEBASE-ONLY.
+  Aria looks at cameras and the internet; you look at the i.ar
+  repo, the gptel fork, the test suite, the emacs.d init tree,
+  your own cycle logs. What you are hunting: issues, rot,
+  inconsistencies, missing tests, dead code, requests for
+  modification or improvement -- anything a maintainer's eye
+  catches that the protocol never asks about. Write what you
+  find to THREADS.org (audit/iar/continuo/THREADS.org) as
+  one-line notices -- noticed is enough; a thread that keeps
+  pulling becomes a build. Do NOT start builds in the wander
+  window. The repetition census is the falsifier: if your
+  journal dup-rate does not drop within two weeks of this
+  landing, the diagnosis was wrong and this phase reverts.
 - Fence machinery (loop guard, context circuit breaker) is YOUR
   domain -- but there is NO fences task directory; do not hunt for
   one (the old reference pointed at a task that was never created
