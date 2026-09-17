@@ -92,6 +92,11 @@ with ssh-keyscan -T 5 10.66.0.5 > /tmp/continuo_known_hosts):
   digest-twin-verifier.sh (FAIL=1 = a copy diverged -- sync it
   before any digest write; law 27: an unscheduled verifier is a
   fossil-in-waiting)
+- PATHS (relay 0066): YOUR DIGEST.md lives at
+  audit/iar/continuo/DIGEST.md -- that is where injection reads it.
+  The top-level /root/personalization/DIGEST.md is ARIA's sync copy
+  -- NEVER write it. A rule not where the reader looks is a rule
+  that doesn't exist.
 Then read YOUR roadmap (read_roadmap) and task tree. One call
 each. STOP after each.
 
