@@ -512,3 +512,75 @@ would inject the same directory twice."
     (let ((result (iar--inject-memory 'interactive "iar" "mirror")))
       (should-not (string-match-p "=== AFFECT" result)))
     (delete-directory dir t)))
+
+;;; --- Cycle sequence counter (c383: cycle-number duplication class) ---
+
+(ert-deftest test-assembly-cycle-seq-bump-first-run-is-1 ()
+  "Missing CYCLE-SEQ file: first bump returns 1 and writes the file."
+  (let* ((dir (make-temp-file "iar-seq-" t))
+         (iar-personalization-path dir))
+    (unwind-protect
+        (progn
+          (should (= 1 (iar--cycle-seq-bump "iar" "aria")))
+          (should (string= "1\n"
+                           (with-temp-buffer
+                             (insert-file-contents
+                              (expand-file-name "audit/iar/aria/CYCLE-SEQ" dir))
+                             (buffer-string)))))
+      (delete-directory dir t))))
+
+(ert-deftest test-assembly-cycle-seq-bump-monotonic ()
+  "Repeated bumps increment: 1, 2, 3. Per-personality counters are
+independent (aria and continuo do not share a number)."
+  (let* ((dir (make-temp-file "iar-seq-" t))
+         (iar-personalization-path dir))
+    (unwind-protect
+        (progn
+          (should (= 1 (iar--cycle-seq-bump "iar" "aria")))
+          (should (= 2 (iar--cycle-seq-bump "iar" "aria")))
+          (should (= 3 (iar--cycle-seq-bump "iar" "aria")))
+          (should (= 1 (iar--cycle-seq-bump "iar" "continuo"))))
+      (delete-directory dir t))))
+
+(ert-deftest test-assembly-cycle-seq-bump-corrupt-file-restarts ()
+  "A corrupt (non-numeric) CYCLE-SEQ restarts the counter at 1 --
+a wrong number is a lie; a restarted counter is at least monotonic
+from here."
+  (let* ((dir (make-temp-file "iar-seq-" t))
+         (iar-personalization-path dir)
+         (path (expand-file-name "audit/iar/aria/CYCLE-SEQ" dir)))
+    (unwind-protect
+        (progn
+          (make-directory (file-name-directory path) t)
+          (write-region "garbage\n" nil path)
+          (should (= 1 (iar--cycle-seq-bump "iar" "aria"))))
+      (delete-directory dir t))))
+
+(ert-deftest test-assembly-cycle-seq-bump-unwritable-is-nil ()
+  "An unwritable audit base returns nil (best-effort: the cycle
+proceeds unnumbered -- a missing number is honest, a wrong number
+is a lie)."
+  (let ((iar-personalization-path "/definitely/not/a/real/path"))
+    (should (null (iar--cycle-seq-bump "iar" "aria")))))
+
+(ert-deftest test-assembly-inject-memory-aria-cycle-includes-cycle-seq ()
+  "aria-cycle mode injects the CYCLE SEQ block (the system-owned
+counter -- the fix for the cycle-number duplication class)."
+  (let* ((dir (make-temp-file "iar-seq-" t))
+         (iar-personalization-path dir))
+    (unwind-protect
+        (let ((result (iar--inject-memory 'aria-cycle "iar" "aria")))
+          (should (string-match-p "=== CYCLE SEQ \\[aria\\] ===" result))
+          (should (string-match-p "CYCLE SEQ: 1" result))
+          (should (string-match-p "NEVER derive a cycle number" result)))
+      (delete-directory dir t))))
+
+(ert-deftest test-assembly-inject-memory-interactive-no-cycle-seq ()
+  "interactive mode does NOT inject CYCLE SEQ (cycles only --
+interactive sessions number by session, not by cycle)."
+  (let* ((dir (make-temp-file "iar-seq-" t))
+         (iar-personalization-path dir))
+    (unwind-protect
+        (let ((result (iar--inject-memory 'interactive "iar" "mirror")))
+          (should-not (string-match-p "=== CYCLE SEQ" result)))
+      (delete-directory dir t))))

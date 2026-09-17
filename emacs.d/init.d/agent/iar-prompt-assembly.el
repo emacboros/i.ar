@@ -180,6 +180,50 @@ when over the hard cap. Returns the digest string (possibly empty)."
     digest))
 
 
+;;; --- Cycle sequence counter (system-owned identity, c383) ---
+;;; The cycle-number duplication class (2026-09-17): cycles self-numbered
+;;; from generated headers (DIGEST/ROADMAP "Last updated" lines), and the
+;;; two counters drifted -- 09-17 00:00-02:47 replayed 09-16 evening's
+;;; numbers (c372-c379 all duplicated). A number that lives in generated
+;;; text is a claim, not a counter. The fix: ONE monotonic counter file
+;;; the SYSTEM owns; the model reads its number from the injection and
+;;; never derives it from context again.
+
+(defun iar--cycle-seq-bump (project-name personality-name)
+  "Read audit/<PROJECT>/<PERSONALITY>/CYCLE-SEQ, increment, write back.
+Returns the new integer (first run: 1). Missing or corrupt file
+starts the counter at 1. Best-effort: any error returns nil and the
+cycle proceeds unnumbered -- a missing number is honest, a wrong
+number is a lie."
+  (condition-case nil
+      (let* ((audit-base (expand-file-name iar-audit-path iar-personalization-path))
+             (dir (expand-file-name (format "%s/%s" project-name personality-name)
+                                    audit-base))
+             (path (expand-file-name "CYCLE-SEQ" dir))
+             (n (condition-case nil
+                    (string-to-number
+                     (car (split-string
+                           (with-temp-buffer
+                             (insert-file-contents path)
+                             (buffer-string))
+                           "\n")))
+                  (file-error 0))))
+        (setq n (1+ (if (> n 0) n 0)))
+        (make-directory dir t)
+        (with-temp-file path (insert (format "%d\n" n)))
+        n)
+    (error nil)))
+
+(defun iar--cycle-seq-block (project-name personality-name)
+  "Return the CYCLE SEQ injection block for PERSONALITY-NAME, or "".
+Bumps the counter as a side effect (call once per cycle, from
+assembly -- the injection IS the bump)."
+  (let ((n (iar--cycle-seq-bump project-name personality-name)))
+    (if n
+        (format "\n\n=== CYCLE SEQ [%s] ===\n\nCYCLE SEQ: %d -- system-owned monotonic cycle counter. This is your cycle number. Use it in HISTORY lines, journal headers, and roadmap updates. NEVER derive a cycle number from context (digest/roadmap headers are stale copies of the past).\n\n=== END CYCLE SEQ ==="
+                personality-name n)
+      "")))
+
 ;;; --- Affect injection (valence layer, stage 1: one line) ---
 
 (defun iar--read-affect-line (project-name)
@@ -282,6 +326,10 @@ to `iar-personal-file-max-lines' to bound context growth."
        (when (iar--non-blank-p affect)
          (push (format "\n\n=== AFFECT [%s] ===\n\n%s\n\n=== END AFFECT ===\n\nAFFECT is the valence layer: what the system's organs currently register. It is VALUATION, never command -- weigh it against the roadmap; failure-first covers events that happened, affect is the standing worry layer. Feeling language in journals is permitted, never required." personality-name affect)
                parts))
+       (when (eq mode 'aria-cycle)
+         (let ((seq (iar--cycle-seq-block project-name personality-name)))
+           (when (iar--non-blank-p seq)
+             (push seq parts))))
        (if parts
            (mapconcat #'identity (nreverse parts) "")
          "")))
