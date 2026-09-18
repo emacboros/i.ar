@@ -14,6 +14,9 @@
 ;; tree). The dedupe guard in iar--usage-write-log kills the dup at
 ;; birth: same timestamp+counts line already last => skip. Tests
 ;; updated: two identical writes = one line; a DIFFERENT line appends.
+;; c58 UPDATE: "identical" means identical CONTENT (counts), not the
+;; full line -- belt#2 and the kill-emacs-hook write seconds apart, so
+;; their timestamps differ; the guard compares content only.
 
 (require 'ert)
 (require 'cl-lib)
