@@ -115,9 +115,64 @@ from the blocked identical calls."
 (ert-deftest test-chain-guard-history-trim-boundary ()
   "Chain detection works when history is trimmed at max size."
   (iar-chain-test-buffer
-   (let ((iar-l
-[... truncated: 12783 total chars, kept first 5000 and last 5000 ...]
- ssh -> curl -> grep -> journalctl walks,
+   (let ((iar-loop-history-size 20))
+     (dotimes (i 25)
+       (iar-chain-call "execute_code_local" (list :command (format "cmd %d" i))))
+     ;; History holds last 20; all same tool -> chain count 20 -> hard stop.
+     (let ((result (iar-chain-call "execute_code_local" (list :command "cmd 25"))))
+       (should (plist-get result :stop))))))
+
+(ert-deftest test-chain-guard-nil-name-safe ()
+  "A call with no name must not error."
+  (iar-chain-test-buffer
+   (should-not (iar-chain-call nil (list :x 1)))))
+
+(ert-deftest test-chain-guard-escalates-through-bridge ()
+  "THE 2026-09-03 LIVE BUG, as a test: through the real bridge with
+the real hook order, a same-tool chain must ESCALATE -- soft blocks
+at 10, then hard stop by 20. The old default (add-hook prepend)
+registered the chain guard BEFORE the identical guard; a blocked
+call never entered history; the chain count froze at exactly the
+soft threshold; the model could retry forever with zero escalation
+(observed live: ~50 soft blocks in ~2.5 min, no hard stop)."
+  (iar-chain-test-buffer
+   ;; Real hook order as init.el builds it: identical guard first
+   ;; (added first, prepend), chain guard after (now registered with
+   ;; APPEND). Use the bridge exactly as production does.
+   (let ((iar-pre-tool-call-functions nil))
+     (iar--loop-guard-setup)
+     (iar--loop-guard-chain-setup)
+     (unwind-protect
+         (let (saw-block saw-stop)
+           (dotimes (i 25)
+             (let ((r (iar--bridge-pre-tool-call
+                       (list :name "execute_code_local"
+                             :args (list :command (format "cmd %d" i))))))
+               (cond ((plist-get r :block) (setq saw-block t))
+                     ((plist-get r :stop) (setq saw-stop t)))))
+           (should saw-block)
+           (should saw-stop))
+       ;; Restore: remove the hooks this test added (they were added
+       ;; to the default value; the global hook list already has them
+       ;; from module load, so just reset the local let-binding).
+       nil))))
+
+(ert-deftest test-chain-guard-setup-appends-not-prepends ()
+  "Registration must APPEND the chain guard after the identical
+guard, not prepend before it. This is the load-bearing hook-order
+contract (2026-09-03 frozen-at-soft bug)."
+  (let ((iar-pre-tool-call-functions nil))
+    (iar--loop-guard-setup)
+    (iar--loop-guard-chain-setup)
+    (should (equal iar-pre-tool-call-functions
+                   '(iar--loop-guard iar--loop-guard-chain)))))
+
+(provide 'test-loop-chain)
+;; --- Convergence-reset tests (2026-09-03, five witness sets) ---
+;; The chain guard counts the TOOL; converging investigation is a
+;; different behavior that shares the tool. Five production witness
+;; sets (aria 11, continuo 6, continuo 7, continuo 12-era, aria 13):
+;; blocked mid-diagnosis on ssh -> curl -> grep -> journalctl walks,
 ;; all legitimate, all different questions. The reset: when a
 ;; same-tool call's args are dissimilar from the previous same-tool
 ;; call's args, the chain counter resets.
@@ -163,7 +218,7 @@ similarity above threshold; the chain must still count and block."
 
 (ert-deftest test-chain-guard-reset-then-rechain ()
   "After a convergence reset, a NEW iterator pattern on the same
-token must build its own chain from zero: 9 investigation calls,
+tool must build its own chain from zero: 9 investigation calls,
 then 9 iterator calls -- the 10th iterator call soft-blocks (the
 reset wiped the investigation's count; the iterator starts fresh)."
   (iar-chain-test-buffer
@@ -179,7 +234,7 @@ reset wiped the investigation's count; the iterator starts fresh)."
      (should (plist-get result :block)))))
 
 (ert-deftest test-chain-guard-identical-run-then-iterator ()
-  "Identical runs below the identical guard's threshold, then an
+  "Identical calls below the identical guard's threshold, then an
 iterator: the identical run does not break or inflate the chain
 count beyond the previous implementation's semantics."
   (iar-chain-test-buffer
@@ -203,5 +258,3 @@ similar, investigation pairs dissimilar, empty args conservative."
     ;; Empty args: conservative (similar, never reset)
     (should (iar--chain-args-similar-p nil nil))
     (should (iar--chain-args-similar-p '(:x 1) nil))))
-
-(provide 'test-loop-chain)
