@@ -1,4 +1,5 @@
 ;;; Test suite for iar-loop-guard-chain.el
+;; -*- lexical-binding: t; -*-
 ;; Companion guard: same-tool chains with DIFFERENT args (iterator
 ;; patterns). Run from repo root:
 ;;   IAR_ROOT=/root/i.ar emacs --batch -l emacs.d/test/test-loop-chain.el
