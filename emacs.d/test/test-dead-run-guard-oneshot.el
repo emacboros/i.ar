@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;; Tests: dead-run guard on the ONE-SHOT path (c327) -- a failed
 ;; request with no live successor ends the one-shot immediately
 ;; instead of idling the 1800s stall window. Production case: the

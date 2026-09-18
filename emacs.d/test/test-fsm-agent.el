@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;; Quick verification tests for the FSM-resolved audit agent (c143)
 (require 'ert)
 (require 'iar-tool-call)

@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;;; test-reqlog-full-fix.el -- verify the symbol-model fix for full capture
 
 (require 'ert)

@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;; Regression tests for the invisible-turn stub fix (P0, breaker-grace
 ;; compliance task).  A thinking-only turn truncated at the output cap
 ;; (num_predict / stop=length) produces a reasoning block (gptel 'ignore)

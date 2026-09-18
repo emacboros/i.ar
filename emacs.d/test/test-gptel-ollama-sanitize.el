@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;; Unit tests for gptel-ollama--sanitize-call-spec
 (require 'ert)
 (add-to-list 'load-path "/root/.emacs.d/gptel-fork")

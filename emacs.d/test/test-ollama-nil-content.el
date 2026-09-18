@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;; Test: gptel-ollama parse-stream nil-content coercion (c358).
 ;; A stream whose chunks carry no :content (reasoning-only bursts,
 ;; degenerate chunks after a corrupted generation -- aria c357-start

@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;;; --- Audit detail capture (cycle 41) ---
 
 ;; The bridge writes the audit entry with agent captured at call time.

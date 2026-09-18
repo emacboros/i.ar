@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;; Unit tests for the Ollama streaming done_reason capture
 ;; (gptel-ollama.el, cycle 116).
 ;;

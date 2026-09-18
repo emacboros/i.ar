@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;; Tests: post-response breaker (text-only runaway coverage).
 (require 'ert)
 (require 'iar-agent-cycle)

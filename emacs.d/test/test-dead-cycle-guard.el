@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;; Tests: dead-cycle guard (c326) -- a failed request with no live
 ;; successor ends the cycle immediately instead of idling the 1800s
 ;; stall window. Production case: the 2026-09-13 quota storm (16

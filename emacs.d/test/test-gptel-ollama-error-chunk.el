@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;;; Test: ollama stream parser captures mid-stream error chunks
 (require 'gptel-ollama)
 (require 'gptel-request)

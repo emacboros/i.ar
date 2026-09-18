@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;;; test-usage-newline.el -- newline guard tests (continuo c49)
 (require 'ert)
 

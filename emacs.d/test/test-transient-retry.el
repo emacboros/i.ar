@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;; Tests: transient-error retry (c357) -- a 5xx / connection-level
 ;; failure retries with backoff instead of killing the cycle on
 ;; strike 1; a permanent failure (429, model not found) does NOT
