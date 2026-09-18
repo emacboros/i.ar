@@ -27,7 +27,8 @@ If the file does not exist, it is created.  Parent directories are
 created if needed, matching `iar--fs-write-file' behavior.
 Returns a string starting with \\='Success:\\=' or \\='Error:\\='."
   (let* ((expanded-path (expand-file-name filepath))
-         (guard-reason (iar--guard-check-append expanded-path)))
+         (guard-reason (or (iar--guard-check-append expanded-path)
+                           (iar--guard-check-append-content content))))
     (if guard-reason
         (format "Error: %s" guard-reason)
       (let ((buf (find-buffer-visiting expanded-path)))

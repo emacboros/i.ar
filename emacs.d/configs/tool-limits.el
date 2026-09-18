@@ -308,3 +308,27 @@ per request (REQ-<id>.json). REVERTED to nil 2026-09-11 c212 after live verifica
   :type 'boolean
   :safe #'booleanp
   :group 'iar)
+;; =============================================================================
+;; Write Guard (relay 0084) -- truncation-notice poison refusal
+;; =============================================================================
+
+(defcustom iar-write-guard-enabled t
+  "When non-nil, refuse write_file/append_file content containing a
+tool-result truncation notice (relay 0084 write-back poison guard).
+
+The disease: iar--truncate-tool-result middle-truncates any tool
+result over `iar-tool-result-max-chars' (first half + notice + last
+half).  A model that reads a >10k-char file and then writes the file
+back writes the TRUNCATED VIEW as if it were the whole file: the
+notice line becomes content and the middle of the file is silently
+deleted (test-loop-chain.el, 2026-09-17: 3 test defuns amputated, the
+poisoned file committed, and the suite \"passed\" because deleted
+tests are never counted as failures).
+
+A truncation notice is metadata about the VIEW, never content of the
+WORLD.  A write containing one is corrupt by construction.  Set to
+nil to disable (not recommended: the poison is silent, git accepts
+it, and the suite cannot fail on tests that no longer exist)."
+  :type 'boolean
+  :safe #'booleanp
+  :group 'iar)

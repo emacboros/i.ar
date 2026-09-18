@@ -14,7 +14,8 @@ If the file is open in an Emacs buffer, writes to that buffer and saves.
 Otherwise, uses atomic write (temp file + rename).
 Returns a string starting with \\='Success:\\=' or \\='Error:\\='."
   (let* ((expanded-path (expand-file-name filepath))
-         (guard-reason (iar--guard-check-write expanded-path)))
+         (guard-reason (or (iar--guard-check-write expanded-path)
+                           (iar--guard-check-write-content content))))
     (if guard-reason
         (format "Error: %s" guard-reason)
       (let ((buf (find-buffer-visiting expanded-path)))

@@ -34,6 +34,13 @@
 (require 'cl-lib)
 (require 'subr-x)
 
+;; Forward-declared: owned by configs/tool-limits.el (relay 0084 write guard).
+;; Declared here so the content guard can reference it before configs load,
+;; matching the iar-tool-result-max-chars pattern in iar-tool-call.el.
+(defvar iar-write-guard-enabled nil
+  "When non-nil, refuse write_file/append_file content containing a
+tool-result truncation notice.  Owned by configs/tool-limits.el.")
+
 ;;; --- Configuration ---
 
 ;; Forward-declare defcustoms owned by configs/ (split parameter files).
@@ -138,5 +145,38 @@ paths are checked against each pattern.  When they are the same
                            (and has-symlink (funcall pred truename)))
                    reason)))
              patterns)))
+
+;;; --- Write guard (relay 0084) ---
+
+(defun iar--guard-check-content (content)
+  "Check CONTENT for tool-result truncation-notice poison.
+Returns nil when the content is safe to write, or a string
+explaining why the write must be refused.
+
+The truncation notice is emitted by `iar--truncate-tool-result' when
+a tool result exceeds `iar-tool-result-max-chars' (and by
+`iar--fs-read-file' for tail-truncated reads).  It is metadata about
+the VIEW the model received, never legitimate file content.  A write
+containing it is a write-back of a truncated view: the middle of the
+file is silently gone (relay 0084, test-loop-chain.el amputation
+2026-09-17).
+
+The match is on the fixed literal skeleton, not the numbers, so any
+notice shape (any total/kept values) is caught.  Never signals."
+  (when (and iar-write-guard-enabled (stringp content))
+    (when (string-match-p
+           "\\[\\.\\.\\. truncated: [0-9]+ total chars, kept first [0-9]+ and last [0-9]+ \\.\\.\\.\\]"
+           content)
+      "Content contains a tool-result truncation notice ([... truncated: N total chars ...]).  This is a write-back of a TRUNCATED VIEW, not the whole file: the middle of the file was never seen.  Re-read the file in chunks (e.g. with execute_code_local sed -n ranges) or use an edit-based approach; never rewrite a file from a truncated view.  (relay 0084)")))
+
+(defun iar--guard-check-write-content (content)
+  "Content check for write_file.  See `iar--guard-check-content'."
+  (iar--guard-check-content content))
+
+(defun iar--guard-check-append-content (content)
+  "Content check for append_file.  See `iar--guard-check-content'.
+Append is included: an appended notice fragment still poisons the
+file, and a truncated view pasted piecemeal is the same disease."
+  (iar--guard-check-content content))
 
 (provide 'iar-file-guard)
