@@ -139,6 +139,12 @@
 ;; the session silently. Watchdog makes the invisible failure visible.
 (load (expand-file-name "iar-request-watchdog.el" init-tool-call-dir))
 
+;; Thinking-loop guard (relay 0085, aria c55): early-abort runaway
+;; reasoning streams (nemotron thinking-only truncation class). Loads
+;; after the watchdog (same abort path, complementary failure class:
+;; the watchdog catches DEAD streams, this catches LIVE runaway ones).
+(load (expand-file-name "iar-thinking-loop-guard.el" init-tool-call-dir))
+
 ;; Text-mode tool call detector -- the channel-switch witness (Aevum
 ;; finding, 2026-09-01): a model can emit tool calls as fenced markdown
 ;; prose instead of native tool_calls; gptel parses tools=0 and the tick

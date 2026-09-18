@@ -106,6 +106,31 @@ nil disables the idle check."
   :safe #'iar--positive-integer-or-nil-p
   :group 'iar)
 
+;; Thinking-Loop Guard (relay 0085 option c, aria c55): early-abort
+;; runaway reasoning streams. nemotron-3-super's thinking runs away
+;; on a rising share of continuo's cycles (0%->54% over 4 days,
+;; 09-15..09-18): a single response streams 1.2M+ chars of reasoning
+;; with no content and no tool calls, hits the 32768 num_predict cap,
+;; and the cycle dies (exit 1, no grace). This guard aborts the
+;; stream EARLY -- after max-chars of reasoning with no output --
+;; converting a ~10-minute, 32k+-token death into a ~2-minute, ~4k-
+;; token one. Healthy per-turn thinking is <2k chars (continuo
+;; corpus 09-15..09-17); the threshold sits 8x above that and 75x
+;; below the smallest observed runaway.
+(defcustom iar-thinking-loop-guard-enabled t
+  "When non-nil, abort reasoning streams that exceed
+`iar-thinking-loop-max-chars' with no content or tool calls."
+  :type 'boolean
+  :safe #'booleanp
+  :group 'iar)
+
+(defcustom iar-thinking-loop-max-chars 16000
+  "Reasoning chars allowed since the last real output before the
+thinking-loop guard aborts the stream."
+  :type 'integer
+  :safe #'integerp
+  :group 'iar)
+
 (defcustom iar-request-total-timeout 900
   "Seconds without ANY data before aborting a request.
 Covers non-streaming requests (never call the filter) and the

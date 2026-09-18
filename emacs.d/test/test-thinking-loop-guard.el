@@ -1,100 +1,125 @@
 ;; -*- lexical-binding: t; -*-
 
-;;; Tests for the thinking-only truncation discriminator
-;;; (iar--cycle-thinking-only-response-p, 2026-09-10).
-;;;
-;;; The nemotron-era fire class: stop=length at the 32768 num_predict
-;;; cap with a THINKING-ONLY response (1M+ chars of streamed reasoning,
-;;; no model text outside gptel `ignore' spans). The grace round-trip
-;;; cannot land such a response -- the model loops in reasoning. The
-;;; discriminator lets the truncated-output guard end these cycles
-;;; immediately instead of spending the grace.
-;;;
-;;; Pure-function tests: build buffers with gptel text-properties,
-;;; no live processes, no network.
+;;; Tests for iar-thinking-loop-guard.el
+;;
+;; Fixture law 39: the test must reproduce the DISEASE, not the
+;; shape. The disease: per-round reasoning accumulation with no
+;; content/tool-call, crossing the threshold, and the reset on real
+;; output. The abort path is exercised with fakes so no real gptel
+;; request is needed.
 
 (require 'ert)
 (require 'cl-lib)
 (require 'subr-x)
+;; Stubbing primitives (buffer-live-p etc.) with cl-letf triggers
+;; native-comp trampoline compilation, which dies in batch mode with
+;; excessive-lisp-nesting (test-execute-code-remote.el, 2026-09-03).
+(when (boundp 'comp-enable-subr-trampolines)
+  (setq comp-enable-subr-trampolines nil))
+(require 'iar-utils)
+(require 'iar-audit-log)
+;; Load the module under test. Its setup() advises
+;; gptel-curl--parse-stream / --stream-cleanup, which do not exist
+;; without gptel -- advice-add on unbound symbols is fine (it
+;; records the advice for when the function is defined), so the
+;; load succeeds without gptel.
+(load-file (expand-file-name
+            "init.d/tool-call/iar-thinking-loop-guard.el"
+            (file-name-directory (directory-file-name
+                                  (file-name-directory
+                                   (or load-file-name default-directory))))))
 
-(require 'iar-request-log)
-(require 'iar-agent-cycle)
+(defmacro iar-tlg--with-fake-entry (bytes &rest body)
+  "Bind a fake hash entry with BYTES accumulated, run BODY.
+Binds `proc' and `fsm' as gensym'd symbols."
+  (let ((proc (make-symbol "proc"))
+        (fsm (make-symbol "fsm")))
+    `(let ((iar--thinking-loop-processes (make-hash-table :test 'eq :weakness 'key))
+           (,proc (make-symbol "fake-proc"))
+           (,fsm (make-symbol "fake-fsm")))
+       (puthash ,proc (list :bytes ,bytes :fsm ,fsm)
+                iar--thinking-loop-processes)
+       (let ((proc ,proc) (fsm ,fsm))
+         ,@body))))
 
-(defun tg--make-thinking-only-buffer ()
-  "Build a buffer with a large reasoning span and no model text.
-Mimics gptel's property layout: reasoning is `gptel' `ignore'."
-  (with-current-buffer (get-buffer-create " *tg-thinking-only*")
-    (erase-buffer)
-    (insert (make-string 10000 ?x))
-    ;; Mark the whole span as reasoning (ignore).
-    (put-text-property (point-min) (point-max) 'gptel 'ignore)
-    (current-buffer)))
+(ert-deftest iar-tlg-observe-accumulates-reasoning ()
+  "Reasoning rounds with no content accumulate bytes; content resets."
+  (iar-tlg--with-fake-entry 0
+    ;; Content round: reset (bytes stays 0)
+    (iar--thinking-loop-observe proc (list :reasoning "abcdefgh") "resp")
+    (should (= (plist-get (gethash proc iar--thinking-loop-processes) :bytes) 0))
+    ;; No-content rounds: accumulate
+    (iar--thinking-loop-observe proc (list :reasoning "abcdefgh") nil)
+    (should (= (plist-get (gethash proc iar--thinking-loop-processes) :bytes) 8))
+    (iar--thinking-loop-observe proc (list :reasoning "abcdefgh") nil)
+    (should (= (plist-get (gethash proc iar--thinking-loop-processes) :bytes) 16))))
 
-(defun tg--make-mixed-response-buffer ()
-  "Build a buffer with a reasoning span AND real model text after it."
-  (with-current-buffer (get-buffer-create " *tg-mixed*")
-    (erase-buffer)
-    (let ((beg (point)))
-      (insert (make-string 5000 ?r))
-      (put-text-property beg (point) 'gptel 'ignore)
-      (insert "\nVisible model text: the analysis concluded X.\n")
-      (current-buffer))))
+(ert-deftest iar-tlg-observe-resets-on-content ()
+  "Any content arrival resets the accumulator."
+  (iar-tlg--with-fake-entry 10000
+    (iar--thinking-loop-observe proc (list :reasoning "x") "hello")
+    (should (= (plist-get (gethash proc iar--thinking-loop-processes) :bytes) 0))))
 
-(defun tg--make-text-only-response-buffer ()
-  "Build a buffer with only model text (no reasoning)."
-  (with-current-buffer (get-buffer-create " *tg-text-only*")
-    (erase-buffer)
-    (insert "The morning protocol completed. All checks green.\n")
-    (insert "Next: post lab-notes and end the cycle.\n")
-    (current-buffer)))
+(ert-deftest iar-tlg-observe-resets-on-tool-use ()
+  "Tool calls reset the accumulator (thinking before a tool call is healthy)."
+  (iar-tlg--with-fake-entry 10000
+    (let ((info (list :reasoning "x" :tool-use '((:name "t")))))
+      (iar--thinking-loop-observe proc info nil)
+      (should (= (plist-get (gethash proc iar--thinking-loop-processes) :bytes) 0)))))
 
-(ert-deftest test-thinking-only-large-reasoning-no-text ()
-  "1M-char reasoning span, no model text: thinking-only."
-  (with-current-buffer (tg--make-thinking-only-buffer)
-    (should (iar--cycle-thinking-only-response-p (point-min) (point-max)))))
+(ert-deftest iar-tlg-abort-fires-at-threshold ()
+  "Crossing the threshold with the guard enabled aborts."
+  (let ((iar-thinking-loop-guard-enabled t)
+        (iar-thinking-loop-max-chars 100)
+        (abort-called nil)
+        (buf (get-buffer-create "*tlg-abort-test*")))
+    (iar-tlg--with-fake-entry 0
+      ;; gptel-fsm-info is a cl-defstruct accessor: when gptel is
+      ;; loaded (suite context) the compiler may inline it into the
+      ;; module's bytecode, so symbol-function letf does NOT take.
+      ;; Use a REAL fsm struct with :info carrying the buffer.
+      (let ((real-fsm (if (fboundp 'gptel-make-fsm)
+                          (gptel-make-fsm :info (list :buffer buf))
+                        fsm)))
+        (puthash proc (list :bytes 0 :fsm real-fsm)
+                 iar--thinking-loop-processes)
+        (cl-letf (((symbol-function 'gptel-abort)
+                   (lambda (_buf) (setq abort-called t)))
+                  ((symbol-function 'process-live-p) (lambda (_) nil))
+                  ((symbol-function 'iar--audit-log) (lambda (&rest _) nil)))
+          ;; 150 chars of reasoning, threshold 100 -> abort
+          (iar--thinking-loop-observe proc (list :reasoning (make-string 150 ?x)) nil)
+          (should abort-called)
+          ;; Counter zeroed (re-entrancy guard)
+          (should (= (plist-get (gethash proc iar--thinking-loop-processes) :bytes) 0)))))))
 
-(ert-deftest test-thinking-only-mixed-response-not-flagged ()
-  "Reasoning + real model text: NOT thinking-only (grace applies)."
-  (with-current-buffer (tg--make-mixed-response-buffer)
-    (should-not (iar--cycle-thinking-only-response-p (point-min) (point-max)))))
+(ert-deftest iar-tlg-no-abort-when-disabled ()
+  "Guard disabled: no abort even past the threshold."
+  (let ((iar-thinking-loop-guard-enabled nil)
+        (iar-thinking-loop-max-chars 100)
+        (abort-called nil))
+    (iar-tlg--with-fake-entry 0
+      (cl-letf (((symbol-function 'gptel-abort)
+                 (lambda (_buf) (setq abort-called t))))
+        (iar--thinking-loop-observe proc (list :reasoning (make-string 150 ?x)) nil)
+        (should-not abort-called)
+        ;; Accumulation still happens (honest accounting)
+        (should (= (plist-get (gethash proc iar--thinking-loop-processes) :bytes) 150))))))
 
-(ert-deftest test-thinking-only-text-only-not-flagged ()
-  "Plain text response: NOT thinking-only."
-  (with-current-buffer (tg--make-text-only-response-buffer)
-    (should-not (iar--cycle-thinking-only-response-p (point-min) (point-max)))))
+(ert-deftest iar-tlg-parse-advice-finds-process-by-info ()
+  "The advice locates the request by FSM-info eq identity."
+  (let* ((info (list :reasoning "abc"))
+         (proc (make-symbol "fake-proc"))
+         ;; Real fsm struct when gptel is loaded (accessor may be
+         ;; inlined into module bytecode; a symbol would signal).
+         (fsm (if (fboundp 'gptel-make-fsm)
+                  (gptel-make-fsm :info info)
+                (make-symbol "fake-fsm")))
+         (iar--thinking-loop-processes
+          (make-hash-table :test 'eq :weakness 'key)))
+    (cl-letf ((gptel--request-alist (list (list proc fsm 'cleanup))))
+      (iar--thinking-loop-parse-advice (lambda (_b i) nil) 'backend info)
+      (should (gethash proc iar--thinking-loop-processes))
+      (should (= (plist-get (gethash proc iar--thinking-loop-processes) :bytes) 3)))))
 
-(ert-deftest test-thinking-only-tiny-region-not-flagged ()
-  "A tiny region (<500 raw chars) is never thinking-only: too little
-evidence to end a cycle on."
-  (with-current-buffer (tg--make-thinking-only-buffer)
-    (should-not (iar--cycle-thinking-only-response-p 1 100))))
-
-(ert-deftest test-thinking-only-degenerate-region-nil ()
-  "start == end (failed request shape): nil, never fires."
-  (with-current-buffer (tg--make-thinking-only-buffer)
-    (should-not (iar--cycle-thinking-only-response-p 100 100))))
-
-(ert-deftest test-thinking-only-nil-region-nil ()
-  "Non-integer positions: nil."
-  (with-current-buffer (tg--make-thinking-only-buffer)
-    (should-not (iar--cycle-thinking-only-response-p nil nil))))
-
-(ert-deftest test-thinking-only-small-visible-text-still-flagged ()
-  "A short stray separator (e.g. \\n) inside a huge reasoning span is
-still thinking-only: the 20-char text budget tolerates separators."
-  (with-current-buffer (tg--make-thinking-only-buffer)
-    ;; Add a tiny non-ignore separator span.
-    (goto-char (point-max))
-    (let ((beg (point)))
-      (insert "\n")
-      (put-text-property beg (point) 'gptel 'response))
-    (should (iar--cycle-thinking-only-response-p (point-min) (point-max)))))
-
-(ert-deftest test-thinking-only-real-text-over-budget-not-flagged ()
-  "Model text over the 200-char budget: NOT thinking-only."
-  (with-current-buffer (tg--make-thinking-only-buffer)
-    (goto-char (point-max))
-    (let ((beg (point)))
-      (insert (make-string 300 ?v))
-      (put-text-property beg (point) 'gptel 'response))
-    (should-not (iar--cycle-thinking-only-response-p (point-min) (point-max)))))
+(provide 'test-thinking-loop-guard)
