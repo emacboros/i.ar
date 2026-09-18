@@ -16,6 +16,7 @@
 ;; updated: two identical writes = one line; a DIFFERENT line appends.
 
 (require 'ert)
+(require 'cl-lib)
 
 (ert-deftest test-tool-call-usage-write-log-now-writes-line ()
   "Pre-exit write returns t and appends a summary line."
@@ -64,8 +65,10 @@
       (delete-directory tmpdir :recursive))))
 
 (ert-deftest test-tool-call-usage-write-log-now-idempotent-with-hook ()
-  "Two writes (pre-exit + hook net) with the SAME stamp+counts = ONE
-line (c262 dedupe guard: the dup dies at birth)."
+  "Two writes (pre-exit + hook net) with the same counts = ONE line
+(c262 dedupe guard, c58 content form: the dup dies at birth even
+when the two writes straddle a timestamp change -- the real belt#2
+and kill-emacs writes are seconds apart)."
   (let* ((tmpdir (make-temp-file "usage-now-" t))
          (iar-personalization-path tmpdir)
          (iar-audit-path "audit")
@@ -74,8 +77,17 @@ line (c262 dedupe guard: the dup dies at birth)."
     (unwind-protect
         (progn
           (iar--usage-reset)
-          (iar--usage-write-log-now)
-          (iar--usage-write-log)        ; the kill-emacs-hook net
+          ;; Pin the stamp for the first write, then let the second
+          ;; write see a DIFFERENT timestamp: the guard must still
+          ;; skip (content comparison, c58).
+          (cl-letf (((symbol-function 'format-time-string)
+                     (lambda (_fmt &optional _time _zone)
+                       "2026-09-18 10:21:49")))
+            (iar--usage-write-log-now))
+          (cl-letf (((symbol-function 'format-time-string)
+                     (lambda (_fmt &optional _time _zone)
+                       "2026-09-18 10:22:03")))
+            (iar--usage-write-log))      ; the kill-emacs-hook net
           (with-temp-buffer
             (insert-file-contents
              (expand-file-name "audit/testproject/testagent/USAGE.log" tmpdir))
@@ -97,8 +109,13 @@ line (c262 dedupe guard: the dup dies at birth)."
                 iar--usage-output-tokens 80 iar--usage-model "m")
           (should (eq (iar--usage-write-log) t))
           ;; Identical second write: skipped (nil = honest no-op).
-          (should (eq (iar--usage-write-log) nil))
-          ;; Changed counts: appends.
+          ;; Pin the stamp: the two writes must share a timestamp for
+          ;; this to be a same-close pair (content guard, c58).
+          (cl-letf (((symbol-function 'format-time-string)
+                     (lambda (_fmt &optional _time _zone)
+                       "2026-09-18 10:21:49")))
+            (should (eq (iar--usage-write-log) nil)))
+          ;; Changed counts: appends (different content, guard passes).
           (setq iar--usage-requests 9 iar--usage-input-tokens 300)
           (should (eq (iar--usage-write-log) t))
           (with-temp-buffer
@@ -354,4 +371,35 @@ her record rode undurable until a sibling healed it."
                 iar--usage-output-tokens 40 iar--usage-model "m")
           ;; The belt must report NOT durable (nil), not hollow-success.
           (should (eq (iar--usage-write-log-now) nil)))
+      (delete-directory tmpdir :recursive))))
+
+(ert-deftest test-tool-call-usage-write-log-dedupe-different-timestamp ()
+  "c58: belt#2 and the kill-emacs-hook write within one close
+straddle the close-out work, so their TIMESTAMPS differ while the
+COUNTS are identical (production census 2026-09-18: 20/20 continuo
+closes double-wrote, 14s apart). The c262 guard compared the full
+line including the timestamp and NEVER fired. The guard must compare
+content: same counts, different stamp = skip."
+  (let* ((tmpdir (make-temp-file "usage-dedupe-ts-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar--current-agent-name "testagent")
+         (iar--current-project "testproject"))
+    (unwind-protect
+        (progn
+          (iar--usage-reset)
+          (setq iar--usage-requests 80 iar--usage-input-tokens 2744593
+                iar--usage-output-tokens 57704 iar--usage-model "nemotron")
+          (should (eq (iar--usage-write-log) t))
+          ;; Simulate the second write landing after the timestamp
+          ;; changed: monkey-patch format-time-string for this call.
+          (cl-letf (((symbol-function 'format-time-string)
+                     (lambda (fmt &optional _time _zone)
+                       (should (string-equal fmt "%Y-%m-%d %H:%M:%S"))
+                       "2026-09-18 10:22:03")))
+            (should (eq (iar--usage-write-log) nil))) ; dup: skipped
+          (with-temp-buffer
+            (insert-file-contents
+             (expand-file-name "audit/testproject/testagent/USAGE.log" tmpdir))
+            (should (equal (count-lines (point-min) (point-max)) 1))))
       (delete-directory tmpdir :recursive))))

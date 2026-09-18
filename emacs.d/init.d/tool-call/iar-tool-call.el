@@ -299,6 +299,24 @@ string (the dedupe guard then lets the write through)."
             (buffer-substring-no-properties (point) end))))
     (error "")))
 
+(defun iar--usage-line-content (line)
+  "Return LINE with its leading [timestamp] stripped, or LINE
+unchanged when it does not match the usage shape. Shared by the
+dedupe guard for both comparison sides (c58): the new line and the
+file's last line must pass through the SAME stripper."
+  (when (and (stringp line)
+             (string-match "\\`\\[[^]]*\\] \\(.*\\)" line))
+    (match-string 1 line)))
+
+(defun iar--usage-last-line-content (path)
+  "Return the CONTENT portion (timestamp stripped) of the last
+non-empty line of PATH, or nil when absent/unshaped. The c262
+dedupe guard compares content, not the full line: belt#2 and the
+kill-emacs-hook write within one close straddle the close-out work,
+so their timestamps differ while the counts are identical (c58
+census: 20/20 continuo closes double-wrote 14s apart)."
+  (iar--usage-line-content (iar--usage-last-line path)))
+
 (defun iar--usage-write-log ()
   "Write usage summary to audit/<agent>/USAGE.log.
 Best-effort: errors are demoted to messages (kill-emacs-hook must
@@ -326,17 +344,24 @@ orphaned 02:33:26 close-write)."
                              (plist-get totals :output-tokens)
                              (plist-get totals :total-tokens)
                              (plist-get totals :model))))
-          ;; c262 dedupe guard: belt#2 (iar--usage-write-log-now) and the
-          ;; kill-emacs-hook both call this function with the SAME
-          ;; timestamp+counts within one close. The second append used to
+          ;; c262 dedupe guard (c58 hardening): belt#2
+          ;; (iar--usage-write-log-now) and the kill-emacs-hook both call
+          ;; this function within one close. The second append used to
           ;; land as an unstaged duplicate that the next belt commit's
           ;; `git add -f' swept into history (the USAGE.log doubling
           ;; census, c258-c259; root cause c262: reset_worktree resets
           ;; REPO_DIR (i.ar), never the personalization tree, so the dup
-          ;; was never wiped). Guard: if the file's last line is already
-          ;; identical, skip the append -- the dup dies at birth.
-          (if (string-equal (substring line 0 -1) ; strip the trailing newline for comparison
-                            (iar--usage-last-line log-path))
+          ;; was never wiped).
+          ;; c58: the original guard compared the FULL line including
+          ;; the timestamp -- but the two writes straddle the close-out
+          ;; work (exit dump, commit, push), so the timestamp differs
+          ;; and the guard NEVER fired: production census 2026-09-18
+          ;; shows 20/20 continuo closes double-writing (14s apart,
+          ;; identical counts). The guard now compares the CONTENT
+          ;; (requests/input/output/total/model) with the timestamp
+          ;; stripped -- same counts within one close = one line.
+          (if (string-equal (iar--usage-line-content line)
+                            (iar--usage-last-line-content log-path))
               nil                        ; duplicate: skipped, honest no-op
             (append-to-file line nil log-path)
             t)))
