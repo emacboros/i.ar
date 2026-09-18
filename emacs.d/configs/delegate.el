@@ -24,7 +24,7 @@ actually calling them from terminating prematurely."
   :safe #'iar--positive-integer-p
   :group 'iar)
 
-(provide 'iar-config-delegate)
+
 (defcustom iar-delegate-drain-grace 300
   "Seconds a timed-out delegate may keep streaming before hard abort.
 Fix-2 (c312): when a delegate's timeout fires while its pipeline is
@@ -36,3 +36,21 @@ grace per delegate."
   :type 'integer
   :safe #'iar--positive-integer-p
   :group 'iar)
+(defcustom iar-delegate-abort-reprompts 2
+  "Maximum number of re-prompts after a GUARD-ABORTED turn.
+c71 (2026-09-18): the thinking-loop guard aborts a runaway reasoning
+stream (correct), but the delegate completion hook's case 2b saw the
+aborted turn as an ordinary text-only response and re-prompted with
+the GENERIC continue prompt. The model restarted thinking from
+scratch, ran away again, was aborted again: 16 turns = 16 aborts,
+~380k tokens, one review never delivered (aria c71 census). Law 41:
+when the guard fires, change the QUESTION. An aborted turn now gets
+an abort-aware re-prompt (names the abort, demands content-first)
+and counts a strike against this cap; past the cap the delegate
+ends LOUD (reasoning-only exhaustion). Generic text-only turns
+still use the plain continue prompt and iar-delegate-max-turns."
+  :type 'integer
+  :safe #'iar--positive-integer-p
+  :group 'iar)
+
+(provide 'iar-config-delegate)

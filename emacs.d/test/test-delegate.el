@@ -206,7 +206,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns nil nil)))
+                 iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
         (funcall fn 8 (point-max)))
       (should result)
       (should (string-match-p "response text" result))
@@ -231,7 +231,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns nil nil)))
+                 iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
         (funcall fn 8 (point-max)))
       (should (null result))
       (should (null (symbol-value completed-sym)))
@@ -255,7 +255,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  (lambda (r) (setq result r))
                  "testagent"
                  completed-sym timer-sym 600
-                 tools-called-sym turn-count-sym 15 nil nil)))
+                 tools-called-sym turn-count-sym 15 nil nil (make-symbol "abort-strikes"))))
         (funcall fn 8 (point-max)))
       (should result)
       (should (string-match-p "max text-only turns" result))
@@ -280,7 +280,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns nil nil)))
+                 iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
         (funcall fn 8 8))
       (should result)
       (should (string-match-p "empty response" result))
@@ -305,7 +305,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns nil nil)))
+                 iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
         (funcall fn 8 (point-max)))
       (should (null result)))))
 
@@ -473,7 +473,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns nil nil)))
+                 iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
         (funcall fn nil nil))
       (should result)
       (should (string-match-p "empty response" result))
@@ -498,7 +498,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns nil nil)))
+                 iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
         (funcall fn 20 5))
       (should result)
       (should (string-match-p "empty response" result))
@@ -523,7 +523,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns nil nil)))
+                 iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
         (funcall fn "not-a-number" 10))
       (should result)
       (should (string-match-p "empty response" result))
@@ -555,7 +555,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                             "testagent"
                             completed-sym timer-sym 600
                             tools-called-sym turn-count-sym
-                            iar-delegate-max-turns nil nil)))
+                            iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
                    (funcall fn 8 (point-max))))
                ;; Cancel the real timer to prevent leak (cancel-timer was mocked above)
                (cancel-timer real-timer))
@@ -588,7 +588,7 @@ The error from assembly (iar--read-personality) is caught and returned via callb
                             buf (lambda (r) (setq result r))
                             "testagent"
                             completed-sym timer-sym 600
-                            tools-called-sym turn-count-sym 15 nil nil)))
+                            tools-called-sym turn-count-sym 15 nil nil (make-symbol "abort-strikes"))))
                    (funcall fn 8 (point-max))))
                ;; Cancel the real timer to prevent leak (cancel-timer was mocked above)
                (cancel-timer real-timer))
@@ -698,7 +698,7 @@ but no tools were called.  This handles simple tasks that need no tools."
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns nil nil)))
+                 iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
         (funcall fn 8 (point-max)))
       (should result)
       (should (string-match-p "the answer is 42" result))
@@ -726,7 +726,7 @@ when no tools were called, not the full response."
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns nil nil)))
+                 iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
         (funcall fn 8 (point-max)))
       (should result)
       ;; Should contain the concise summary
@@ -753,7 +753,7 @@ when no tools were called, not the full response."
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns nil nil)))
+                 iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
         (funcall fn 8 (point-max)))
       (should (null result))
       (should (null (symbol-value completed-sym)))
@@ -805,7 +805,7 @@ post-completion audit lines resolve the leaked sub-agent default."
                  "reviewer"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns parent-agent-sym parent-file-sym)))
+                 iar-delegate-max-turns parent-agent-sym parent-file-sym (make-symbol "abort-strikes"))))
         (funcall fn 8 (point-max))
         (should result)
         (should (symbol-value completed-sym))
@@ -840,7 +840,7 @@ before the callback, same as case 1."
                  "reviewer"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns parent-agent-sym parent-file-sym)))
+                 iar-delegate-max-turns parent-agent-sym parent-file-sym (make-symbol "abort-strikes"))))
         (funcall fn 8 (point-max))
         (should result)
         (should (symbol-value completed-sym))
@@ -874,7 +874,7 @@ global default must survive for its own next turn."
                  "reviewer"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns parent-agent-sym parent-file-sym)))
+                 iar-delegate-max-turns parent-agent-sym parent-file-sym (make-symbol "abort-strikes"))))
         (funcall fn 8 (point-max))
         (should (null result))
         (should (null (symbol-value completed-sym)))
@@ -954,7 +954,8 @@ an aborted request, orphaning a new request in the dying buffer."
           (let ((fn (iar--delegate-completion-fn
                      buf (lambda (r) (setq hook-result r))
                      "testagent" completed-sym timer-sym 30
-                     tools-called-sym turn-count-sym 15 nil nil))
+                     tools-called-sym turn-count-sym 15 nil nil
+                     (make-symbol "abort-strikes")))
                 (start (point-min))
                 (end (point-max)))
             (funcall fn start end)
@@ -1137,7 +1138,7 @@ failure, not the raw reasoning stream."
                      (lambda (r) (setq result r))
                      "testagent"
                      completed-sym timer-sym 600
-                     tools-called-sym turn-count-sym 15 nil nil)))
+                     tools-called-sym turn-count-sym 15 nil nil (make-symbol "abort-strikes"))))
             (funcall fn (point-min) (point-max)))
           (should result)
           (should (string-match-p "FAILED" result))
@@ -1167,7 +1168,7 @@ with a degraded header, minus the reasoning block."
                      (lambda (r) (setq result r))
                      "testagent"
                      completed-sym timer-sym 600
-                     tools-called-sym turn-count-sym 15 nil nil)))
+                     tools-called-sym turn-count-sym 15 nil nil (make-symbol "abort-strikes"))))
             (funcall fn (point-min) (point-max)))
           (should result)
           (should (string-match-p "no DELEGATION RESULT marker" result))
@@ -1175,3 +1176,138 @@ with a degraded header, minus the reasoning block."
           (should-not (string-match-p "thinking" result))
           (should (symbol-value completed-sym)))
       (kill-buffer buf))))
+
+
+;;; --- c71: guard-abort turns get the abort-aware re-prompt ---
+
+(ert-deftest test-delegate-completion-hook-abort-turn-uses-abort-prompt ()
+  "c71: START == END (guard-aborted turn) must re-prompt with the
+ABORT-AWARE prompt (changed question, law 41), not the generic one."
+  (with-temp-buffer
+    (insert "prefix\n")
+    (let ((result nil)
+          (completed-sym (make-symbol "completed"))
+          (timer-sym (make-symbol "timer"))
+          (tools-called-sym (make-symbol "tools-called"))
+          (turn-count-sym (make-symbol "turn-count"))
+          (abort-strikes-sym (make-symbol "abort-strikes")))
+      (set completed-sym nil)
+      (set timer-sym nil)
+      (set tools-called-sym nil)
+      (set turn-count-sym 0)
+      (set abort-strikes-sym 0)
+      (let ((fn (iar--delegate-completion-fn
+                 (current-buffer)
+                 (lambda (r) (setq result r))
+                 "testagent"
+                 completed-sym timer-sym 600
+                 tools-called-sym turn-count-sym
+                 iar-delegate-max-turns nil nil abort-strikes-sym)))
+        ;; start == end: the failed-request shape (guard abort).
+        (funcall fn 8 8)
+        (should (null result))
+        (should (null (symbol-value completed-sym)))
+        ;; Abort strike counted, NOT the generic turn counter.
+        (should (= (symbol-value abort-strikes-sym) 1))
+        (should (= (symbol-value turn-count-sym) 0))
+        ;; Re-prompt path: not completed (the loud end would have set it).
+        (should (null (symbol-value completed-sym)))))))
+
+(ert-deftest test-delegate-completion-hook-abort-cap-ends-loud ()
+  "c71: past iar-delegate-abort-reprompts guard-aborted turns, the
+delegate ends LOUD -- completed flag set, callback called once with a
+FAILED message naming the guard."
+  (with-temp-buffer
+    (insert "prefix\n")
+    (let* ((result nil)
+           (callback-count 0)
+           (completed-sym (make-symbol "completed"))
+           (timer-sym (make-symbol "timer"))
+           (tools-called-sym (make-symbol "tools-called"))
+           (turn-count-sym (make-symbol "turn-count"))
+           (abort-strikes-sym (make-symbol "abort-strikes")))
+      (set completed-sym nil)
+      (set timer-sym nil)
+      (set tools-called-sym nil)
+      (set turn-count-sym 0)
+      (set abort-strikes-sym 2)  ; already at cap
+      (let ((fn (iar--delegate-completion-fn
+                 (current-buffer)
+                 (lambda (r) (setq result r))
+                 "testagent"
+                 completed-sym timer-sym 600
+                 tools-called-sym turn-count-sym
+                 iar-delegate-max-turns nil nil abort-strikes-sym)))
+        (funcall fn 8 8)  ; aborted turn
+        (should result)
+        (should (symbol-value completed-sym))
+        (should (string-match-p "FAILED" result))
+        (should (string-match-p "thinking-loop guard" result))
+        ;; No re-prompt timer armed past the cap.
+        (should (null (symbol-value timer-sym)))))))
+
+(ert-deftest test-delegate-completion-hook-abort-strikes-accumulate ()
+  "c71: two aborted turns = two strikes; the third (past cap 2) ends loud."
+  (with-temp-buffer
+    (insert "prefix\n")
+    (let ((result nil)
+          (completed-sym (make-symbol "completed"))
+          (timer-sym (make-symbol "timer"))
+          (tools-called-sym (make-symbol "tools-called"))
+          (turn-count-sym (make-symbol "turn-count"))
+          (abort-strikes-sym (make-symbol "abort-strikes")))
+      (set completed-sym nil)
+      (set timer-sym nil)
+      (set tools-called-sym nil)
+      (set turn-count-sym 0)
+      (set abort-strikes-sym 0)
+      (let ((fn (iar--delegate-completion-fn
+                 (current-buffer)
+                 (lambda (r) (setq result r))
+                 "testagent"
+                 completed-sym timer-sym 600
+                 tools-called-sym turn-count-sym
+                 iar-delegate-max-turns nil nil abort-strikes-sym)))
+        ;; Strike 1: re-prompt (no completion).
+        (funcall fn 8 8)
+        (should (null (symbol-value completed-sym)))
+        (should (= (symbol-value abort-strikes-sym) 1))
+        ;; Strike 2: still under cap (2), re-prompt again.
+        (funcall fn 8 8)
+        (should (null (symbol-value completed-sym)))
+        (should (= (symbol-value abort-strikes-sym) 2))
+        ;; Strike 3: past cap -> LOUD end.
+        (funcall fn 8 8)
+        (should (symbol-value completed-sym))
+        (should result)
+        (should (string-match-p "FAILED" result))))))
+
+(ert-deftest test-delegate-completion-hook-generic-turn-unchanged ()
+  "c71: an ordinary text-only turn (start < end, real text) still gets
+the GENERIC continue prompt and the generic turn counter -- the abort
+path must not swallow the original case-2b behavior."
+  (with-temp-buffer
+    (insert "prefix\nI will do the task now.\n")
+    (let ((result nil)
+          (completed-sym (make-symbol "completed"))
+          (timer-sym (make-symbol "timer"))
+          (tools-called-sym (make-symbol "tools-called"))
+          (turn-count-sym (make-symbol "turn-count"))
+          (abort-strikes-sym (make-symbol "abort-strikes")))
+      (set completed-sym nil)
+      (set timer-sym nil)
+      (set tools-called-sym nil)
+      (set turn-count-sym 0)
+      (set abort-strikes-sym 0)
+      (let ((fn (iar--delegate-completion-fn
+                 (current-buffer)
+                 (lambda (r) (setq result r))
+                 "testagent"
+                 completed-sym timer-sym 600
+                 tools-called-sym turn-count-sym
+                 iar-delegate-max-turns nil nil abort-strikes-sym)))
+        (funcall fn 8 (point-max))
+        (should (null result))
+        (should (null (symbol-value completed-sym)))
+        (should (= (symbol-value turn-count-sym) 1))
+        (should (= (symbol-value abort-strikes-sym) 0))))))
