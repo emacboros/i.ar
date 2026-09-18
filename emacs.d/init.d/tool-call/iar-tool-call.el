@@ -517,7 +517,8 @@ Idempotent: removes existing advice before adding."
 
 (defvar iar--audit-record-files
   '("JOURNAL.org" "HISTORY.log" "LAST-CYCLE.txt" "STATE.md"
-    "DIGEST.md" "REQUESTS.log" "THREADS.org" "LOGS.md")
+    "DIGEST.md" "REQUESTS.log" "THREADS.org" "LOGS.md"
+    "CYCLE-SEQ")
   "Record files belt #2b stages alongside USAGE.log at cycle exit.
 c292 finding: continuo's close protocol has no commit step -- 9 of 10
 successful runs left her journal/history uncommitted, and her record's
@@ -630,7 +631,7 @@ read the clock, not guess it."
 (defun iar--usage-commit-log-now ()
   "Commit the belt #2 USAGE line plus the agent's record files.
 Belt #2b (c292): the commit carries USAGE.log AND the agent's record
-files (JOURNAL.org, HISTORY.log, LAST-CYCLE.txt, STATE.md, DIGEST.md,
+files (JOURNAL.org, HISTORY.log, LAST-CYCLE.txt, STATE.md, DIGEST.md, CYCLE-SEQ,
 REQUESTS.log, today's dated cycle log) -- never a directory sweep
 (that would ride the rolling cycle.log and scratch files), and never
 a sibling's files (the list resolves against THIS agent's log-dir

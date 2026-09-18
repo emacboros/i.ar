@@ -72,3 +72,31 @@
                                tmpdir)
                               paths)))))
       (delete-directory tmpdir t))))
+
+
+(ert-deftest test-tool-call-belt2b-stages-cycle-seq ()
+  "c73: CYCLE-SEQ rides the belt (c72's bump rode uncommitted -- the
+belt's explicit list never staged the counter, so origin/main's seq
+fell behind disk by one cycle per belt-less close)."
+  (let* ((tmpdir (make-temp-file "belt2b-seq-" t))
+         (iar-personalization-path tmpdir)
+         (iar-audit-path "audit")
+         (iar--current-agent-name "testagent")
+         (iar--current-project "testproj"))
+    (unwind-protect
+        (progn
+          (let ((log-dir (expand-file-name "audit/testproj/testagent" tmpdir)))
+            (make-directory log-dir t)
+            (with-temp-file (expand-file-name "USAGE.log" log-dir) (insert "x"))
+            (with-temp-file (expand-file-name "CYCLE-SEQ" log-dir) (insert "42\n"))
+            (let ((paths (iar--usage--record-paths tmpdir log-dir)))
+              (should (member (file-relative-name
+                               (expand-file-name "CYCLE-SEQ" log-dir)
+                               tmpdir)
+                              paths))
+              ;; absent CYCLE-SEQ -> not staged (no phantom entries)
+              (delete-file (expand-file-name "CYCLE-SEQ" log-dir))
+              (setq paths (iar--usage--record-paths tmpdir log-dir))
+              (should-not (member "audit/testproj/testagent/CYCLE-SEQ" paths))))
+          )
+      (delete-directory tmpdir :recursive))))
