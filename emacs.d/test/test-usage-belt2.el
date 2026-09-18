@@ -18,6 +18,48 @@
 ;; full line -- belt#2 and the kill-emacs-hook write seconds apart, so
 ;; their timestamps differ; the guard compares content only.
 
+;; Standalone preamble (c76): this file must load AND pass outside the
+;; suite runner too (continuo c55's 198-turn phantom chase: standalone
+;; `emacs --batch -l test-usage-belt2.el` failed on void-function
+;; iar--usage-reset because the module was never loaded; the suite
+;; passed because run-tests.el loads all modules first. Same preamble
+;; shape as test-loop-chain.el: set paths, add load-paths, require.)
+;; Native-comp trampoline guard (c76): batch standalone runs hit the
+;; trampoline-compilation tramp-archive cascade (excessive-lisp-nesting
+;; 1601, continuo c55's 'native compilation errors'). The suite passes
+;; because run-tests.el loads tramp transitively before any trampoline
+;; compiles; standalone does not. Disable trampolines for the test run.
+(setq comp-enable-subr-trampolines nil)
+
+(require 'ert)
+(require 'cl-lib)
+
+(let ((root (or (getenv "IAR_ROOT") (expand-file-name default-directory))))
+  (add-to-list 'load-path (expand-file-name "emacs.d/init.d/security/" root))
+  (add-to-list 'load-path (expand-file-name "emacs.d/init.d/tool-call/" root))
+  (add-to-list 'load-path (expand-file-name "emacs.d/init.d/shared/" root))
+  (add-to-list 'load-path (expand-file-name "emacs.d/init.d/core/" root))
+  (add-to-list 'load-path (expand-file-name "emacs.d/init.d/agent/" root))
+  (let ((fork-path (expand-file-name "gptel-fork" user-emacs-directory)))
+    (when (file-directory-p fork-path)
+      (add-to-list 'load-path fork-path))))
+
+(setenv "IAR_PROJECT" "iar")
+(setq iar-personalization-path (or (getenv "IAR_PERS") "/root/personalization"))
+(setq iar-audit-path (or (getenv "IAR_AUDIT") "audit"))
+
+(require 'iar-agent-utils)
+(require 'iar-tool-call)
+
+;; The tests let-bind iar--current-agent-name / iar--current-project.
+;; Under lexical-binding (this file's cookie), a let over an UNBOUND
+;; variable creates a LEXICAL binding invisible to the dynamic
+;; resolution in iar--get-agent-name / iar--current-project-name --
+;; the standalone-run phantom (agent=nil, project=testproject).
+;; Declaring them here makes the let-bindings special (dynamic).
+(defvar iar--current-agent-name nil)
+(defvar iar--current-agent-file nil)
+
 (require 'ert)
 (require 'cl-lib)
 
