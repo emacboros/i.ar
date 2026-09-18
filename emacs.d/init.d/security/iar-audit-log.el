@@ -27,6 +27,7 @@ or command containing newlines could inject fake audit log entries."
   (let ((s (if (stringp detail) detail (prin1-to-string detail))))
     (setq s (replace-regexp-in-string "\n" "\\\\n" s))
     (setq s (replace-regexp-in-string "\r" "\\\\r" s))
+    (setq s (iar--audit-redact-secrets s))
     s))
 
 (defun iar--audit-maybe-rotate ()
@@ -230,3 +231,22 @@ handles errors gracefully."
 
 (iar--audit-log-setup)
 (provide 'iar-audit-log)
+
+(defun iar--audit-redact-secrets (s)
+  "Redact secret-shaped strings from S before it lands in a log.
+Classic GitHub PATs (ghp_ + 36 chars), fine-grained PATs
+(github_pat_ + 40+ chars), and AWS access keys are never
+legitimate audit-log content: they appear when a human pastes a
+credential into a session and the request-log captures it
+(2026-09-17: live all-scope PAT entered the git history via
+REQUESTS.log, relay 0081). Redaction here is the structural
+backstop -- the log keeps the evidence a secret EXISTED without
+keeping the secret."
+  (when (stringp s)
+    (setq s (replace-regexp-in-string
+             "ghp_[A-Za-z0-9]\\{36\\}" "ghp_[REDACTED]" s))
+    (setq s (replace-regexp-in-string
+             "github_pat_[A-Za-z0-9_]\\{40,\\}" "github_pat_[REDACTED]" s))
+    (setq s (replace-regexp-in-string
+             "AKIA[0-9A-Z]\\{16\\}" "AKIA[REDACTED]" s)))
+  s)

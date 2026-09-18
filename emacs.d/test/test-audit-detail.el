@@ -222,3 +222,40 @@ lineage, connectome gap 3)."
       (iar--audit-log-tool-call-with-agent
        "execute_code_local" '(:command "false") "Command exited with code 1.\nOutput:\n" "aria")
       (should (string-match-p "status=error" logged)))))
+
+;;; --- Secret redaction (2026-09-18, relay 0081 structural fix) ---
+
+(ert-deftest test-audit-redact-classic-pat ()
+  "Classic GitHub PAT (ghp_ + 36) is redacted."
+  (should (equal "token ghp_[REDACTED] end"
+                 (iar--audit-redact-secrets "token ghp_AbC123dEf456gHi789jKl012mNo345pQrS56 end"))))
+
+(ert-deftest test-audit-redact-fine-grained-pat ()
+  "Fine-grained PAT (github_pat_ + 40+) is redacted."
+  (should (equal "github_pat_[REDACTED]"
+                 (iar--audit-redact-secrets "github_pat_AbC123dEf456gHi789jKl012mNo345pQrS678tUv"))))
+
+(ert-deftest test-audit-redact-aws-key ()
+  "AWS access key id is redacted."
+  (should (equal "AKIA[REDACTED]"
+                 (iar--audit-redact-secrets "AKIAIOSFODNN7EXAMPLE"))))
+
+(ert-deftest test-audit-redact-leaves-normal-text ()
+  "Normal text with ghp_-like prefix but wrong length is untouched."
+  (should (equal "see ghp_short docs"
+                 (iar--audit-redact-secrets "see ghp_short docs"))))
+
+(ert-deftest test-audit-redact-multiple ()
+  "Two secrets in one string both redacted."
+  (should (equal "ghp_[REDACTED] and ghp_[REDACTED]"
+                 (iar--audit-redact-secrets "ghp_AbC123dEf456gHi789jKl012mNo345pQrS56 and ghp_zYx987wVu654tSr321qPo012nMl987kJi654"))))
+
+(ert-deftest test-audit-redact-non-string ()
+  "Non-string input passes through unchanged (sanitize handles it)."
+  (should (eq nil (iar--audit-redact-secrets nil))))
+
+(ert-deftest test-audit-sanitize-detail-redacts-secrets ()
+  "INTEGRATION: sanitize-detail now redacts a pasted PAT."
+  (let ((line (iar--audit-sanitize-detail "user pasted ghp_AbC123dEf456gHi789jKl012mNo345pQrS56\ninto chat")))
+    (should (string-match-p "ghp_\\[REDACTED\\]" line))
+    (should (not (string-match-p "AbC123" line)))))
