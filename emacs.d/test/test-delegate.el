@@ -1094,3 +1094,84 @@ The drain path must leave the completion hook in charge."
       (should result)
       (should (string-match-p "no response was generated" result))
       (should (symbol-value completed-sym)))))
+
+;;; --- c63: max-turns fallback must not return raw reasoning ---
+
+(defun iar--test-delegate-reasoning-buffer (reasoning content)
+  "Fresh buffer emulating gptel reasoning display: REASONING propertized
+\='gptel \='ignore, CONTENT unpropertized."
+  (let ((buf (get-buffer-create "*test-delegate-reasoning*")))
+    (with-current-buffer buf
+      (erase-buffer)
+      (insert (propertize reasoning 'gptel 'ignore))
+      (insert content))
+    buf))
+
+(ert-deftest test-delegate-content-only-strips-reasoning ()
+  "iar--delegate-content-only returns text minus \='ignore spans."
+  (let ((buf (iar--test-delegate-reasoning-buffer
+              "``` reasoning\nI think a lot.\n```\n" "real review text\n")))
+    (unwind-protect
+        (should (string= (iar--delegate-content-only buf nil nil)
+                         "real review text\n"))
+      (kill-buffer buf))))
+
+(ert-deftest test-delegate-max-turns-reasoning-only-fails-loud ()
+  "c63: max-turns exhaustion with reasoning-only buffer returns a LOUD
+failure, not the raw reasoning stream."
+  (let ((buf (iar--test-delegate-reasoning-buffer
+              "``` reasoning\n13k chars of unreviewed thinking...\n```\n" ""))
+        (result nil)
+        (completed-sym (make-symbol "completed"))
+        (timer-sym (make-symbol "timer"))
+        (tools-called-sym (make-symbol "tools-called"))
+        (turn-count-sym (make-symbol "turn-count")))
+    (set completed-sym nil)
+    (set timer-sym nil)
+    (set tools-called-sym nil)
+    (set turn-count-sym 15)
+    (unwind-protect
+        (with-current-buffer buf
+          (let ((fn (iar--delegate-completion-fn
+                     (current-buffer)
+                     (lambda (r) (setq result r))
+                     "testagent"
+                     completed-sym timer-sym 600
+                     tools-called-sym turn-count-sym 15 nil nil)))
+            (funcall fn (point-min) (point-max)))
+          (should result)
+          (should (string-match-p "FAILED" result))
+          (should (string-match-p "reasoning-only" result))
+          (should-not (string-match-p "unreviewed thinking" result))
+          (should (symbol-value completed-sym)))
+      (kill-buffer buf))))
+
+(ert-deftest test-delegate-max-turns-content-kept-reasoning-dropped ()
+  "c63: max-turns exhaustion with real content returns the content
+with a degraded header, minus the reasoning block."
+  (let ((buf (iar--test-delegate-reasoning-buffer
+              "``` reasoning\nthinking...\n```\n" "the actual findings\n"))
+        (result nil)
+        (completed-sym (make-symbol "completed"))
+        (timer-sym (make-symbol "timer"))
+        (tools-called-sym (make-symbol "tools-called"))
+        (turn-count-sym (make-symbol "turn-count")))
+    (set completed-sym nil)
+    (set timer-sym nil)
+    (set tools-called-sym nil)
+    (set turn-count-sym 15)
+    (unwind-protect
+        (with-current-buffer buf
+          (let ((fn (iar--delegate-completion-fn
+                     (current-buffer)
+                     (lambda (r) (setq result r))
+                     "testagent"
+                     completed-sym timer-sym 600
+                     tools-called-sym turn-count-sym 15 nil nil)))
+            (funcall fn (point-min) (point-max)))
+          (should result)
+          (should (string-match-p "no DELEGATION RESULT marker" result))
+          (should (string-match-p "the actual findings" result))
+          (should-not (string-match-p "thinking" result))
+          (should (symbol-value completed-sym)))
+      (kill-buffer buf))))

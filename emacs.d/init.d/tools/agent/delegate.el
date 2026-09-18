@@ -267,6 +267,35 @@ gets something useful."
          (substring full-response (match-end 0)))
       full-response)))
 
+(defun iar--delegate-content-only (buf start end)
+  "Return BUF's text from START to END minus gptel \='ignore (reasoning) spans.
+Reasoning blocks are propertized \='gptel \='ignore by gptel's reasoning
+display (gptel-include-reasoning \='ignore). The max-turns fallback used
+to return the raw buffer text, which on a thinking-loop delegate is the
+model's unreviewed reasoning stream -- silently converted into a
+\"review\" by the parent (aria c63: 16-turn glm burst returned 13k chars
+of raw reasoning as the completed review). This helper returns only the
+real content so the caller can distinguish a reasoning-only exhaustion
+(loud failure) from a content-bearing one."
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (save-restriction
+        (widen)
+        (let ((from (max (or start (point-min)) (point-min)))
+              (to (min (or end (point-max)) (point-max)))
+              (parts nil))
+          (when (< from to)
+            (let ((pos from))
+              (while (< pos to)
+                (let* ((prop (get-text-property pos 'gptel))
+                       (next (or (next-single-property-change pos 'gptel buf to)
+                                 to)))
+                  (unless (eq prop 'ignore)
+                    (setq parts (cons (buffer-substring-no-properties pos next)
+                                      parts)))
+                  (setq pos next)))))
+          (apply #'concat (nreverse parts)))))))
+
 (defun iar--delegate-completion-fn (buf callback agent completed-sym
                                              timer-sym timeout-secs
                                              tools-called-sym turn-count-sym
@@ -379,32 +408,45 @@ It distinguishes three cases:
                      (insert "\n\n" iar--delegate-continue-prompt)
                      (gptel-send)))))))
 
-           ;; Case 3: No tools called and max turns reached -- return whatever we have.
+           ;; Case 3: No tools called and max turns reached -- return whatever
+           ;; we have, MINUS reasoning spans. c63: the old fallback returned
+           ;; the raw buffer text; on a thinking-loop delegate that is the
+           ;; model's unreviewed reasoning stream, which the parent reads as
+           ;; a completed review (aria c63: 16-turn burst returned 13k chars
+           ;; of raw reasoning labeled "completed"). Content-only is
+           ;; extracted; if it is blank the failure is LOUD (reasoning-only
+           ;; exhaustion), not a fake completion.
            (t
             (set completed-sym t)
             (when (symbol-value timer-sym)
               (cancel-timer (symbol-value timer-sym)))
             (iar--delegate-restore-parent-defaults parent-agent-sym parent-file-sym)
-            (let ((response
-                   (save-restriction
-                     (widen)
-                     (if (and (integerp start) (integerp end) (< start end))
-                         (buffer-substring-no-properties
-                          (min (max start (point-min)) (point-max))
-                          (min (max end (point-min)) (point-max)))
-                       ""))))
-              (message "[delegate] %s reached max text-only turns (%d), returning last response."
-                       agent max-turns)
+            (let* ((response
+                    (if (and (integerp start) (integerp end) (< start end))
+                        (iar--delegate-content-only buf start end)
+                      ""))
+                   (reasoning-only (and (stringp response)
+                                        (not (iar--non-blank-p response)))))
+              (message "[delegate] %s reached max text-only turns (%d), %s."
+                       agent max-turns
+                       (if reasoning-only
+                           "NO content (reasoning-only exhaustion)"
+                         "returning content"))
               (run-with-timer
                5 nil
                (lambda ()
                  (when (buffer-live-p buf) (kill-buffer buf))))
               (funcall callback
-                       (if (and response (iar--non-blank-p response))
-                           (format "Delegate '%s' completed (max text-only turns reached):\n\n%s"
-                                   agent response)
+                       (cond
+                        (reasoning-only
+                         (format "Delegate '%s' FAILED (max text-only turns reached, reasoning-only: %d turns produced no content and no result marker; last turn's thinking was aborted by the thinking-loop guard)."
+                                 agent max-turns))
+                        ((and response (iar--non-blank-p response))
+                         (format "Delegate '%s' completed (max text-only turns reached, content only, no DELEGATION RESULT marker):\n\n%s"
+                                 agent response))
+                        (t
                          (format "Delegate '%s' returned empty response after %d text-only turns."
-                               agent max-turns)))))))))))
+                                 agent max-turns))))))))))))
 
 (defun iar--spawn-async-delegate (callback agent task ctx timeout-secs profile tools)
   "Spawn an async delegate buffer and send the task.
