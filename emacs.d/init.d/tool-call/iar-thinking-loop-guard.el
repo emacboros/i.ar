@@ -205,14 +205,21 @@ Calls the original, then accounts the round. Never signals."
   (advice-remove 'gptel-curl--stream-cleanup #'iar--thinking-loop-cleanup-advice)
   (advice-add 'gptel-curl--stream-cleanup :before
               #'iar--thinking-loop-cleanup-advice)
-  (iar--audit-log
-   "thinking-loop-guard"
-   (format "installed: enabled=%s max-chars=%s"
-           iar-thinking-loop-guard-enabled
-           (or iar-thinking-loop-max-chars 16000)))
-  (message "[thinking-loop-guard] installed (enabled=%s, max-chars=%s)"
-           iar-thinking-loop-guard-enabled
-           (or iar-thinking-loop-max-chars 16000)))
+  ;; The installed line is the RUNTIME WITNESS for the per-model
+  ;; config (c89): a5d21f0 shipped the alist but the installed line
+  ;; never named it, so "deployed" had no witness distinct from
+  ;; "armed". Print the full alist (prin1-to-string -- the alist is
+  ;; data, not user content).
+  (let ((witness
+         (format "installed: enabled=%s max-chars=%s per-model=%s"
+                 iar-thinking-loop-guard-enabled
+                 (or iar-thinking-loop-max-chars 16000)
+                 (if iar-thinking-loop-max-chars-per-model
+                     (prin1-to-string
+                      iar-thinking-loop-max-chars-per-model)
+                   "none"))))
+    (iar--audit-log "thinking-loop-guard" witness)
+    (message "[thinking-loop-guard] %s" witness)))
 
 (iar--thinking-loop-setup)
 
