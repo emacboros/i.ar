@@ -123,3 +123,128 @@ Binds `proc' and `fsm' as gensym'd symbols."
       (should (= (plist-get (gethash proc iar--thinking-loop-processes) :bytes) 3)))))
 
 (provide 'test-thinking-loop-guard)
+;;; Per-model threshold (aria c85, 2026-09-19): the uniform 16000 cap
+;;; was falsified -- glm's legit census synthesis exceeds 16k (c84
+;;; died exit 1 on 3 legit strikes). First prefix match wins; no
+;;; match falls back to the uniform threshold.
+
+(ert-deftest iar-tlg-per-model-threshold-overrides-uniform ()
+  "A model-prefix match replaces the uniform threshold."
+  (let ((iar-thinking-loop-guard-enabled t)
+        (iar-thinking-loop-max-chars 100)
+        (iar-thinking-loop-max-chars-per-model
+         '(("glm-5.3-flash" . 200)))
+        (abort-called nil))
+    (iar-tlg--with-fake-entry 0
+      ;; Real fsm: gptel is loaded in the suite and the abort path
+      ;; calls gptel-fsm-info, which type-checks (see the threshold
+      ;; test above for the full story).
+      (let ((real-fsm (if (fboundp 'gptel-make-fsm)
+                          (gptel-make-fsm
+                           :info (list :buffer
+                                       (get-buffer-create
+                                        "*tlg-abort-test*")))
+                        fsm)))
+        (puthash proc (list :bytes 0 :fsm real-fsm)
+                 iar--thinking-loop-processes))
+      (cl-letf (((symbol-function 'gptel-abort)
+                 (lambda (_buf) (setq abort-called t)))
+                ((symbol-function 'process-live-p) (lambda (_) nil))
+                ((symbol-function 'iar--audit-log) (lambda (&rest _) nil)))
+        ;; 150 chars: over the uniform 100 but under glm's 200 -> no abort
+        (iar--thinking-loop-observe
+         proc (list :reasoning (make-string 150 ?x) :model "glm-5.3-flash") nil)
+        (should-not abort-called)
+        ;; +250 chars: 150+250=400 accumulated > glm's 200 -> abort
+        (iar--thinking-loop-observe
+         proc (list :reasoning (make-string 250 ?x) :model "glm-5.3-flash") nil)
+        (should abort-called)))))
+
+(ert-deftest iar-tlg-per-model-threshold-first-match-wins ()
+  "The first matching prefix in the alist wins."
+  (let ((iar-thinking-loop-guard-enabled t)
+        (iar-thinking-loop-max-chars 100)
+        (iar-thinking-loop-max-chars-per-model
+         '(("glm-5.3" . 500) ("glm-5.3-flash" . 200)))
+        (abort-called nil))
+    (iar-tlg--with-fake-entry 0
+      ;; Real fsm: gptel is loaded in the suite and the abort path
+      ;; calls gptel-fsm-info, which type-checks (see the threshold
+      ;; test above for the full story).
+      (let ((real-fsm (if (fboundp 'gptel-make-fsm)
+                          (gptel-make-fsm
+                           :info (list :buffer
+                                       (get-buffer-create
+                                        "*tlg-abort-test*")))
+                        fsm)))
+        (puthash proc (list :bytes 0 :fsm real-fsm)
+                 iar--thinking-loop-processes))
+      (cl-letf (((symbol-function 'gptel-abort)
+                 (lambda (_buf) (setq abort-called t)))
+                ((symbol-function 'process-live-p) (lambda (_) nil))
+                ((symbol-function 'iar--audit-log) (lambda (&rest _) nil)))
+        ;; 250 chars: over glm-5.3-flash's 200 (second entry) but the
+        ;; first matching prefix glm-5.3 -> 500 wins -> no abort
+        (iar--thinking-loop-observe
+         proc (list :reasoning (make-string 250 ?x) :model "glm-5.3-flash") nil)
+        (should-not abort-called)
+        ;; +600 chars: 250+600=850 accumulated > winning 500 -> abort
+        (iar--thinking-loop-observe
+         proc (list :reasoning (make-string 600 ?x) :model "glm-5.3-flash") nil)
+        (should abort-called)))))
+
+(ert-deftest iar-tlg-per-model-threshold-falls-back-to-uniform ()
+  "No prefix match: the uniform threshold applies."
+  (let ((iar-thinking-loop-guard-enabled t)
+        (iar-thinking-loop-max-chars 100)
+        (iar-thinking-loop-max-chars-per-model
+         '(("nemotron-3-super" . 16000)))
+        (abort-called nil))
+    (iar-tlg--with-fake-entry 0
+      ;; Real fsm: gptel is loaded in the suite and the abort path
+      ;; calls gptel-fsm-info, which type-checks (see the threshold
+      ;; test above for the full story).
+      (let ((real-fsm (if (fboundp 'gptel-make-fsm)
+                          (gptel-make-fsm
+                           :info (list :buffer
+                                       (get-buffer-create
+                                        "*tlg-abort-test*")))
+                        fsm)))
+        (puthash proc (list :bytes 0 :fsm real-fsm)
+                 iar--thinking-loop-processes))
+      (cl-letf (((symbol-function 'gptel-abort)
+                 (lambda (_buf) (setq abort-called t)))
+                ((symbol-function 'process-live-p) (lambda (_) nil))
+                ((symbol-function 'iar--audit-log) (lambda (&rest _) nil)))
+        ;; Unknown model, 150 chars: uniform 100 applies -> abort
+        (iar--thinking-loop-observe
+         proc (list :reasoning (make-string 150 ?x) :model "deepseek-v4.1") nil)
+        (should abort-called)))))
+
+(ert-deftest iar-tlg-per-model-threshold-nil-model-uses-uniform ()
+  "Missing/non-string :model in info: uniform threshold, no error."
+  (let ((iar-thinking-loop-guard-enabled t)
+        (iar-thinking-loop-max-chars 100)
+        (iar-thinking-loop-max-chars-per-model
+         '(("glm-5.3-flash" . 32000)))
+        (abort-called nil))
+    (iar-tlg--with-fake-entry 0
+      ;; Real fsm: gptel is loaded in the suite and the abort path
+      ;; calls gptel-fsm-info, which type-checks (see the threshold
+      ;; test above for the full story).
+      (let ((real-fsm (if (fboundp 'gptel-make-fsm)
+                          (gptel-make-fsm
+                           :info (list :buffer
+                                       (get-buffer-create
+                                        "*tlg-abort-test*")))
+                        fsm)))
+        (puthash proc (list :bytes 0 :fsm real-fsm)
+                 iar--thinking-loop-processes))
+      (cl-letf (((symbol-function 'gptel-abort)
+                 (lambda (_buf) (setq abort-called t)))
+                ((symbol-function 'process-live-p) (lambda (_) nil))
+                ((symbol-function 'iar--audit-log) (lambda (&rest _) nil)))
+        ;; No :model key at all -> uniform 100 -> abort at 150
+        (iar--thinking-loop-observe
+         proc (list :reasoning (make-string 150 ?x)) nil)
+        (should abort-called)))))

@@ -51,6 +51,9 @@ streams. Owned by configs/tool-limits.el.")
 (defvar iar-thinking-loop-max-chars nil
   "Reasoning bytes allowed since the last real content before
 aborting. Owned by configs/tool-limits.el.")
+(defvar iar-thinking-loop-max-chars-per-model nil
+  "Alist (MODEL-PREFIX . MAX-CHARS) overriding the uniform
+threshold per model. Owned by configs/tool-limits.el.")
 
 ;; Cycle/one-shot state lives in iar-agent-cycle.el. Defvars keep
 ;; standalone loads + byte-compilation clean.
@@ -98,14 +101,25 @@ INFO is the FSM info plist, RESULT the parse-stream return value
          ;; Reasoning arrived with nothing else: accumulate.
          ((> reasoning-len 0)
           (cl-incf (plist-get entry :bytes) reasoning-len)))
-        ;; Abort check
-        (when (and iar-thinking-loop-guard-enabled
-                   (> (plist-get entry :bytes)
-                      (or iar-thinking-loop-max-chars 16000)))
-          (iar--thinking-loop-abort process entry info))))))
+        ;; Abort check (per-model threshold: first prefix match
+        ;; wins, uniform fallback otherwise)
+        (let ((threshold
+               (or (cl-loop for (prefix . chars)
+                            in iar-thinking-loop-max-chars-per-model
+                            when (and (stringp prefix)
+                                      (stringp (plist-get info :model))
+                                      (string-prefix-p
+                                       prefix (plist-get info :model)))
+                            return chars)
+                   iar-thinking-loop-max-chars
+                   16000)))
+          (when (and iar-thinking-loop-guard-enabled
+                     (> (plist-get entry :bytes) threshold))
+            (iar--thinking-loop-abort process entry info threshold)))))))
 
-(defun iar--thinking-loop-abort (process entry info)
-  "Abort the runaway request PROCESS (ENTRY holds the counters)."
+(defun iar--thinking-loop-abort (process entry info &optional threshold)
+  "Abort the runaway request PROCESS (ENTRY holds the counters).
+THRESHOLD is the resolved per-model limit, for honest reporting."
   ;; Zero the counter FIRST: the abort itself may re-enter the parse
   ;; path during teardown; a re-entrant abort must be a no-op.
   (setf (plist-get entry :bytes) 0)
@@ -117,10 +131,10 @@ INFO is the FSM info plist, RESULT the parse-stream return value
           (iar--audit-log
            "thinking-loop-guard"
            (format "aborted runaway reasoning stream: >%d chars with no content, model=%s"
-                   (or iar-thinking-loop-max-chars 16000)
+                   (or threshold iar-thinking-loop-max-chars 16000)
                    (or model "nil")))
           (message "[thinking-loop-guard] Aborting runaway reasoning stream (%d chars, no content, model=%s)"
-                   (or iar-thinking-loop-max-chars 16000)
+                   (or threshold iar-thinking-loop-max-chars 16000)
                    (or model "nil"))
           (when (and (bufferp buf) (buffer-live-p buf))
             ;; Notice suppressed in unattended runs (Aevum c52 law):

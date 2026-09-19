@@ -126,9 +126,27 @@ nil disables the idle check."
 
 (defcustom iar-thinking-loop-max-chars 16000
   "Reasoning chars allowed since the last real output before the
-thinking-loop guard aborts the stream."
+thinking-loop guard aborts the stream. Overridden per-model by
+`iar-thinking-loop-max-chars-per-model'."
   :type 'integer
   :safe #'integerp
+  :group 'iar)
+
+;; Per-model threshold (aria c85, 2026-09-19): the 16000 uniform cap
+;; was falsified -- glm-5.3-flash's legitimate census synthesis
+;; measurably exceeds 16k (c82/c83/c84: 5 legit kills, one cycle died
+;; exit 1 on 3 legit strikes). glm gets 32000; nemotron-3-super keeps
+;; 16000 (her healthy thinking is <2k, her runaways 1.2M+ chars, so
+;; 16k fires at ~1.5% of the smallest runaway -- keep the early
+;; abort). Matched by string-prefix-p against the model name.
+(defcustom iar-thinking-loop-max-chars-per-model
+  '(("glm-5.3-flash" . 32000)
+    ("nemotron-3-super" . 16000))
+  "Alist of (MODEL-PREFIX . MAX-CHARS) overriding
+`iar-thinking-loop-max-chars' for matching models. First prefix
+match wins; no match falls back to the uniform threshold."
+  :type '(alist :key-type string :value-type integer)
+  :safe #'listp
   :group 'iar)
 
 (defcustom iar-request-total-timeout 900
