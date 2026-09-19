@@ -234,5 +234,39 @@ keeping the secret."
     (setq s (replace-regexp-in-string
              "github_pat_[A-Za-z0-9_]\\{40,\\}" "github_pat_[REDACTED]" s))
     (setq s (replace-regexp-in-string
-             "AKIA[0-9A-Z]\\{16\\}" "AKIA[REDACTED]" s)))
+             "AKIA[0-9A-Z]\\{16\\}" "AKIA[REDACTED]" s))
+    ;; 2026-09-19 (c103): agora bot-key class (host-anchored shapes).
+    (setq s (iar--audit-redact-agora-key s)))
+  s)
+;; 2026-09-19 (aria c103): the agora bot key class. The key is bare
+;; base62 (no distinctive prefix), so redaction is HOST-ANCHORED: it
+;; only ever appears as a Zulip basic-auth credential or a conf-file
+;; echo. Three shapes seen in the wild (c103 census, 1602 hits):
+;;   1. user:pass@host  -- "aria-cycle@agora.randazzo.ar:KEY"
+;;   2. shell var echo  -- "KEY=KEYVALUE" / "APKEY=KEYVALUE" etc.
+;;   3. conf-file echo  -- "key = KEYVALUE" (awk print of aria-cycle.conf)
+;; Rotation of the leaked key is the human's (relay 0093); this is the
+;; structural backstop so the NEXT curl -u dies at the log layer.
+
+(defun iar--audit-redact-agora-key (s)
+  "Redact agora bot-key shapes from S (host-anchored, c103).
+Covers basic-auth URLs, shell var assignments, and conf-file echoes.
+Never signals; returns S unchanged when nothing matches."
+  (when (stringp s)
+    ;; case-fold-search nil: these anchors are case-significant
+    ;; (lowercase "key = " is the conf-file format; "KEY=" is the
+    ;; shell var). Case-insensitive matching mangled KEY= -> Key=.
+    (let ((case-fold-search nil))
+      ;; 1. basic-auth: user:KEY@host (any user, any agora host)
+      (setq s (replace-regexp-in-string
+               "\\([A-Za-z0-9_.-]+@agora\\.randazzo\\.ar:\\)[A-Za-z0-9]\\{20,\\}"
+               "\\1[REDACTED]" s))
+      ;; 2. shell var assignment ending in KEY (KEY=/APKEY=/BOTKEY=)
+      (setq s (replace-regexp-in-string
+               "\\<\\([A-Za-z_]*KEY\\)=[A-Za-z0-9]\\{20,\\}"
+               "\\1=[REDACTED]" s))
+      ;; 3. conf-file echo: "key = VALUE" / "key= VALUE"
+      (setq s (replace-regexp-in-string
+               "\\<key\\( *= *\\)[A-Za-z0-9]\\{20,\\}"
+               "key\\1[REDACTED]" s))))
   s)

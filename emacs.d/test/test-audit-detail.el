@@ -260,3 +260,49 @@ lineage, connectome gap 3)."
   (let ((line (iar--audit-sanitize-detail "user pasted ghp_AbC123dEf456gHi789jKl012mNo345pQrS56\ninto chat")))
     (should (string-match-p "ghp_\\[REDACTED\\]" line))
     (should (not (string-match-p "AbC123" line)))))
+;;; --- Agora bot-key redaction (2026-09-19, aria c103) ---
+
+(ert-deftest test-audit-redact-agora-basic-auth ()
+  "Basic-auth credential shape (user:KEY@host) is redacted."
+  (should (equal "curl -u \"aria-cycle@agora.randazzo.ar:[REDACTED]\" -X POST"
+                 (iar--audit-redact-secrets
+                  "curl -u \"aria-cycle@agora.randazzo.ar:YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG\" -X POST"))))
+
+(ert-deftest test-audit-redact-agora-basic-auth-single-quotes ()
+  "Single-quoted basic-auth shape is redacted too."
+  (should (equal "-u 'aria-cycle@agora.randazzo.ar:[REDACTED]'"
+                 (iar--audit-redact-secrets
+                  "-u 'aria-cycle@agora.randazzo.ar:YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG'"))))
+
+(ert-deftest test-audit-redact-agora-var-assign ()
+  "Shell var assignment echo (KEY=VALUE) is redacted."
+  (should (equal "KEY=[REDACTED]; curl -s"
+                 (iar--audit-redact-secrets
+                  "KEY=YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG; curl -s")))
+  (should (equal "APKEY=[REDACTED]"
+                 (iar--audit-redact-secrets "APKEY=YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG"))))
+
+(ert-deftest test-audit-redact-agora-var-assign-dollar-use-untouched ()
+  "A var USE ($KEY) is not a secret -- must stay untouched."
+  (should (equal "curl -u \"aria-cycle@agora.randazzo.ar:$KEY\""
+                 (iar--audit-redact-secrets
+                  "curl -u \"aria-cycle@agora.randazzo.ar:$KEY\""))))
+
+(ert-deftest test-audit-redact-agora-conf-echo ()
+  "Conf-file echo shape (key = VALUE) is redacted."
+  (should (equal "key = [REDACTED]"
+                 (iar--audit-redact-secrets "key = YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG")))
+  (should (equal "key=[REDACTED]"
+                 (iar--audit-redact-secrets "key=YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG"))))
+
+(ert-deftest test-audit-redact-agora-leaves-short-values ()
+  "Short values (test fixtures, 'true') are NOT redacted -- 20+ floor."
+  (should (equal "key = short" (iar--audit-redact-secrets "key = short")))
+  (should (equal "KEY=true" (iar--audit-redact-secrets "KEY=true"))))
+
+(ert-deftest test-audit-redact-agora-integration ()
+  "INTEGRATION: sanitize-detail redacts an inline-key curl cmd."
+  (let ((line (iar--audit-sanitize-detail
+               "cmd=curl -s -u \"aria-cycle@agora.randazzo.ar:YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG\" -X POST")))
+    (should (string-match-p "agora\\.randazzo\\.ar:\\[REDACTED\\]" line))
+    (should (not (string-match-p "YXCd4j" line)))))
