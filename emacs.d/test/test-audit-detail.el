@@ -306,3 +306,34 @@ lineage, connectome gap 3)."
                "cmd=curl -s -u \"aria-cycle@agora.randazzo.ar:YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG\" -X POST")))
     (should (string-match-p "agora\\.randazzo\\.ar:\\[REDACTED\\]" line))
     (should (not (string-match-p "YXCd4j" line)))))
+
+;;; --- Escaped-newline conf echo (2026-09-19, aria c104) ---
+;;; The c104 live leak: continuo's `cat aria-cycle.conf` tool result passed
+;;; through iar--audit-sanitize-detail, which escapes newlines BEFORE
+;;; redaction -- so the redactor saw "\nkey = KEY" and the \< anchor read
+;;; "nkey" as one word and never fired. Fixture reproduces the DISEASE
+;;; (the escaped shape), not the shape (law 39).
+
+(ert-deftest test-audit-redact-agora-conf-echo-escaped-newline ()
+  "Conf echo inside an escaped-newline tool result is redacted (c104)."
+  (let ((line (iar--audit-sanitize-detail
+               "[zulip]\nsite = https://agora.randazzo.ar\nemail = aria-cycle@agora.randazzo.ar\nkey = YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG\nstream = for-nacho\n[agent]")))
+    (should (string-match-p "key = \\[REDACTED\\]" line))
+    (should (not (string-match-p "YXCd4j" line)))))
+
+(ert-deftest test-audit-redact-agora-conf-echo-escaped-newline-prefix-kept ()
+  "The escaped-newline prefix survives redaction (no text eaten)."
+  (should (equal "\\nkey = [REDACTED]\\n"
+                 (iar--audit-redact-secrets "\\nkey = YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG\\n"))))
+
+(ert-deftest test-audit-redact-agora-conf-echo-comment-line ()
+  "Conf echo after a comment line (real newline -> escaped) is redacted."
+  (let ((line (iar--audit-sanitize-detail "; conf\nkey = YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG")))
+    (should (string-match-p "key = \\[REDACTED\\]" line))
+    (should (not (string-match-p "YXCd4j" line)))))
+
+(ert-deftest test-audit-redact-agora-conf-echo-no-false-positive-monkey ()
+  "'monkey = VALUE' must NOT redact (the escaped-newline anchor must not
+loosen the word boundary into a substring match)."
+  (should (equal "monkey = YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG"
+                 (iar--audit-redact-secrets "monkey = YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG"))))

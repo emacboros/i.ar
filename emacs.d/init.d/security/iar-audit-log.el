@@ -265,8 +265,13 @@ Never signals; returns S unchanged when nothing matches."
       (setq s (replace-regexp-in-string
                "\\<\\([A-Za-z_]*KEY\\)=[A-Za-z0-9]\\{20,\\}"
                "\\1=[REDACTED]" s))
-      ;; 3. conf-file echo: "key = VALUE" / "key= VALUE"
+      ;; 3. conf-file echo: "key = VALUE" / "key= VALUE". Anchor is NOT
+      ;; \< (word boundary): the sanitizer escapes newlines BEFORE
+      ;; redaction, so a conf echo inside a captured tool result reads
+      ;; "\nkey = KEY" and \< sees "nkey" as one word -- the anchor
+      ;; never fires (c104 live leak, continuo REQUESTS.log 11:59Z).
+      ;; Anchor instead on string-start | escaped-newline | ; | space.
       (setq s (replace-regexp-in-string
-               "\\<key\\( *= *\\)[A-Za-z0-9]\\{20,\\}"
-               "key\\1[REDACTED]" s))))
+               "\\(\\(?:^\\|\\\\n\\|[; ]\\)\\)key\\( *= *\\)[A-Za-z0-9]\\{20,\\}"
+               "\\1key\\2[REDACTED]" s))))
   s)
