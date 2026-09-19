@@ -340,14 +340,19 @@ It distinguishes three cases:
 3. No tools called and max turns reached: Return whatever text we have.
    This is the exhaustion fallback -- prevents infinite re-prompting.
 
-GUARD-ABORT TURNS (c71): START == END means the request FAILED (the
-thinking-loop guard aborted a runaway reasoning stream). The abort
-shape used to fall through to case 2b and re-prompt with the GENERIC
-continue prompt -- the model restarted thinking from scratch, ran
-away again, was aborted again (16 aborts = 16 turns, one burst). An
-aborted turn now gets the abort-aware re-prompt
-`iar--delegate-abort-continue-prompt' and counts a strike against
-`iar-delegate-abort-reprompts'; past the cap the delegate ends LOUD.
+GUARD-ABORT TURNS (c71, extended c79): START == END means the request
+FAILED (the thinking-loop guard aborted a runaway reasoning stream).
+The abort shape used to fall through to case 2b and re-prompt with the
+GENERIC continue prompt -- the model restarted thinking from scratch,
+ran away again, was aborted again (16 aborts = 16 turns, one burst).
+c71 fixed the text-only branch; c79 found the residual hole: an abort
+on a turn AFTER tool use hit Case 1 (tools-called precedence) and the
+raw buffer shipped as a \"completed\" result. Abort detection is now
+the FIRST cond arm (Case 0), before the tools-called check: an aborted
+turn is a FAILED turn regardless of prior tool use. It gets the
+abort-aware re-prompt `iar--delegate-abort-continue-prompt' and counts
+a strike against `iar-delegate-abort-reprompts'; past the cap the
+delegate ends LOUD.
 "
   (lambda (start end)
     (unless (symbol-value completed-sym)
@@ -365,6 +370,57 @@ aborted turn now gets the abort-aware re-prompt
                 (and (stringp full-response)
                      (string-match-p iar-delegation-result-marker full-response))))
           (cond
+           ;; Case 0 (c79): ABORTED TURN -- detected FIRST, before the
+           ;; tools-called check. START == END means the request FAILED
+           ;; (thinking-loop guard aborted a runaway reasoning stream).
+           ;; The c71 fix only guarded the text-only branch (2b); an abort
+           ;; on a turn AFTER tool use fell through to Case 1, which
+           ;; returned the raw buffer (reasoning + tool noise) as a
+           ;; "completed" result -- aria c79: the reviewer's final
+           ;; synthesis was aborted and its raw buffer shipped as the
+           ;; review verdict. An aborted turn is a FAILED turn regardless
+           ;; of prior tool use: strike-count it and re-prompt with the
+           ;; abort-aware prompt (law 41: change the QUESTION), or end
+           ;; LOUD past the cap.
+           ((and (number-or-marker-p start)
+                 (number-or-marker-p end)
+                 (= start end))
+            (let ((strikes (1+ (symbol-value abort-strikes-sym))))
+              (set abort-strikes-sym strikes)
+              (set tools-called-sym nil)
+              (if (> strikes iar-delegate-abort-reprompts)
+                  ;; Cap reached: end the delegate LOUD (same terminal
+                  ;; shape as case 3).
+                  (progn
+                    (set completed-sym t)
+                    (when (symbol-value timer-sym)
+                      (cancel-timer (symbol-value timer-sym)))
+                    (iar--delegate-restore-parent-defaults
+                     parent-agent-sym parent-file-sym)
+                    (message "[delegate] %s aborted by thinking-loop guard %d times -- ending LOUD (abort-reprompt cap %d)"
+                             agent strikes iar-delegate-abort-reprompts)
+                    (run-with-timer
+                     5 nil
+                     (lambda ()
+                       (when (buffer-live-p buf) (kill-buffer buf))))
+                    (funcall callback
+                             (format "Delegate '%s' FAILED (thinking-loop guard aborted %d turns with no content; abort-reprompt cap %d reached)."
+                                     agent strikes iar-delegate-abort-reprompts)))
+                ;; Under cap: abort-aware re-prompt (changed question).
+                (message "[delegate] %s turn was guard-aborted (strike %d/%d), re-prompting with abort-aware prompt..."
+                         agent strikes iar-delegate-abort-reprompts)
+                (run-with-timer
+                 1 nil
+                 (lambda ()
+                   (when (and (not (symbol-value completed-sym))
+                              (buffer-live-p buf))
+                     (with-current-buffer buf
+                       (save-restriction
+                         (widen)
+                         (goto-char (point-max))
+                         (insert "\n\n" iar--delegate-abort-continue-prompt)
+                         (gptel-send)))))))))
+
            ;; Case 1: Tools were called this turn -- genuine response, return it.
            ;; Extract only the text after the "=== DELEGATION RESULT ===" marker.
            ;; Falls back to full response if marker is not found.
@@ -424,62 +480,24 @@ aborted turn now gets the abort-aware re-prompt
            ;; change the QUESTION. Aborted turns get the abort-aware prompt
            ;; and count strikes against iar-delegate-abort-reprompts.
            ((< turn-count max-turns)
-            (let ((aborted-turn (and (number-or-marker-p start)
-                                     (number-or-marker-p end)
-                                     (= start end))))
-              (if aborted-turn
-                  ;; ---- ABORTED TURN: strike-counted, abort-aware re-prompt.
-                  (let ((strikes (1+ (symbol-value abort-strikes-sym))))
-                    (set abort-strikes-sym strikes)
-                    (set tools-called-sym nil)
-                    (if (> strikes iar-delegate-abort-reprompts)
-                        ;; Cap reached: end the delegate LOUD (reasoning-only
-                        ;; exhaustion -- same terminal shape as case 3).
-                        (progn
-                          (set completed-sym t)
-                          (when (symbol-value timer-sym)
-                            (cancel-timer (symbol-value timer-sym)))
-                          (iar--delegate-restore-parent-defaults
-                           parent-agent-sym parent-file-sym)
-                          (message "[delegate] %s aborted by thinking-loop guard %d times -- ending LOUD (abort-reprompt cap %d)"
-                                   agent strikes iar-delegate-abort-reprompts)
-                          (run-with-timer
-                           5 nil
-                           (lambda ()
-                             (when (buffer-live-p buf) (kill-buffer buf))))
-                          (funcall callback
-                                   (format "Delegate '%s' FAILED (thinking-loop guard aborted %d turns with no content; abort-reprompt cap %d reached)."
-                                           agent strikes iar-delegate-abort-reprompts)))
-                      ;; Under cap: abort-aware re-prompt (changed question).
-                      (message "[delegate] %s turn was guard-aborted (strike %d/%d), re-prompting with abort-aware prompt..."
-                               agent strikes iar-delegate-abort-reprompts)
-                      (run-with-timer
-                       1 nil
-                       (lambda ()
-                         (when (and (not (symbol-value completed-sym))
-                                    (buffer-live-p buf))
-                           (with-current-buffer buf
-                             (save-restriction
-                               (widen)
-                               (goto-char (point-max))
-                               (insert "\n\n" iar--delegate-abort-continue-prompt)
-                               (gptel-send))))))))
-                ;; ---- Ordinary text-only turn: generic continue prompt.
-                (set turn-count-sym (1+ turn-count))
-                (set tools-called-sym nil)   ; Reset for next turn
-                (message "[delegate] %s produced text-only response (turn %d/%d), re-prompting..."
-                         agent (1+ turn-count) max-turns)
-                (run-with-timer
-                 1 nil
-                 (lambda ()
-                   (when (and (not (symbol-value completed-sym))
-                              (buffer-live-p buf))
-                     (with-current-buffer buf
-                       (save-restriction
-                         (widen)
-                         (goto-char (point-max))
-                         (insert "\n\n" iar--delegate-continue-prompt)
-                         (gptel-send)))))))))
+            ;; ---- Ordinary text-only turn: generic continue prompt.
+            ;; (Aborted turns never reach here -- Case 0 above catches
+            ;; START == END before the tools-called check, c79.)
+            (set turn-count-sym (1+ turn-count))
+            (set tools-called-sym nil)   ; Reset for next turn
+            (message "[delegate] %s produced text-only response (turn %d/%d), re-prompting..."
+                     agent (1+ turn-count) max-turns)
+            (run-with-timer
+             1 nil
+             (lambda ()
+               (when (and (not (symbol-value completed-sym))
+                          (buffer-live-p buf))
+                 (with-current-buffer buf
+                   (save-restriction
+                     (widen)
+                     (goto-char (point-max))
+                     (insert "\n\n" iar--delegate-continue-prompt)
+                     (gptel-send)))))))
 
            ;; Case 3: No tools called and max turns reached -- return whatever
            ;; we have, MINUS reasoning spans. c63: the old fallback returned

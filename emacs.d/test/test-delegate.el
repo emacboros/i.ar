@@ -261,30 +261,41 @@ The error from assembly (iar--read-personality) is caught and returned via callb
       (should (string-match-p "max text-only turns" result))
       (should (symbol-value completed-sym)))))
 
-(ert-deftest test-delegate-completion-hook-empty-response-with-tools ()
-  "Completion hook should handle empty response even when tools were called."
+(ert-deftest test-delegate-completion-hook-abort-after-tools-strikes-not-completes ()
+  "c79: START == END with tools-called=t is the GUARD-ABORT shape (the
+completion hook fires at ABRT with no inserted text, regardless of
+prior tool use). It must strike-count and re-prompt with the
+abort-aware prompt -- NOT return the raw buffer as a completed result
+(the c79 reviewer hole: an aborted final synthesis shipped as the
+review verdict). Supersedes the old empty-response-with-tools test,
+whose premise (start==end + tools = empty completion) predates the
+abort-shape analysis."
   (with-temp-buffer
     (insert "prefix\n\n")
     (let ((result nil)
           (completed-sym (make-symbol "completed"))
           (timer-sym (make-symbol "timer"))
           (tools-called-sym (make-symbol "tools-called"))
-          (turn-count-sym (make-symbol "turn-count")))
+          (turn-count-sym (make-symbol "turn-count"))
+          (abort-strikes-sym (make-symbol "abort-strikes")))
       (set completed-sym nil)
       (set timer-sym nil)
       (set tools-called-sym t)
       (set turn-count-sym 0)
+      (set abort-strikes-sym 0)
       (let ((fn (iar--delegate-completion-fn
                  (current-buffer)
                  (lambda (r) (setq result r))
                  "testagent"
                  completed-sym timer-sym 600
                  tools-called-sym turn-count-sym
-                 iar-delegate-max-turns nil nil (make-symbol "abort-strikes"))))
+                 iar-delegate-max-turns nil nil abort-strikes-sym)))
         (funcall fn 8 8))
-      (should result)
-      (should (string-match-p "empty response" result))
-      (should (symbol-value completed-sym)))))
+      ;; Aborted turn: NOT a completion, strike counted.
+      (should (null result))
+      (should (null (symbol-value completed-sym)))
+      (should (= (symbol-value abort-strikes-sym) 1))
+      (should (= (symbol-value turn-count-sym) 0)))))
 
 (ert-deftest test-delegate-completion-hook-already-completed ()
   "Completion hook should do nothing if already completed."
