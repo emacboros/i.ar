@@ -207,11 +207,25 @@ while [[ $# -gt 0 ]]; do
         --project)
             [[ $# -lt 2 ]] && error "--project requires a name argument" && exit 1
             PROJECT_NAME="$2"
+            # c93: project name lands in audit paths (LOG_FILE,
+            # LAST-CYCLE, IAR_PROJECT env). Same charset as the elisp
+            # layer (iar--valid-name-p).
+            if ! [[ "${PROJECT_NAME}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                error "--project: invalid name '${PROJECT_NAME}'. Only letters, digits, hyphens, and underscores allowed."
+                exit 1
+            fi
             shift 2
             ;;
         --agent)
             [[ $# -lt 2 ]] && error "--agent requires a name argument" && exit 1
             AGENT_NAME="$2"
+            # c93: agent name lands in audit paths (LOG_FILE, LAST-CYCLE,
+            # iar--current-agent-name). Same charset as the elisp layer
+            # (iar--valid-name-p): letters, digits, hyphens, underscores.
+            if ! [[ "${AGENT_NAME}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                error "--agent: invalid name '${AGENT_NAME}'. Only letters, digits, hyphens, and underscores allowed."
+                exit 1
+            fi
             shift 2
             ;;
         --max-cycles)
