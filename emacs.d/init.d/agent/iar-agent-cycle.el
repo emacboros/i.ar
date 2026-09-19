@@ -24,6 +24,14 @@
 (require 'iar-tool-guard)
 (require 'iar-tool-call)
 (require 'iar-request-log)  ; iar--reqlog-last-stop, iar--reqlog-reset-last
+;; Forward declaration for standalone byte-compilation: the defvar
+;; lives in iar-request-log (loaded via init.el ordering).
+(defvar iar--reqlog-last-abort)
+(require 'iar-agent-utils)  ; iar--abort-continue-prompt (c80 shared abort re-prompt)
+;; Forward declaration for standalone byte-compilation: the defconst
+;; lives in iar-agent-utils (loaded first in init.el). A bare defvar
+;; declares the variable without clobbering the const's value.
+(defvar iar--abort-continue-prompt)
 
 ;; Forward declarations -- owned by iar-request-log.el (loaded via
 ;; `load' in init.el, not `require', so the byte-compiler cannot see
@@ -945,6 +953,21 @@ and on any successful response.")
 Backoff is exponential: 30s, 90s, 270s (worst case +390s of a
 3600s cycle budget).")
 
+(defvar iar--cycle-abort-strikes 0
+  "Consecutive guard-aborted turns in the current cycle (c80).
+The thinking-loop guard aborts a turn mid-stream; the partial
+thinking text lands in the buffer, so START < END and the turn
+takes the SUCCESS path -- the FAILED path's strike counting never
+sees it (live-fire: 09-18 23:42, reqs -53/-54 re-prompted with the
+STANDARD continue prompt, no abort-awareness). Counted here
+instead, reset on any turn that produces a real stop reason.")
+
+(defconst iar-cycle-abort-reprompts 2
+  "Max abort-aware re-prompts per cycle before ending LOUD (c80).
+Matches the delegate path's abort-reprompt cap: two strikes get the
+changed question (law 41); the third abort ends the cycle exit 1
+instead of burning another output budget on the same pattern.")
+
 (defun iar--request-transient-error-p ()
   "Return non-nil if the last request failed with a TRANSIENT error.
 Reads the FSM info (gptel--fsm-last, buffer-local in the cycle
@@ -1283,7 +1306,44 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
               ;; then end the run on the next over-limit continue. The
               ;; text-check returns nil on arm (re-send proceeds) and
               ;; non-nil on second fire (blocked).
+              ;; c80: a turn that was NOT aborted clears the
+              ;; abort-strike counter -- consecutive-abort counting.
+              (unless iar--reqlog-last-abort
+                (setq iar--cycle-abort-strikes 0))
               (cond
+               ;; c80 ABORT-AWARE branch: a guard-aborted turn whose
+               ;; partial thinking text landed in the buffer takes the
+               ;; SUCCESS path (START < END), so the FAILED path's
+               ;; strike counting never sees it. The witness is
+               ;; DIRECT: iar--reqlog-last-abort is set by the reqlog's
+               ;; gptel-abort advice, which runs BEFORE the post-response
+               ;; hooks that gptel--handle-abort fires -- so non-nil HERE
+               ;; means THIS turn was aborted. (Inference from absent
+               ;; stop/token data was rejected: nil is also the shape of
+               ;; a reqlog-disabled session, which would hijack every
+               ;; turn.) Re-prompt with the SHARED abort-continue prompt
+               ;; (law 41: change the question -- the standard continue
+               ;; prompt re-enters the exact thinking pattern that just
+               ;; got aborted; live-fire 09-18 23:42 reqs -53/-54: two
+               ;; consecutive aborts, both re-prompted blind). Past the
+               ;; cap, end LOUD -- same terminal contract as the delegate
+               ;; path. The flag is consumed (cleared) on read so a
+               ;; stale abort cannot poison the next turn.
+               (iar--reqlog-last-abort
+                (setq iar--reqlog-last-abort nil)
+                (unless (iar--cycle-complete-p (current-buffer) start end)
+                  (cl-incf iar--cycle-abort-strikes)
+                  (if (> iar--cycle-abort-strikes iar-cycle-abort-reprompts)
+                      (progn
+                        (message "[%s] Aborted turn (guard abort, strike %d) past re-prompt cap %d -- ending cycle LOUD"
+                                 agent iar--cycle-abort-strikes iar-cycle-abort-reprompts)
+                        (setf (plist-get iar--cycle-state :completed) t)
+                        (setf (plist-get iar--cycle-state :exit-code) 1))
+                    (message "[%s] Turn was guard-aborted (strike %d/%d) -- re-prompting with abort-aware prompt"
+                             agent iar--cycle-abort-strikes iar-cycle-abort-reprompts)
+                    (goto-char (point-max))
+                    (insert "\n\n" iar--abort-continue-prompt)
+                    (gptel-send))))
                ((and (iar--cycle-empty-response-p)
                      (not (iar--cycle-complete-p (current-buffer) start end)))
                 ;; aria-0026 (session XI, 2026-09-10): a 0/0 text-only

@@ -394,6 +394,15 @@ fence (iar-msgs-fence.el) as the pre-call estimate of the NEXT
 request's message count. Reset to nil at cycle start by
 `iar--reqlog-reset-last'.")
 
+(defvar iar--reqlog-last-abort nil
+  "Non-nil when the most recent request was ABORTED via gptel-abort
+(c80). Set by `iar--reqlog-abort-advice' (which runs BEFORE the
+post-response hooks that gptel--handle-abort fires); consumed and
+cleared by the cycle handler's abort-aware branch. Direct witness:
+the abort advice KNOWS the abort happened -- no inference from
+absent stop/token data (which is also the shape of a reqlog-disabled
+session and would hijack every turn).")
+
 (defun iar--reqlog-reset-last ()
   "Reset the last-request stop/tokens-out shared state to nil.
 Called at cycle start so a stale value from a previous cycle (or a
@@ -402,7 +411,8 @@ delegate's request) is never read as this cycle's first response."
         iar--reqlog-last-tokens-out nil
         iar--reqlog-last-tokens-in nil
         iar--reqlog-last-tool-specs nil
-        iar--reqlog-last-msgs nil))
+        iar--reqlog-last-msgs nil
+        iar--reqlog-last-abort nil))
 
 (defun iar--reqlog-msgs-count (info)
   "Return the message count of the request described by FSM INFO.
@@ -599,6 +609,7 @@ aborts (the watchdog calls gptel-abort) and human aborts."
             (let* ((process (car entry))
                    (id (or (gethash process iar--reqlog-processes) 0))
                    (agent (gethash process iar--reqlog-process-agents)))
+            (setq iar--reqlog-last-abort t)
               (when (process-live-p process)
                 (let ((iar--reqlog-agent-override agent))
                   (iar--reqlog-append "REQ %s ABORT (partial response follows)"

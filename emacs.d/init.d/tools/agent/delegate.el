@@ -259,13 +259,18 @@ to either call its tools (instead of narrating intentions) or produce
 its final response if the task is already complete.
 Loaded from knowledge/prompts/common/delegate_continue.org")
 
-(defconst iar--delegate-abort-continue-prompt
-  "Your previous turn was ABORTED by the thinking-loop guard: over 16000
-characters of reasoning with no output. Do NOT restart your thinking
-from scratch -- the task context is unchanged. Skip extended thinking
-entirely. Act NOW: either call the tools you need, or end your response
-with the DELEGATION RESULT marker and your concise summary. Content
-first, minimal reasoning.")
+;; c80: the abort-continue prompt moved to shared/iar-agent-utils.el
+;; (iar--abort-continue-prompt) -- the cycle layer needs the same
+;; prompt and loads AFTER this file, so the const cannot live here.
+;; Forward-declared: bound by iar-agent-utils (loads first).
+(defvar iar--delegate-abort-continue-prompt nil
+  "Re-prompt after a guard-aborted turn. Owned by shared/
+iar-agent-utils.el as `iar--abort-continue-prompt'; aliased here for
+the delegate path so both layers re-prompt identically.")
+;; Forward declaration for standalone byte-compilation (the defconst
+;; lives in iar-agent-utils, not on check_elisp's load-path).
+(defvar iar--abort-continue-prompt)
+(setq iar--delegate-abort-continue-prompt iar--abort-continue-prompt)
 
 (defun iar--delegate-extract-result (full-response)
   "Extract the concise result from FULL-RESPONSE.

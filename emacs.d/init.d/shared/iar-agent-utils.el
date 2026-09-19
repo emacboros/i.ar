@@ -181,3 +181,27 @@ removed, or TASK-PATH unchanged if it does not start with it."
       task-path)))
 
 (provide 'iar-agent-utils)
+;;; ---------------------------------------------------------
+;;; Shared abort-continue prompt (c80)
+;;; ---------------------------------------------------------
+;; The thinking-loop guard aborts runaway reasoning streams. When an
+;; aborted turn is followed by a re-prompt, the re-prompt must CHANGE
+;; THE QUESTION (law 41): "continue" re-enters the same thinking
+;; pattern that just got aborted. This prompt is shared by the
+;; delegate path (iar-delegate.el) and the cycle path
+;; (iar-agent-cycle.el), so both layers re-prompt identically.
+;; Lives in the shared layer because tools/agent/delegate.el loads
+;; BEFORE agent/iar-agent-cycle.el (init.el order) -- a const owned
+;; by either would be void for the other at load time.
+
+(defconst iar--abort-continue-prompt
+  "Your previous turn was ABORTED by the thinking-loop guard: over 16000
+characters of reasoning with no output. Do NOT restart your thinking
+from scratch -- the task context is unchanged. Skip extended thinking
+entirely. Act NOW: either call the tools you need, or end your response
+with your completion marker and a concise summary. Content first,
+minimal reasoning."
+  "Re-prompt inserted after a guard-aborted turn (delegate and cycle
+layers). Law 41: change the question, not the volume.")
+
+(provide 'iar-agent-utils)
