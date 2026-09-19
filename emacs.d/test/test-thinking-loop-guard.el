@@ -248,3 +248,71 @@ Binds `proc' and `fsm' as gensym'd symbols."
         (iar--thinking-loop-observe
          proc (list :reasoning (make-string 150 ?x)) nil)
         (should abort-called)))))
+
+;;; c89 symbol-model fixtures -- the DISEASE, not the shape (c40 law).
+;;; Production passes :model as an intern'd SYMBOL (configs/gptel.el
+;;; interns the model name). The a5d21f0 tests passed the model as a
+;;; STRING, so the suite was green while production silently fell
+;;; back to the uniform 16000 all night (c88 root cause). These tests
+;;; pass the model as a SYMBOL, exactly as production does.
+
+(ert-deftest iar-tlg-per-model-symbol-model-resolves-override ()
+  "A symbol model name (production shape) resolves the per-model alist."
+  (let ((iar-thinking-loop-guard-enabled t)
+        (iar-thinking-loop-max-chars 100)
+        (iar-thinking-loop-max-chars-per-model
+         '(("glm-5.3-flash" . 200)))
+        (abort-called nil))
+    (iar-tlg--with-fake-entry 0
+      (let ((real-fsm (if (fboundp 'gptel-make-fsm)
+                          (gptel-make-fsm
+                           :info (list :buffer
+                                       (get-buffer-create
+                                        "*tlg-abort-test*")))
+                        fsm)))
+        (puthash proc (list :bytes 0 :fsm real-fsm)
+                 iar--thinking-loop-processes))
+      (cl-letf (((symbol-function 'gptel-abort)
+                 (lambda (_buf) (setq abort-called t)))
+                ((symbol-function 'process-live-p) (lambda (_) nil))
+                ((symbol-function 'iar--audit-log) (lambda (&rest _) nil)))
+        ;; 150 chars, SYMBOL model: over uniform 100, under glm 200 ->
+        ;; NO abort (the a5d21f0-era code aborted here: stringp failed
+        ;; on the symbol, alist skipped, uniform 100 applied).
+        (iar--thinking-loop-observe
+         proc (list :reasoning (make-string 150 ?x) :model 'glm-5.3-flash)
+         nil)
+        (should-not abort-called)
+        ;; +250 chars: 400 accumulated > glm's 200 -> abort.
+        (iar--thinking-loop-observe
+         proc (list :reasoning (make-string 250 ?x) :model 'glm-5.3-flash)
+         nil)
+        (should abort-called)))))
+
+(ert-deftest iar-tlg-per-model-symbol-model-abort-reports-resolved-threshold ()
+  "The abort witness line names the RESOLVED per-model threshold for
+a symbol model -- the runtime witness (deployed != active law)."
+  (let ((iar-thinking-loop-guard-enabled t)
+        (iar-thinking-loop-max-chars 100)
+        (iar-thinking-loop-max-chars-per-model
+         '(("glm-5.3-flash" . 200)))
+        (logged nil))
+    (iar-tlg--with-fake-entry 0
+      (let ((real-fsm (if (fboundp 'gptel-make-fsm)
+                          (gptel-make-fsm
+                           :info (list :buffer
+                                       (get-buffer-create
+                                        "*tlg-abort-test*")))
+                        fsm)))
+        (puthash proc (list :bytes 0 :fsm real-fsm)
+                 iar--thinking-loop-processes))
+      (cl-letf (((symbol-function 'gptel-abort) (lambda (_buf) nil))
+                ((symbol-function 'process-live-p) (lambda (_) nil))
+                ((symbol-function 'iar--audit-log)
+                 (lambda (_tag msg) (setq logged msg))))
+        (iar--thinking-loop-observe
+         proc (list :reasoning (make-string 250 ?x) :model 'glm-5.3-flash)
+         nil)
+        (should logged)
+        (should (string-match-p ">200 chars" logged))
+        (should (string-match-p "model=glm-5.3-flash" logged))))))

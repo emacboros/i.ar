@@ -103,16 +103,26 @@ INFO is the FSM info plist, RESULT the parse-stream return value
           (cl-incf (plist-get entry :bytes) reasoning-len)))
         ;; Abort check (per-model threshold: first prefix match
         ;; wins, uniform fallback otherwise)
-        (let ((threshold
-               (or (cl-loop for (prefix . chars)
-                            in iar-thinking-loop-max-chars-per-model
-                            when (and (stringp prefix)
-                                      (stringp (plist-get info :model))
-                                      (string-prefix-p
-                                       prefix (plist-get info :model)))
-                            return chars)
-                   iar-thinking-loop-max-chars
-                   16000)))
+        ;; gptel-model is an intern'd SYMBOL in production (configs/
+        ;; gptel.el interns the model name) -- the c88 root cause was
+        ;; (stringp :model) failing on that symbol, silently skipping
+        ;; the alist and running the uniform 16000 all night. Coerce
+        ;; to string FIRST, then match (iar--reqlog-json-str's law:
+        ;; symbols -> symbol-name; iar-request-log.el carries the
+        ;; same comment).
+        (let* ((model-name (plist-get info :model))
+               (model-str (cond ((symbolp model-name) (symbol-name model-name))
+                                ((stringp model-name) model-name)
+                                (t nil)))
+               (threshold
+                (or (cl-loop for (prefix . chars)
+                             in iar-thinking-loop-max-chars-per-model
+                             when (and (stringp prefix)
+                                       (stringp model-str)
+                                       (string-prefix-p prefix model-str))
+                             return chars)
+                    iar-thinking-loop-max-chars
+                    16000)))
           (when (and iar-thinking-loop-guard-enabled
                      (> (plist-get entry :bytes) threshold))
             (iar--thinking-loop-abort process entry info threshold)))))))
@@ -125,7 +135,13 @@ THRESHOLD is the resolved per-model limit, for honest reporting."
   (setf (plist-get entry :bytes) 0)
   (let* ((fsm (plist-get entry :fsm))
          (buf (when fsm (plist-get (gptel-fsm-info fsm) :buffer)))
-         (model (when info (plist-get info :model))))
+         ;; Same symbol->string coercion as the observe path: %s on a
+         ;; symbol prints its name, so the witness line LOOKED right
+         ;; while the resolution failed (c88's sharpest detail).
+         (model-name (when info (plist-get info :model)))
+         (model (cond ((symbolp model-name) (symbol-name model-name))
+                      ((stringp model-name) model-name)
+                      (t nil))))
     (condition-case err
         (progn
           (iar--audit-log
