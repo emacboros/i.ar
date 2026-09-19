@@ -57,15 +57,6 @@ Tracked so they can be removed when the session changes.")
 Looks up `iar-mcp-servers'. Returns nil if not found."
   (cdr (assoc name iar-mcp-servers)))
 
-(defun iar--mcp-filter-servers (names)
-  "Filter NAMES to only those that have configs in `iar-mcp-servers'.
-Returns a list of (NAME . CONFIG) cons cells for valid servers."
-  (cl-remove-if-not
-   (lambda (name)
-     (iar--mcp-config-for-server name))
-   (copy-sequence names)
-   :key #'identity))
-
 (defun iar--mcp-build-hub-config (names)
   "Build an alist suitable for `mcp-hub-servers' from NAMES.
 Only servers with configs in `iar-mcp-servers' are included."

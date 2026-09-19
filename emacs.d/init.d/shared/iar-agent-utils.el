@@ -106,19 +106,6 @@ file wrong, because tasks/* is gitignored)."
                       (expand-file-name project base-path))))
       (iar--path-traversal-check resolved base-path))))
 
-(defun iar--resolve-project-audit-dir ()
-  "Return the audit directory path for the current project + personality.
-Audit files live at /root/personalization/audit/<project>/<personality>/.
-Uses `iar--current-project-name' and `iar--current-personality-name'."
-  (let* ((base-path (expand-file-name iar-audit-path iar-personalization-path))
-         (project (iar--current-project-name))
-         (personality (or (iar--current-personality-name)
-                          (error "No personality loaded. Use C-c a first."))))
-    (iar--validate-agent-name project)
-    (iar--validate-agent-name personality)
-    (let ((resolved (expand-file-name (format "%s/%s" project personality) base-path)))
-      (iar--path-traversal-check resolved base-path))))
-
 ;;; --- Task path resolution ---
 
 (defun iar--resolve-task-dir (task-path)
@@ -150,11 +137,6 @@ For a/b/c returns a/b. For a returns nil (top-level task)."
     (if (<= (length segments) 1)
         nil
       (mapconcat #'identity (butlast segments) "/"))))
-
-(defun iar--task-last-segment (task-path)
-  "Return the last segment of TASK-PATH.
-For a/b/c returns c. For a returns a."
-  (car (last (split-string task-path "/" t))))
 
 (provide 'iar-agent-utils)
 ;;; --- Task path prefix-doubling guard (2026-09-11, aria c208) ---

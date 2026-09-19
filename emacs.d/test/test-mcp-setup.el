@@ -52,17 +52,6 @@
 
 ;;; --- Filter servers tests ---
 
-(ert-deftest test-mcp-filter-servers ()
-  "iar--mcp-filter-servers returns only names with configs."
-  (let ((iar-mcp-servers
-         '(("burp" . (:url "http://localhost:9876/sse"))
-           ("custom" . (:command "cmd")))))
-    (let ((filtered (iar--mcp-filter-servers '("burp" "unknown" "custom"))))
-      (should (member "burp" filtered))
-      (should (member "custom" filtered))
-      (should-not (member "unknown" filtered)))))
-
-;;; --- Format MCP servers tests ---
 
 (ert-deftest test-mcp-format-servers-empty ()
   "iar--format-mcp-servers returns empty string for nil/empty."

@@ -216,15 +216,6 @@ must speak the same language."
                     (setq pos next)))
                 nil))))))))
 
-(defun iar--cycle-load-profile (agent-name)
-  "Load a personality profile for AGENT-NAME using the assembly engine.
-Returns the assembled prompt string.
-Signals an error if the personality is not found."
-  (let* ((archetype (iar--archetype-for-personality agent-name))
-         (project (iar--project-for-personality agent-name))
-         (result (iar--assemble-prompt archetype agent-name project)))
-    (plist-get result :prompt)))
-
 ;;; ---------------------------------------------------------
 ;;; Cycle state and hooks
 ;;; ---------------------------------------------------------

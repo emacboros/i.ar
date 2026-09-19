@@ -139,28 +139,4 @@ Signals an error if the project is not found."
         (error "Project '%s' not found in %s" name (iar--projects-dir))
       (iar--parse-project path))))
 
-(defun iar--create-project (name)
-  "Create a new project file at personalization/projects/<name>.org.
-Creates the projects directory if it does not exist.
-Writes a minimal template with all tools, no mounts, placeholder objective.
-Returns the plist from parsing the newly created file."
-  (let* ((projects-dir (iar--projects-dir))
-         (project-path (expand-file-name (format "%s.org" name) projects-dir)))
-    (unless (file-directory-p projects-dir)
-      (make-directory projects-dir t))
-    (with-temp-file project-path
-      (insert "#+KNOWLEDGE: iar/\n")
-      (insert "#+TOOLS: list_directory read_file write_file append_file execute_code_local check_elisp read_task create_task write_subtask remove_task read_history send_telegram git_commit delegate reload_os reload_agent read_knowledge read_roadmap write_roadmap\n")
-      (insert (format "#+OBJECTIVE: New project '%s'. Edit this file to configure.\n" name)))
-    (message "[project] Created new project file at %s" project-path)
-    (iar--parse-project project-path)))
-
-(defun iar--load-or-create-project (name)
-  "Load a project by name, creating it if it does not exist.
-Returns the project plist."
-  (condition-case err
-      (iar--load-project name)
-    (error
-     (iar--create-project name))))
-
 (provide 'iar-project-parser)

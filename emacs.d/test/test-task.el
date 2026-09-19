@@ -307,12 +307,6 @@ valid (resolution becomes tasks/testagent/testagent/...)."
   (should (equal "a" (iar--task-parent-path "a/b")))
   (should (equal nil (iar--task-parent-path "a"))))
 
-(ert-deftest test-task-last-segment ()
-  "task-last-segment should return the last segment."
-  (should (equal "c" (iar--task-last-segment "a/b/c")))
-  (should (equal "b" (iar--task-last-segment "a/b")))
-  (should (equal "a" (iar--task-last-segment "a"))))
-
 ;;; --- resolve-task-dir and resolve-task-file tests ---
 
 (ert-deftest test-task-resolve-task-dir-valid ()

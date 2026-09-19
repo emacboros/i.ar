@@ -1,8 +1,8 @@
 ;; -*- lexical-binding: t; -*-
 
 ;;; Tests for iar-agent-cycle.el
-;; Tests the pure helper functions: iar--cycle-complete-p and
-;; iar--cycle-load-profile. The main iar-run-cycle function involves
+;; Tests the pure helper function iar--cycle-complete-p. The main
+;; iar-run-cycle function involves
 ;; timers, processes, and gptel state -- too complex for unit tests
 ;; without heavy mocking. These tests cover the testable surface.
 
@@ -148,23 +148,6 @@
                         (point))))
       (narrow-to-region (point-min) (line-beginning-position 2))
       (should (eq (iar--cycle-complete-p (current-buffer) region-start region-end) 'cycle)))))
-
-;;; --- iar--cycle-load-profile tests ---
-
-(ert-deftest test-darwin-load-profile-returns-string ()
-  "iar--cycle-load-profile should return a non-empty string for a valid personality."
-  (let ((profile (iar--cycle-load-profile "darwin")))
-    (should (stringp profile))
-    (should (< 0 (length profile)))
-    (should (string-match-p "Darwin" profile))))
-
-(ert-deftest test-darwin-load-profile-errors-on-missing ()
-  "iar--cycle-load-profile should error for a nonexistent agent."
-  (let ((user-emacs-directory (make-temp-file "test-darwin-" :dir-flag)))
-    (unwind-protect
-        (let ((err (should-error (iar--cycle-load-profile "nonexistent") :type 'error)))
-          (should (string-match-p "not found" (cadr err))))
-      (delete-directory user-emacs-directory t))))
 
 ;;; --- iar--cycle-token-summary tests ---
 

@@ -95,21 +95,6 @@ and rotates it if so.  This prevents unbounded growth of the audit log."
   (iar--audit-log "write_file" filepath))
 
 
-(defun iar--audit-log-append (filepath)
-  "Audit log entry for append_file to FILEPATH."
-  (iar--audit-log "append_file" filepath))
-
-(defun iar--audit-log-exec (command exit-code)
-  "Audit log entry for execute_code_local with COMMAND and EXIT-CODE.
-EXIT-CODE is 0 for success, the process exit code for non-zero exits,
-or -1 if the command was killed due to timeout."
-  (let ((truncated-cmd
-         (if (> (length command) 200)
-             (concat (substring command 0 197) "...")
-           command)))
-    (iar--audit-log "execute_code_local"
-                         (format "exit=%d cmd=%s" exit-code truncated-cmd))))
-
 (defun iar--audit-log-agent-name ()
   "Best-effort agent-name capture for the tool-call bridge.
 Returns the agent name visible in the CURRENT buffer's dynamic

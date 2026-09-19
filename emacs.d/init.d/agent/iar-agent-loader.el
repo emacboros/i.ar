@@ -224,12 +224,6 @@ This is C-c p -- switch personality mid-session."
          (name (completing-read "Switch personality: " names nil t)))
     (iar-load-personality name)))
 
-(defun iar-personality-info ()
-  "Return a string describing the currently loaded personality.
-Used by iar-prompt-info to display personality in the prompt breakdown."
-  (or (iar--current-personality-name)
-      "none"))
-
 (with-eval-after-load 'gptel
   (keymap-set gptel-mode-map iar-key-load-agent #'iar-load-agent)
   (keymap-set gptel-mode-map iar-key-load-personality #'iar-load-personality-interactive))

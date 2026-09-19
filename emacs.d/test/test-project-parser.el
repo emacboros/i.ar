@@ -92,25 +92,6 @@
     (should (null (plist-get meta :mounts)))
     (should (null (plist-get meta :objective)))))
 
-(ert-deftest test-project-parser-create-project ()
-  "Creating a new project writes a file and returns parsed metadata."
-  (let* ((tmp-dir (make-temp-file "test-project-create-" :dir-flag))
-         (user-emacs-directory tmp-dir)
-         (iar-personalization-path tmp-dir)
-         (iar-projects-path "projects"))
-    (unwind-protect
-        (let ((result (iar--create-project "test-new")))
-          (should (string= (plist-get result :name) "test-new"))
-          (should (file-exists-p (expand-file-name "projects/test-new.org" tmp-dir)))
-          (should (member "read_file" (plist-get result :tools)))
-          (should (null (plist-get result :mounts))))
-      (delete-directory tmp-dir t))))
-
-(ert-deftest test-project-parser-load-or-create-existing ()
-  "load-or-create returns existing project without creating a new file."
-  (let ((result (iar--load-or-create-project "iar")))
-    (should (string= (plist-get result :name) "iar"))))
-
 ;;; --- #+CONTAINERS parsing tests ---
 
 (ert-deftest test-project-parser-parse-metadata-containers ()
@@ -169,15 +150,3 @@
   "iar--parse-project should signal an error for nonexistent file."
   (should-error (iar--parse-project "/nonexistent/path/to/project.org")
                 :type 'error))
-
-(ert-deftest test-project-parser-load-or-create-creates-new ()
-  "iar--load-or-create-project should create project when not found."
-  (let* ((tmp-dir (make-temp-file "test-project-loc-" :dir-flag))
-         (user-emacs-directory tmp-dir)
-         (iar-personalization-path tmp-dir)
-         (iar-projects-path "projects"))
-    (unwind-protect
-        (let ((result (iar--load-or-create-project "test-auto-create")))
-          (should (string= (plist-get result :name) "test-auto-create"))
-          (should (file-exists-p (expand-file-name "projects/test-auto-create.org" tmp-dir))))
-      (delete-directory tmp-dir t))))

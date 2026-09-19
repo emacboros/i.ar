@@ -151,28 +151,6 @@ in one project must not share tasks/<project>/."
           (iar--current-personality "../evil"))
       (should-error (iar--resolve-project-tasks-dir)))))
 
-;;; --- iar--resolve-project-audit-dir tests ---
-
-(ert-deftest test-agent-utils-resolve-project-audit-dir ()
-  "Should resolve audit dir for current project + personality."
-  (with-temp-buffer
-    (let ((iar--current-project "test-project")
-          (iar--current-personality "mirror"))
-      (let ((result (iar--resolve-project-audit-dir)))
-        (should (stringp result))
-        (should (string-match-p "test-project" result))
-        (should (string-match-p "mirror" result))
-        (should (string-match-p "audit" result))))))
-
-(ert-deftest test-agent-utils-resolve-project-audit-dir-no-personality ()
-  "Should signal error when no personality is set."
-  (with-temp-buffer
-    (let ((iar--current-project "test-project")
-          (iar--current-personality nil)
-          (iar--current-agent-name nil)
-          (iar--current-agent-file nil))
-      (should-error (iar--resolve-project-audit-dir) :type 'error))))
-
 (provide 'test-agent-utils)
 ;;; test-agent-utils.el ends here
 ;;; --- task-path prefix-doubling guard (2026-09-11, aria c208) ---

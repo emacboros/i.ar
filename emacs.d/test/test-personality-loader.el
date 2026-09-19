@@ -82,15 +82,6 @@
 
 ;;; --- Info test ---
 
-(ert-deftest test-pers-info-returns-name ()
-  "iar-personality-info should return the loaded personality name or none."
-  (with-temp-buffer
-    (text-mode)
-    ;; Before loading, should return "none" or the agent name
-    (should (stringp (iar-personality-info)))
-    (iar-load-personality "mirror")
-    (should (string= "mirror" (iar-personality-info)))))
-
 ;;; --- Additional coverage tests ---
 
 (ert-deftest test-pers-load-personality-interactive ()
