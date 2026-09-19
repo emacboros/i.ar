@@ -1308,6 +1308,14 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
               ;; non-nil on second fire (blocked).
               ;; c80: a turn that was NOT aborted clears the
               ;; abort-strike counter -- consecutive-abort counting.
+              ;; c81: a FOREIGN abort (delegate buffer) does not count
+              ;; as this cycle's abort -- clear it from consideration
+              ;; and reset strikes as designed.
+              (when (and iar--reqlog-last-abort
+                         (not (eq iar--reqlog-last-abort-buf
+                                  (plist-get iar--cycle-state :buffer))))
+                (setq iar--reqlog-last-abort nil
+                      iar--reqlog-last-abort-buf nil))
               (unless iar--reqlog-last-abort
                 (setq iar--cycle-abort-strikes 0))
               (cond
@@ -1329,8 +1337,19 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                ;; cap, end LOUD -- same terminal contract as the delegate
                ;; path. The flag is consumed (cleared) on read so a
                ;; stale abort cannot poison the next turn.
-               (iar--reqlog-last-abort
-                (setq iar--reqlog-last-abort nil)
+               ((and iar--reqlog-last-abort
+                     ;; c81 SCOPE: consume only OUR abort. The flag is
+                     ;; global; a delegate abort during this cycle's
+                     ;; turn sets it too, and the delegate's own Case 0
+                     ;; handles that abort without clearing the flag.
+                     ;; Without the buffer check, the parent's next
+                     ;; healthy turn reads a stale abort and takes a
+                     ;; phantom strike (three phantoms = cycle ends
+                     ;; LOUD on a false positive).
+                     (eq iar--reqlog-last-abort-buf
+                         (plist-get iar--cycle-state :buffer)))
+                (setq iar--reqlog-last-abort nil
+                      iar--reqlog-last-abort-buf nil)
                 (unless (iar--cycle-complete-p (current-buffer) start end)
                   (cl-incf iar--cycle-abort-strikes)
                   (if (> iar--cycle-abort-strikes iar-cycle-abort-reprompts)

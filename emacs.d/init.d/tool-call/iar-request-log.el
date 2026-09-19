@@ -401,7 +401,23 @@ post-response hooks that gptel--handle-abort fires); consumed and
 cleared by the cycle handler's abort-aware branch. Direct witness:
 the abort advice KNOWS the abort happened -- no inference from
 absent stop/token data (which is also the shape of a reqlog-disabled
-session and would hijack every turn).")
+session and would hijack every turn).
+
+c81 SCOPE: the flag alone is a RUMOR, not a witness -- it records
+that SOME buffer aborted, not WHICH. A delegate abort leaves it set
+(the delegate's own completion hook handles its abort via START==END
+and never clears this flag), so the parent cycle's next healthy turn
+would read a stale abort and take a false strike. The abort advice
+now also records `iar--reqlog-last-abort-buf'; consumers must check
+the buffer matches before consuming.")
+
+(defvar iar--reqlog-last-abort-buf nil
+  "The buffer whose request was aborted (c81 scope witness).
+Set by `iar--reqlog-abort-advice' alongside `iar--reqlog-last-abort'.
+nil means no abort recorded (or the buffer died). The cycle handler
+consumes the abort flag ONLY when this eq's its own cycle buffer --
+a delegate's abort belongs to the delegate's strike counter, not the
+parent's.")
 
 (defun iar--reqlog-reset-last ()
   "Reset the last-request stop/tokens-out shared state to nil.
@@ -412,7 +428,8 @@ delegate's request) is never read as this cycle's first response."
         iar--reqlog-last-tokens-in nil
         iar--reqlog-last-tool-specs nil
         iar--reqlog-last-msgs nil
-        iar--reqlog-last-abort nil))
+        iar--reqlog-last-abort nil
+        iar--reqlog-last-abort-buf nil))
 
 (defun iar--reqlog-msgs-count (info)
   "Return the message count of the request described by FSM INFO.
@@ -609,7 +626,8 @@ aborts (the watchdog calls gptel-abort) and human aborts."
             (let* ((process (car entry))
                    (id (or (gethash process iar--reqlog-processes) 0))
                    (agent (gethash process iar--reqlog-process-agents)))
-            (setq iar--reqlog-last-abort t)
+            (setq iar--reqlog-last-abort t
+                  iar--reqlog-last-abort-buf buf)
               (when (process-live-p process)
                 (let ((iar--reqlog-agent-override agent))
                   (iar--reqlog-append "REQ %s ABORT (partial response follows)"

@@ -390,6 +390,14 @@ delegate ends LOUD.
            ((and (number-or-marker-p start)
                  (number-or-marker-p end)
                  (= start end))
+            ;; c81: this hook KNOWS the abort happened here. If the
+            ;; reqlog's abort witness points at THIS buffer, consume
+            ;; it -- the parent cycle must never read a stale abort
+            ;; from a delegate's turn (buffer-scoped witness, c81).
+            (when (and (boundp 'iar--reqlog-last-abort)
+                       (eq iar--reqlog-last-abort-buf buf))
+              (setq iar--reqlog-last-abort nil
+                    iar--reqlog-last-abort-buf nil))
             (let ((strikes (1+ (symbol-value abort-strikes-sym))))
               (set abort-strikes-sym strikes)
               (set tools-called-sym nil)
