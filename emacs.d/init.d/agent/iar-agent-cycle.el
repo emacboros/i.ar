@@ -1522,6 +1522,11 @@ Knowledge is auto-loaded from the project's #+KNOWLEDGE metadata.
 Tools are gated by the project's #+TOOLS metadata."
   (interactive)
   (let* ((agent-name (or (plist-get args :agent) "darwin"))
+         ;; c93: validate at the action site. iar.sh validates its CLI
+         ;; arg, but iar-run-cycle is also callable from elisp directly;
+         ;; agent-name lands in audit paths (cycle-log-append, cycle-seq,
+         ;; iar--current-agent-name).
+         (_ (iar--validate-agent-name agent-name))
          (raw-timeout (or (plist-get args :timeout) iar-cycle-timeout))
          (timeout (if (and (integerp raw-timeout) (> raw-timeout 0))
                       raw-timeout
