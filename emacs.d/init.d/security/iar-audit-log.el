@@ -152,9 +152,10 @@ result-prefix check is the corroborating witness."
 
 (defun iar--audit-log-tool-call-with-agent (tool-name args result agent)
   "Write the audit entry for a tool call with AGENT pre-captured.
-Same detail policy as `iar--audit-log-tool-call' but takes the
-agent name as an argument instead of resolving it (which fails in
-async sentinel contexts)."
+Detail policy per tool (write/append -> path, exec -> cmd capped 200,
+git_commit -> repo+msg capped 80, reads -> name/status/len only).
+Takes the agent name as an argument instead of resolving it (which
+fails in async sentinel contexts)."
   (let* ((status (iar--audit-classify-result tool-name result))
          (detail
           (concat (format "name=%s status=%s result_len=%d"
