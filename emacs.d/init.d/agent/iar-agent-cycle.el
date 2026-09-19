@@ -2024,6 +2024,8 @@ Knowledge is auto-loaded from the project's #+KNOWLEDGE metadata.
 Tools are gated by the project's #+TOOLS metadata."
   (interactive)
   (let* ((agent-name (or (plist-get args :agent) "mirror"))
+         ;; c93: same action-site validation as iar-run-cycle.
+         (_ (iar--validate-agent-name agent-name))
          (raw-timeout (or (plist-get args :timeout) 7200))
          (timeout (if (and (integerp raw-timeout) (> raw-timeout 0))
                       raw-timeout
