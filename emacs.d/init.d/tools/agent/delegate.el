@@ -237,6 +237,20 @@ TIMEOUT is optional max seconds to wait (default 600, minimum 1)."
     (cond
      ((not task-valid)
       (funcall callback "Delegate tool error: :task must be a non-empty string"))
+     ;; Name validation BEFORE assembly (c93, live-probed): a traversal
+     ;; name like "../base_context" resolves to an EXISTING org file
+     ;; outside personalities/, so assembly succeeds and the name rides
+     ;; into iar--current-agent-name -- audit paths then escape the
+     ;; per-agent tree (audit/<project>/../base_context/ was created and
+     ;; written by a live probe). iar--read-personality's missing-file
+     ;; error is NOT a traversal defense; it only catches names whose
+     ;; target file does not exist.
+     ((condition-case err
+          (progn (iar--validate-agent-name effective-agent) nil)
+        (error (funcall callback
+                        (format "Delegate tool error: invalid agent name '%s': %s"
+                                effective-agent (error-message-string err)))
+               t)))
      (t
       (condition-case err
           (let* ((archetype (iar--archetype-for-personality effective-agent))

@@ -51,6 +51,21 @@ The error from assembly (iar--read-personality) is caught and returned via callb
 
 ;;; --- Depth tracking tests ---
 
+(ert-deftest test-delegate-rejects-traversal-with-existing-file ()
+  "Traversal names that resolve to an EXISTING org file outside
+personalities/ must be rejected BEFORE assembly. c93 live probe:
+agent=\"../base_context\" assembled successfully (the file exists at
+agents.d/base_context.org), the name rode into
+iar--current-agent-name, and audit writes escaped the per-agent tree
+(audit/base_context/ was created). The old traversal test only used
+names whose target file does not exist -- assembly's missing-file
+error masked the missing validation (c40: reproduce the DISEASE)."
+  (dolist (bad-name '("../base_context" "../../README" "../common/x"))
+    (let ((result nil))
+      (iar--tool-delegate (lambda (r) (setq result r)) bad-name "task" "ctx")
+      (should result)
+      (should (string-match-p "invalid agent name" result)))))
+
 (ert-deftest test-delegate-max-depth-default ()
   "iar-delegate-max-depth should default to 3."
   (should (= iar-delegate-max-depth 3)))
