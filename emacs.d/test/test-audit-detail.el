@@ -337,3 +337,30 @@ lineage, connectome gap 3)."
 loosen the word boundary into a substring match)."
   (should (equal "monkey = YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG"
                  (iar--audit-redact-secrets "monkey = YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG"))))
+;;; --- Quote-adjacent conf echo (2026-09-19, aria c105) ---
+;;; The c105 live leak: my own c104 test code echoed into the
+;;; conversation ("(iar--audit-redact-secrets \"key = KEY\")"), and the
+;;; whole conversation rides every START tail. The char before 'key'
+;;; is a double-quote -- not string-start, not escaped-newline, not
+;;; ';', not space. The fc561ff anchor set missed it. Fixture
+;;; reproduces the DISEASE: a conf echo inside a quoted string in a
+;;; captured tool result.
+
+(ert-deftest test-audit-redact-agora-conf-echo-quote-adjacent ()
+  "Conf echo inside a quoted string (quote before 'key') is redacted (c105)."
+  (should (equal "(iar--audit-redact-secrets \"key = [REDACTED]\")))"
+                 (iar--audit-redact-secrets
+                  "(iar--audit-redact-secrets \"key = YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG\")))"))))
+
+(ert-deftest test-audit-redact-agora-conf-echo-escaped-quote ()
+  "JSON-escaped quote before the conf echo is redacted too (c105)."
+  (should (equal "edact-secrets \\\"key = [REDACTED]"
+                 (iar--audit-redact-secrets
+                  "edact-secrets \\\"key = YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG"))))
+
+(ert-deftest test-audit-redact-agora-conf-echo-quote-adjacent-integration ()
+  "INTEGRATION: sanitize-detail redacts a quote-adjacent conf echo."
+  (let ((line (iar--audit-sanitize-detail
+               "520183: (iar--audit-redact-secrets \"key = YXCd4jTeJb9RJweC7UmXwK7RNK4gpzhG\")))")))
+    (should (string-match-p "key = \\[REDACTED\\]" line))
+    (should (not (string-match-p "YXCd4j" line)))))

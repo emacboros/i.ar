@@ -271,7 +271,11 @@ Never signals; returns S unchanged when nothing matches."
       ;; "\nkey = KEY" and \< sees "nkey" as one word -- the anchor
       ;; never fires (c104 live leak, continuo REQUESTS.log 11:59Z).
       ;; Anchor instead on string-start | escaped-newline | ; | space.
+      ;; c105: quote-adjacent class -- a conf echo inside a QUOTED
+      ;; string in a captured tool result ("key = KEY) has a quote
+      ;; before 'key'; fc561ff's anchor set missed it (my own c104
+      ;; test code leaked this way). Anchors now include quotes.
       (setq s (replace-regexp-in-string
-               "\\(\\(?:^\\|\\\\n\\|[; ]\\)\\)key\\( *= *\\)[A-Za-z0-9]\\{20,\\}"
+               "\\(\\(?:^\\|\\\\n\\|[; \"']\\)\\)key\\( *= *\\)[A-Za-z0-9]\\{20,\\}"
                "\\1key\\2[REDACTED]" s))))
   s)
