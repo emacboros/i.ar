@@ -268,6 +268,11 @@ while [[ $# -gt 0 ]]; do
             OLLAMA_CTX="$2"
             shift 2
             ;;
+        --num-predict)
+            [[ $# -lt 2 ]] && error "--num-predict requires a value" && exit 1
+            NUM_PREDICT="$2"
+            shift 2
+            ;;
         --no-think)
             OLLAMA_NO_THINK=1
             shift
