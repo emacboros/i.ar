@@ -61,7 +61,11 @@ When NO-THINK is non-nil, append think:false to disable model thinking
                                  (when ctx-str
                                    (setq ctx-num (string-to-number ctx-str)))
                                  (if (> ctx-num 0) ctx-num 1048576))
-                     :num_predict 32768
+                     :num_predict ,(let ((pred-str (getenv "EMACBOROS_NUM_PREDICT"))
+                                         (pred-num 0))
+                                     (when pred-str
+                                       (setq pred-num (string-to-number pred-str)))
+                                     (if (> pred-num 0) pred-num 32768))
                      ))))
     (if no-think
         (append params '(:think :json-false))
