@@ -141,7 +141,7 @@ thinking-loop guard aborts the stream. Overridden per-model by
 ;; abort). Matched by string-prefix-p against the model name.
 (defcustom iar-thinking-loop-max-chars-per-model
   '(("glm-5.3-flash" . 32000)
-    ("nemotron-3-super" . 16000))
+    ("nemotron-3-super" . 32000))
   "Alist of (MODEL-PREFIX . MAX-CHARS) overriding
 `iar-thinking-loop-max-chars' for matching models. First prefix
 match wins; no match falls back to the uniform threshold."
