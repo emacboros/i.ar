@@ -384,3 +384,52 @@ the fence machinery reads it."
 
 (provide 'test-one-shot)
 ;;; test-one-shot.el ends here
+;;; --- Ignore-span rehearsal extraction (c234, re-land of the c233
+;;; parked assertion) ---
+;; The c132 rehearsal class, one-shot edition: a delimiter inside an
+;; 'ignore (thinking) span is a REHEARSAL, not an ending. Live-fire
+;; shape: nemotron streamed ~29k chars of thinking that rehearses the
+;; sentinel (c132); the one-shot analogue is thinking that rehearses
+;; the delimiter block.
+;;
+;; c233 parked the handler-path test: the handler's nudge path fires
+;; a real request whose async response arrives during a LATER test
+;; (the documented suite stray-process heisenbug). Fix shape 1 from
+;; the task tree: test the EXTRACTION composition directly --
+;; iar--one-shot-model-text + iar--one-shot-extract-response -- with
+;; no live handler, no gptel-send, no reqlog globals. The handler
+;; calls exactly this composition (iar-agent-cycle.el ~2043), so the
+;; assertion transfers.
+
+(ert-deftest test-one-shot-model-text-excludes-ignore-spans ()
+  "A delimiter inside an 'ignore span must not win over real model text."
+  (let ((buf (get-buffer-create "*test-oneshot-modeltext2*")))
+    (unwind-protect
+        (with-current-buffer buf
+          ;; Thinking block that REHEARSES the ending.
+          (insert "=== BEGIN FINAL RESPONSE ===\nrehearsed ending\n=== END FINAL RESPONSE ===\n")
+          (add-text-properties (point-min) (point-max) '(gptel ignore))
+          ;; Real model text after the thinking block.
+          (let ((real-start (point)))
+            (insert "\n=== BEGIN FINAL RESPONSE ===\nReal answer.\n=== END FINAL RESPONSE ===\n")
+            (add-text-properties real-start (point-max) '(gptel response)))
+          ;; The handler's exact composition, without the handler.
+          (let* ((model-text (iar--one-shot-model-text (point-min) (point-max)))
+                 (extracted (iar--one-shot-extract-response model-text)))
+            (should (string= "Real answer." extracted))
+            (should-not (string-match-p "rehearsed" extracted))))
+      (kill-buffer buf))))
+
+(ert-deftest test-one-shot-model-text-ignore-only-no-completion ()
+  "Delimiters ONLY inside an 'ignore span: extraction returns nil --
+the one-shot must not complete on a rehearsal."
+  (let ((buf (get-buffer-create "*test-oneshot-modeltext4*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (insert "=== BEGIN FINAL RESPONSE ===\nrehearsed ending\n=== END FINAL RESPONSE ===\n")
+          (add-text-properties (point-min) (point-max) '(gptel ignore))
+          (let* ((model-text (iar--one-shot-model-text (point-min) (point-max)))
+                 (extracted (iar--one-shot-extract-response model-text)))
+            (should (string-empty-p model-text))
+            (should-not extracted)))
+      (kill-buffer buf))))

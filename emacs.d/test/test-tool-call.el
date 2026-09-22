@@ -227,3 +227,34 @@ match wins -- the done:true chunk rides the END of the stream."
 
 (provide 'test-tool-call)
 ;;; test-tool-call.el ends here
+;;; --- c234: bridge pass-through contract tests ---
+;; The bridge is the seam between gptel's position convention and the
+;; i.ar handlers. Its contract: whatever gptel passes (beg end) must
+;; reach the i.ar hook UNCHANGED. The stale (status info) naming hid
+;; this for the fork's whole life; these tests pin it.
+
+(ert-deftest test-tool-call-bridge-post-response-passes-positions ()
+  "iar--bridge-post-response forwards (start end) positions unchanged."
+  (let ((seen nil))
+    (let ((hook-fn (lambda (&rest args) (setq seen args))))
+      (add-hook 'iar-post-response-functions hook-fn nil t)
+      (unwind-protect
+          (progn
+            (iar--bridge-post-response 100 250)
+            (should (equal seen '(100 250))))
+        (remove-hook 'iar-post-response-functions hook-fn t)))))
+
+(ert-deftest test-tool-call-bridge-post-response-failed-request-shape ()
+  "Failed request: START == END (equal positions) pass through unchanged."
+  (let ((seen nil))
+    (let ((hook-fn (lambda (&rest args) (setq seen args))))
+      (add-hook 'iar-post-response-functions hook-fn nil t)
+      (unwind-protect
+          (progn
+            (iar--bridge-post-response 42 42)
+            (should (equal seen '(42 42))))
+        (remove-hook 'iar-post-response-functions hook-fn t)))))
+
+(ert-deftest test-tool-call-bridge-post-response-returns-nil ()
+  "The bridge returns nil (run-hook-with-args result) -- no block value."
+  (should (null (iar--bridge-post-response 1 2))))

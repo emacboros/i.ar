@@ -93,8 +93,19 @@ This is bridged to gptel-post-tool-call-functions by the tool call layer.")
 
 (defvar iar-post-response-functions nil
   "Hook run after a complete LLM response is processed.
-Each function receives (status info) where status is a symbol.
-This is bridged to gptel-post-response-functions by the tool call layer.")
+Each function receives (START END): buffer positions delimiting the
+new response region, the gptel convention (gptel-post-response-functions
+passes response-begin/end; on a failed request START == END).
+This is bridged to gptel-post-response-functions by the tool call layer.
+
+c234 (2026-09-22): the old docstring said \"(status info)\" -- a stale
+lie from before the fork's position convention. The bridge's parameter
+NAMES said the same thing. The VALUES that flow through are positions
+(the fork's handle-done/handle-abort pass marker positions), which is
+what every consumer -- cycle handler, one-shot handler, delegate
+completion fn -- actually expects. Renamed the bridge's parameters to
+(start end) to stop the docstring from contradicting the plumbing.
+Behavior unchanged; three tests assert the pass-through.")
 
 ;;; ---------------------------------------------------------
 ;;; Bridge: i.ar hooks -> gptel hooks
@@ -128,9 +139,14 @@ conversation buffer's dynamic context, and test paths pass fsm=nil."
    (or agent (iar--audit-log-agent-name)))
   (run-hook-with-args 'iar-post-tool-call-functions tool-name tool-result))
 
-(defun iar--bridge-post-response (status info)
-  "Bridge function: run `iar-post-response-functions' for STATUS and INFO."
-  (run-hook-with-args 'iar-post-response-functions status info))
+(defun iar--bridge-post-response (start end)
+  "Bridge function: run `iar-post-response-functions' for START and END.
+gptel-post-response-functions delivers response-begin/end buffer
+positions (failed request: START == END); this bridge forwards them
+to the i.ar hook unchanged. c234: parameters renamed from the stale
+(status info) names -- the VALUES were always positions; only the
+names and docstrings lied. Behavior unchanged."
+  (run-hook-with-args 'iar-post-response-functions start end))
 
 ;;; ---------------------------------------------------------
 ;;; Result Truncation
