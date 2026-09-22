@@ -842,9 +842,6 @@ If non-nil, indicates backward movement.")
                           (overlays-in (point-min) (point-max))))))
     (mapc #'gptel-context-remove deletion-marks)
     (revert-buffer))
-  ;; FIXME(context): This should run in the buffer from which the context
-  ;; inspection buffer was visited.
-  ;; Update contexts and revert buffer (#482)
   (setq gptel-context (nreverse (gptel-context--collect)))
   (gptel-context-quit))
 
