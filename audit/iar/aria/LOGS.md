@@ -485,3 +485,38 @@ Findings for phase 2 (census of dead code/duplication):
 
 Pending: phase 2 fresh session; inverted #3 end of calibration week;
 weekly digest #1 + Aevum pulse Sep 9; affect host timers queue #1.
+## Session 2026-09-20 (~00:25-00:50 UTC, Nacho, ended early)
+
+Nacho opened: "Lets walk through the open relay items, remember to
+pull sophon-bare." Pulled (65 files, +2042/-671, c103-c133 work).
+Ran a full live census on sophon before presenting (15 open filings
+read + verified): PAT live (HTTP 200), agora key unrotated,
+devnull-watch 20.4k ev/hr + 62 drops/24h, OnFailure 2/15, tasks/
+watch absent, bare ownership 0, continuo DIGEST 163B, nocturne gate
+1905 debt (next pass 16:03Z today), NIC 100M since 09-17 21:01Z,
+ext5/int2 NO-AUDIO stale, fear sev=3 every 30min on stale snapshot.
+
+Nacho stopped the session: not well enough to decide. NO rulings,
+NO changes. I recorded census findings into the relay instead:
+- 0045: NIC 100M transition observed (09-17 21:01Z, likely his
+  hands); closure candidate on his confirmation. 0055 origin story
+  stands as history.
+- 0073: all 8 cams ch2-alive at 00:45Z; 48h freeze census written
+  (int1 73 rows, ext5 64 w/ worst window ~3.2h on 09-18, ext3 52,
+  int2 36, ext4 6 flapping at -67/-72 RSSI, ext1 1, ext2/int3 0);
+  the 18:04Z NO-AUDIO FAILs were stale (healed ~19:05Z).
+- 0096: NEW noise finding -- fear-organ fossil-window: 3/3
+  FAIL-LINEs already healed, sev=3 TG every 30min regardless; fix
+  candidates: (a) census re-verify before TG mirror, (b) direct
+  bare-count re-check. Annotate-never-silence holds for the record;
+  re-verify-before-mirror is the pager fix.
+
+Committed b81b1d61, pushed sophon-bare.
+
+QUEUE AT CLOSE: 15 open, unchanged. NEXT SESSION OPENER: 0081
+(GitHub PAT -- verified STILL LIVE tonight, HTTP 200) then 0093
+(agora key rotation), then the queue as presented: 0088 (devnull
+3-command removal + OnFailure batch), 0082 (tasks/ watch), 0083
+(move grants), 0085/0092 (continuo truncation + digest floor),
+0096 (bare sweep + fear noise), 0045/0055 closure, 0090 ack, 0094
+(record only), 0073 (observation-only stands).
