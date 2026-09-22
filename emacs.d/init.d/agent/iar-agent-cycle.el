@@ -101,23 +101,32 @@ Returns empty string if usage tracking is not available."
 (defun iar--cycle-log-append (agent-name start end)
   "Append the latest LLM response to audit/<agent-name>/cycle.log.
 START and END are buffer positions delimiting the new response text.
-Creates the log file if it does not exist.  Prepends a timestamp."
+Creates the log file if it does not exist.  Prepends a timestamp.
+
+c238 (2026-09-22): MODEL-TEXT-ONLY -- gptel `ignore' spans (reasoning
+blocks, tool-call fences) and tool-call spans (property (tool . ID))
+are excluded, the c132 discipline (iar--cycle-complete-p,
+iar--one-shot-model-text). Rationale: the fork's per-turn region fix
+(c237) makes [start,end) the CURRENT turn only, but a turn can still
+contain tool-result previews, whose text can carry delimiter-shaped
+or sentinel-shaped strings (0071 canaries, JSON-escaped prompts).
+The log is a record of what the MODEL said, not what scaffolding
+passed through the buffer.
+
+buffer-substring-no-properties remains DELIBERATE for the kept spans:
+cycle.log is a record surface, not a judgment surface -- it stores
+what the model said, verbatim, without overlay/property metadata
+(aria c55 finding applied)."
   (when (and (integerp start) (integerp end) (< start end))
     (let* ((project (iar--current-project-name))
            (log-path (expand-file-name
                       (format "%s/%s/cycle.log" project agent-name)
                       (expand-file-name iar-audit-path iar-personalization-path)))
            (timestamp (format-time-string "[%Y-%m-%d %H:%M:%S]"))
-           ;; buffer-substring-no-properties is DELIBERATE here: cycle.log is
-           ;; a record surface, not a judgment surface -- it stores what the
-           ;; model said, verbatim, without overlay/property metadata that
-           ;; would leak tool-call scaffolding into the transcript. (aria
-           ;; c55 finding applied: properties are provenance, but THIS log's
-           ;; purpose is the plain text of the response.)
            (response (with-current-buffer (current-buffer)
                        (save-restriction
                          (widen)
-                         (buffer-substring-no-properties
+                         (iar--cycle-response-text
                           (min (max start (point-min)) (point-max))
                           (min (max end (point-min)) (point-max)))))))
       (make-directory (file-name-directory log-path) t)
@@ -1260,7 +1269,12 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
           ;; honest burn unit; :turn-count remains the
           ;; final-response count for the tombstone.
           ;; Log ONLY the new response region (not the whole buffer --
-          ;; whole-buffer logging grows quadratically with turns)
+          ;; whole-buffer logging grows quadratically with turns).
+          ;; c237 fork fix made this TRUE: post-response hooks now fire
+          ;; with the per-turn region (turn-start..tracking), not the
+          ;; whole conversation. c238: the region is additionally
+          ;; filtered to MODEL TEXT ONLY (c132 discipline) so
+          ;; tool-result previews cannot leak into the log.
           (ignore-errors
             (iar--cycle-log-append agent start end))
           ;; Completion signals: search ONLY the new response region
