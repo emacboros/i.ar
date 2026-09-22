@@ -258,9 +258,26 @@ GLOBAL hook (registered on the default value of
 fires this runs from async sentinels where current-buffer is NOT
 the cycle buffer -- a buffer-local hook never fires there (the
 2026-09-02 invisible-cycles finding: 360 calls counted as 13).
-Guarded: no active state -> silent no-op."
+Guarded: no active state -> silent no-op.
+
+c220 ABORT-STRIKE RESET (tool-path edition): a completed tool call
+is a HEALTHY-TURN witness -- the model produced a tool call and the
+tool ran, so the turn that emitted it was not aborted. The c80
+strike reset lives in the post-response handler's continue branch,
+which fires only on DONE (text-only ends): a tool-call turn never
+reaches DONE (TYPE->TPRE->TOOL->TRET->WAIT), so a healthy tool-call
+turn between aborts left the counter stale. Live fire 2026-09-22
+08:23-08:29Z (aria c218): strike 1 (req -94) + strike 2 (req -95),
+then req -96 completed WITH a tool call (no reset), then req -97
+aborted and counted strike 3 -> cycle ended LOUD on what the
+contract says is strike 1. Reset here, on the channel that actually
+fires for tool-call turns."
   (when iar--cycle-state
-    (cl-incf (plist-get iar--cycle-state :tool-call-count))))
+    (cl-incf (plist-get iar--cycle-state :tool-call-count))
+    ;; A completed tool call proves the turn that emitted it was not
+    ;; aborted: reset the consecutive-abort counter (same contract as
+    ;; the post-response continue branch).
+    (setq iar--cycle-abort-strikes 0)))
 
 (defvar iar-cycle-same-tool-warn 100
   "Same-tool TOTAL warning threshold (c39 fix B): block ONE call with
