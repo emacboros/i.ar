@@ -40,12 +40,34 @@ the source or leaving .elc artifacts.  Captures the *Compile-Log* buffer."
         (condition-case err
             (let ((byte-compile-verbose nil)
                   (byte-compile-warnings t)
-                  (byte-compile-dest-file-function (lambda (_f) dest-file)))
+                  (byte-compile-dest-file-function (lambda (_f) dest-file))
+                  ;; INSTRUMENT-STDERR-IS-OUTPUT (aria c231, 2026-09-22):
+                  ;; byte-compile-file's diagnostics ("In toplevel form:",
+                  ;; error lines) rode `message' to STDERR and propagated
+                  ;; to the iar.sh wrapper log, manufacturing false
+                  ;; failure-signals (continuo 13:48Z RCA: 3 leaked blocks
+                  ;; chased as a phantom crash). Compile diagnostics ARE
+                  ;; the tool's warnings -- the cl-letf on `message' below
+                  ;; captures them to the log buffer (the tool's output
+                  ;; surface); the wrapper stderr stays clean.
+                  )
               (when (get-buffer log-buf-name)
                 (with-current-buffer log-buf-name
                   (let ((inhibit-read-only t))
                     (erase-buffer))))
-              (byte-compile-file filepath)
+              ;; In batch, `message' writes to stderr regardless of
+              ;; standard-error/standard-output bindings (bytecomp's
+              ;; "In toplevel form" lines ride `message'). Rebind
+              ;; `message' for the compile call: diagnostics land in
+              ;; the log buffer (the tool's output surface), the
+              ;; wrapper stderr stays clean.
+              (cl-letf (((symbol-function 'message)
+                         (lambda (fmt &rest args)
+                           (with-current-buffer (get-buffer-create log-buf-name)
+                             (let ((inhibit-read-only t))
+                               (goto-char (point-max))
+                               (insert (apply #'format fmt args) "\n"))))))
+                (byte-compile-file filepath))
               (when (get-buffer log-buf-name)
                 (with-current-buffer log-buf-name
                   (let ((content (buffer-string)))
