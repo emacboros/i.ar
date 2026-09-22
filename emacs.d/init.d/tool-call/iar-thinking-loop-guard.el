@@ -168,13 +168,22 @@ THRESHOLD is the resolved per-model limit, for honest reporting."
 
 (defun iar--thinking-loop-parse-advice (orig-fn backend info)
   ":around advice on `gptel-curl--parse-stream'.
-Calls the original, then accounts the round. Never signals."
+Calls the original, then accounts the round. Never signals.
+
+HANDLER-RETURN-IS-CONTRACT (aria c231, 2026-09-22): on a demoted
+error this advice returns \"\" (empty string), not nil. The caller
+(gptel-curl--stream-filter ~3129) runs (string-blank-p response)
+on the return value; nil there is wrong-type-argument stringp nil
+-> the process filter dies -> in batch the session exits 255
+(continuo 13:48Z 2026-09-22, 5th exit-255-class event). Blank
+stays blank downstream: \"\" is the shape the caller already
+agrees to handle."
   (let ((result (condition-case err
                     (funcall orig-fn backend info)
                   (error
                    (message "[thinking-loop-guard] parse-stream error (demoted): %s"
                             (error-message-string err))
-                   nil))))
+                   ""))))
     (condition-case guard-err
         (when (plistp info)
           ;; Find the live request whose FSM info is THIS info (eq

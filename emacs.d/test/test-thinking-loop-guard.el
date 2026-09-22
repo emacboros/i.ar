@@ -122,6 +122,42 @@ Binds `proc' and `fsm' as gensym'd symbols."
       (should (gethash proc iar--thinking-loop-processes))
       (should (= (plist-get (gethash proc iar--thinking-loop-processes) :bytes) 3)))))
 
+;;; c231 HANDLER-RETURN-IS-CONTRACT fixtures -- the DISEASE, not the
+;;; shape. The disease: the guard advice's demote path returned nil;
+;;; the caller (gptel-curl--stream-filter ~3129) runs string-blank-p
+;;; on the return value and dies on nil (continuo 13:48Z exit 255).
+;;; The contract: a demoted parse returns "" -- a string the caller
+;;; already handles -- never nil.
+
+(ert-deftest iar-tlg-parse-advice-demoted-error-returns-empty-string ()
+  "A signal from orig-fn is demoted to \"\", never nil (the c231 fix)."
+  (let ((called nil))
+    (cl-letf (((symbol-function 'orig-signal)
+               (lambda (_b _i) (error "degenerate chunk"))))
+      (let ((result (iar--thinking-loop-parse-advice
+                     (lambda (_b _i) (error "degenerate chunk")) 'backend nil)))
+        (should (stringp result))
+        (should (string-empty-p result))))))
+
+(ert-deftest iar-tlg-parse-advice-success-passthrough-shape ()
+  "A successful parse returns the original's value unchanged (no
+shape change on the happy path -- the contract is about the error
+path only)."
+  (let ((result (iar--thinking-loop-parse-advice
+                 (lambda (_b _i) "hello") 'backend nil)))
+    (should (equal result "hello"))))
+
+(ert-deftest iar-tlg-parse-advice-demote-never-signals ()
+  "The advice itself never signals, even when orig-fn errors and the
+observer path also has no matching request (the never-signals law).
+Returns \"\" (truthy-but-blank) -- asserted via no-signal + stringp."
+  (let ((result (condition-case err
+                    (iar--thinking-loop-parse-advice
+                     (lambda (_b _i) (error "boom")) 'backend nil)
+                  (error (list 'signalled (cdr err))))))
+    (should (stringp result))
+    (should (string-empty-p result))))
+
 (provide 'test-thinking-loop-guard)
 ;;; Per-model threshold (aria c85, 2026-09-19): the uniform 16000 cap
 ;;; was falsified -- glm's legit census synthesis exceeds 16k (c84
