@@ -307,23 +307,27 @@ Set to nil to disable."
   :safe #'booleanp
   :group 'iar)
 
-(defcustom iar-msgs-soft-cap 400
+(defcustom iar-msgs-soft-cap 600
   "Message count (of the last completed request) at which the soft
 warn fires: one call blocked with a converge notice, then pass.
-400 (c201 census): aria p90=336 max=398 (n=828), continuo max=160
-(n=470), zero requests >=400 ever on either side. The warn fires
-just past the observed production max -- a cycle reaching 400 msgs
-is past every shape the census saw. nil disables the soft warn."
+600 (relay 0101, Nacho ruling 2026-09-22): recalibrated from 400 --
+the c201 census bound moved INSIDE the working distribution (c228
+census: 124 aria requests >=400 msgs in one day, 11% of burn, max
+583; the 600 hard cap landed once, correctly, on a true runaway).
+Soft = working-bound warning again; hard = 1.5x backstop. Batching
+(walk-and-resend) is the real fix; the cap is the backstop. nil
+disables the soft warn."
   :type '(choice (integer :tag "Soft cap msgs")
                  (const :tag "Disabled" nil))
   :safe #'iar--positive-integer-or-nil-p
   :group 'iar)
 
-(defcustom iar-msgs-hard-cap 600
+(defcustom iar-msgs-hard-cap 900
   "Message count at which every non-memory tool call is blocked with
-the landing instruction. 600 = 1.5x the soft cap; a backstop, not a
-working bound (the soft warn + the context fence + the tool-call cap
-are the working bounds). nil disables the hard cap."
+the landing instruction. 900 = 1.5x the soft cap (relay 0101
+recalibration); a backstop, not a working bound (the soft warn + the
+context fence + the tool-call cap are the working bounds). nil
+disables the hard cap."
   :type '(choice (integer :tag "Hard cap msgs")
                  (const :tag "Disabled" nil))
   :safe #'iar--positive-integer-or-nil-p
