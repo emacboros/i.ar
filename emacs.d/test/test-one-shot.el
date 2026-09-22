@@ -343,52 +343,43 @@ the fence machinery reads it."
   (should (string-match-p "BEGIN FINAL RESPONSE" iar--one-shot-nudge-prompt))
   (should (string-match-p "END FINAL RESPONSE" iar--one-shot-nudge-prompt)))
 
-(provide 'test-one-shot)
-;;; --- Additional coverage tests ---
 
-(ert-deftest test-one-shot-post-response-handler-complete ()
-  "iar--one-shot-post-response-handler should detect completion delimiters."
-  (let ((buf (get-buffer-create "*test-oneshot-pr*")))
+;;; --- Model-text-only extraction (2026-09-22, nocturne fragment RCA) ---
+;; The 09-22 16:01Z nocturne pass: a mid-run guard abort left the
+;; post-response region spanning the whole conversation; the delimiter
+;; pair inside a TOOL RESULT (JSON-encoded archetype text read from old
+;; REQUESTS.log) was extracted as the "final response" (31 chars of
+;; placeholder). The extractor now searches model spans only.
+
+(ert-deftest test-one-shot-model-text-excludes-tool-spans ()
+  "Delimiters inside a gptel tool span must not be extracted."
+  (let ((buf (get-buffer-create "*test-oneshot-modeltext1*")))
     (unwind-protect
         (with-current-buffer buf
-          (insert "=== BEGIN FINAL RESPONSE ===\nTest response\n=== END FINAL RESPONSE ===\n")
+          ;; Simulate the 09-22 shape: a tool-result preview carrying the
+          ;; JSON-encoded archetype delimiter block, then model text.
+          (insert "tool output with === BEGIN FINAL RESPONSE ===\\n   <your final output here>\\n=== END FINAL RESPONSE === inside\n")
+          (add-text-properties (point-min) (point-max) '(gptel ignore))
+          (goto-char (point-max))
+          (insert "\n=== BEGIN FINAL RESPONSE ===\nReal answer.\n=== END FINAL RESPONSE ===\n")
+          (add-text-properties (point-min) (point-max) '(gptel response))
+          ;; Restore tool-span property on the first region
+          (add-text-properties (point-min) (+ (point-min) 110) '(gptel (tool . 42)))
           (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
-            ;; handler signature is (start end): the new response region
             (iar--one-shot-post-response-handler (point-min) (point-max))
             (should (plist-get iar--one-shot-state :completed))
-            (should (string= "Test response" (plist-get iar--one-shot-state :final-response)))))
+            (should (string= "Real answer."
+                             (plist-get iar--one-shot-state :final-response)))))
       (kill-buffer buf))))
 
-(ert-deftest test-one-shot-post-response-handler-no-delimiters ()
-  "iar--one-shot-post-response-handler should not complete without delimiters.
-MUST mock gptel-send: the nudge path fires a real request whose async
-response arrives during a LATER test (stray process filter on a dead
-buffer -> the documented suite heisenbug). This was the root cause."
-  (let ((buf (get-buffer-create "*test-oneshot-pr2*")))
+(ert-deftest test-one-shot-model-text-plain-text-unchanged ()
+  "A buffer with no gptel properties yields the plain substring."
+  (let ((buf (get-buffer-create "*test-oneshot-modeltext3*")))
     (unwind-protect
         (with-current-buffer buf
-          (insert "response without delimiters\n")
-          (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 40)))
-            (cl-letf (((symbol-function 'gptel-send) (lambda () nil)))
-              (iar--one-shot-post-response-handler (point-min) (point-max))
-              (should-not (plist-get iar--one-shot-state :completed)))))
-      (kill-buffer buf))))
-
-(ert-deftest test-one-shot-post-response-handler-max-turns ()
-  "iar--one-shot-post-response-handler should end at max turns.
-MUST mock gptel-send: turn 1 hits the nudge path (real request -> stray
-async response -> suite heisenbug)."
-  (let ((buf (get-buffer-create "*test-oneshot-pr3*")))
-    (unwind-protect
-        (with-current-buffer buf
-          (insert "response\n")
-          (let ((iar--one-shot-state (iar--one-shot-make-state "test" buf 2)))
-            (cl-letf (((symbol-function 'gptel-send) (lambda () nil)))
-              ;; turn 1: real positions (success path, under limit)
-              (iar--one-shot-post-response-handler (point-min) (point-max))
-              ;; turn 2: real positions again (success path, hits limit)
-              (iar--one-shot-post-response-handler (point-min) (point-max))
-              (should (plist-get iar--one-shot-state :completed)))))
+          (insert "plain text, no properties")
+          (should (string= "plain text, no properties"
+                           (iar--one-shot-model-text (point-min) (point-max)))))
       (kill-buffer buf))))
 
 (provide 'test-one-shot)

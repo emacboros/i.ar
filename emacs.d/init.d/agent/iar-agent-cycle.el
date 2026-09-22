@@ -1914,6 +1914,49 @@ silent no-op (safe to fire during cycle runs and interactive use)."
   (when iar--one-shot-state
     (cl-incf (plist-get iar--one-shot-state :tool-call-count))))
 
+(defun iar--one-shot-model-text (start end)
+  "Return the MODEL-TEXT-ONLY substring of the current buffer in [START,END).
+
+The c132 discipline, ported to the one-shot extractor: gptel `ignore'
+spans (reasoning/thinking blocks) and tool-call spans (property
+\(tool . ID\)) are excluded. A delimiter inside a tool result or a
+thinking block is a REHEARSAL or a QUOTE, not an ending.
+
+Why this exists (2026-09-22, nocturne 16:01Z pass): the one-shot FSM
+keeps ONE :position marker for the whole run (set at request setup,
+never advanced across the tool loop), so on a mid-run abort the
+post-response hook's [start,end) region spans the ENTIRE conversation
+-- including tool-result previews, which carry full tool output. The
+09-22 pass's first tool call read old REQUESTS.log, whose content
+embeds the JSON-encoded system prompt -- which contains the one-shot
+delimiter block with JSON-escaped newlines. The plain search matched
+that pair and extracted the 31-char literal string
+\\n   <your final output here>\\n as the \"final response\"; the run
+completed exit 0 with garbage. The wrapper's FRAGMENT floor caught it
+(defense held); this helper removes the exposure at the source.
+
+The cycle path's sentinel check (iar--cycle-complete-p) has carried
+this discipline since c132; the one-shot extractor is its twin."
+  (let ((buf-min (point-min))
+        (buf-max (point-max))
+        (parts nil))
+    (save-excursion
+      (save-restriction
+        (widen)
+        (let* ((s (min (max (or start buf-min) buf-min) buf-max))
+               (e (max (min (or end buf-max) buf-max) buf-min))
+               (pos s))
+          (while (< pos e)
+            (let* ((prop (get-text-property pos 'gptel))
+                   (next (or (next-single-property-change
+                              pos 'gptel (current-buffer) e)
+                             e)))
+              (unless (or (eq prop 'ignore)
+                          (and (consp prop) (eq (car prop) 'tool)))
+                (push (buffer-substring-no-properties pos next) parts))
+              (setq pos next)))))
+      (apply #'concat (nreverse parts)))))
+
 (defun iar--one-shot-extract-response (text)
   "Extract content between one-shot delimiters in TEXT.
 Returns the extracted string if delimiters are found, nil otherwise.
@@ -1993,9 +2036,13 @@ marks as completed with exit code 1."
       ;; Log only the new response region
       (iar--cycle-log-append agent start end)
       ;; Check for delimiters in the NEW RESPONSE only
-      (let* ((response (buffer-substring-no-properties
-                         (max (point-min) (min start (point-max)))
-                         (max (point-min) (min end (point-max)))))
+      ;; 2026-09-22: model-text-only extraction (c132 discipline ported).
+      ;; The raw region can contain tool-result previews (which carry the
+      ;; delimiter strings via quoted file content) and thinking blocks;
+      ;; a delimiter there is not an ending. See iar--one-shot-model-text.
+      (let* ((response (iar--one-shot-model-text
+                        (max (point-min) (min start (point-max)))
+                        (max (point-min) (min end (point-max)))))
              (extracted (iar--one-shot-extract-response response)))
         (cond
          (extracted
