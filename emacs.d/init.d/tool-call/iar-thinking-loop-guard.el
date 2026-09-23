@@ -200,7 +200,7 @@ agrees to handle."
       (error
        (message "[thinking-loop-guard] check error (demoted): %s"
                 (error-message-string guard-err))))
-    result))
+    (or result "")))
 
 (defun iar--thinking-loop-cleanup-advice (process _status)
   ":before advice on `gptel-curl--stream-cleanup': drop the entry."
