@@ -1,14 +1,32 @@
 #!/bin/bash
 # Heartbeat watchdog (relay 0099 HALF 2, ratified 2026-09-22).
-# c244 upgrade: is-failed check FIRST. The 09-22 outage (102 min,
-# SELinux label user_tmp_t) was visible instantly as
-# `systemctl is-failed aria-cycle.service` = failed, while the
-# staleness invariant fired 86 min late -- the sibling agent's fresh
-# heartbeat masked the dead service (c243 scar 1: DETECTION LAG).
-# Detection order: (1) unit-failed instant check, (2) heartbeat
-# staleness + status. Escalation ladder: restart -> restore wrapper
-# from git -> breaker. Circuit breaker: 3 failed heals in 1h -> STOP,
-# file to relay + telegram.
+# v3 (aria c257, 2026-09-23): the 09-23 05:26-06:11 kill-spiral RCA.
+#
+# DISEASE (three stacked flaws, all verified against artifacts):
+# 1. notok branch: a FAILED heartbeat (status != ok) triggered a restart.
+#    But a failed heartbeat is an ALIVE agent reporting honestly --
+#    restart cannot help and kills whoever is mid-turn (continuo turn
+#    687 killed mid-edit). Law: A-FAILED-HEARTBEAT-IS-NOT-A-DEAD-AGENT.
+#    v3: the notok branch is DELETED. A failed heartbeat is DATA for
+#    failure-first, never a restart trigger.
+# 2. Strike-write ordering: the breaker strike was written AFTER
+#    `systemctl try-restart`, which BLOCKS until the cycle unit
+#    restarts (up to 300s). systemd TimeoutStartSec killed the script
+#    mid-heal 4x during the spiral -- zero strikes written, breaker
+#    never opened (watchdog.log 05:26-06:11 + journald timeouts).
+#    v3: strike written BEFORE any heal action; restart uses --no-block
+#    so the script always survives to complete its own logic.
+# 3. Vacuous recheck: after step1 the script required "any heartbeat
+#    <= 90m" -- vacuously true at +90s (no cycle finishes in 90s) and
+#    masked by the SIBLING's fresh heartbeat. v3: recheck = unit-state
+#    only; heartbeat recovery is judged on the NEXT tick (the breaker
+#    is the convergence detector, not the recheck).
+#
+# Heal trigger (v3): unit-failed OR BOTH heartbeats stale. A single
+# stale heartbeat with the sibling fresh = rotation alive = DATA.
+# Detection order: (1) unit-failed instant check, (2) both-stale.
+# Escalation ladder: restart -> restore wrapper from git -> breaker.
+# Circuit breaker: 3 failed heals in 1h -> STOP, file to relay + telegram.
 # Testability (belt: deploy/tests/watchdog-is-failed.sh): state paths
 # and step1 sleep overridable via env; production defaults below.
 set -u
@@ -29,30 +47,31 @@ ts() { date -u "+%Y-%m-%d %H:%M:%SZ"; }
 log() { echo "[$(ts)] $*" >> "$LOG"; }
 
 # --- detection 1: the watched unit itself FAILED (instant, c244) ---
-# `systemctl is-failed` prints "failed" only when the unit is in a
-# failed state. A dead service is visible here with zero lag; the
-# staleness invariant can lag up to 90 min behind it.
 unhealthy=""
 if [ "$(systemctl is-failed "$WATCHED_UNIT" 2>/dev/null)" = "failed" ]; then
   unhealthy="unit-failed:$WATCHED_UNIT"
 fi
 
-# --- detection 2: heartbeat staleness + status (original invariant) ---
+# --- detection 2: BOTH heartbeats stale (v3: rotation-dead invariant) ---
+# One stale heartbeat while the sibling is fresh = the rotation is alive
+# (the other agent is mid-cycle or just finished); that is DATA, not a
+# disease. Both stale > STALE_MINS = nobody is writing anything = dead.
 now=$(date +%s)
+stale_count=0; stale_detail=""
 for hc in "$ARIA_HC" "$CONT_HC"; do
-  if [ ! -f "$hc" ]; then unhealthy="$unhealthy missing:$hc"; continue; fi
+  if [ ! -f "$hc" ]; then stale_count=$((stale_count+1)); stale_detail="$stale_detail missing:$hc"; continue; fi
   mtime=$(stat -c %Y "$hc")
   age=$(( (now - mtime) / 60 ))
   if [ "$age" -gt "$STALE_MINS" ]; then
-    unhealthy="$unhealthy stale:${hc##*/audit/iar/}:${age}m"
-  elif ! grep -q "^status: ok" "$hc"; then
-    unhealthy="$unhealthy notok:${hc##*/audit/iar/}"
+    stale_count=$((stale_count+1)); stale_detail="$stale_detail stale:${hc##*/audit/iar/}:${age}m"
   fi
 done
+if [ "$stale_count" -ge 2 ]; then
+  unhealthy="$unhealthy both-stale:$stale_detail"
+fi
 
 if [ -z "$unhealthy" ]; then
-  # Healthy: decay the breaker count (one healthy pass per 15min tick;
-  # full reset only when the window has passed with no new strikes)
+  # Healthy: decay the breaker count (window expiry only)
   if [ -f "$BREAKER_FILE" ]; then
     first=$(head -1 "$BREAKER_FILE" 2>/dev/null)
     if [ -n "$first" ] && [ $(( now - first )) -gt "$BREAKER_WINDOW" ]; then
@@ -101,29 +120,20 @@ EOR
 fi
 
 # --- escalation ladder ---
-# Step 1: restart the cycle service (hung/dead service class)
+# v3: strike FIRST (before any blocking action -- the 09-23 spiral had
+# 4 timeouts at TimeoutStartSec with zero strikes written), then heal
+# with --no-block so this script always survives to finish.
 log "step1: restart $WATCHED_UNIT"
-systemctl try-restart "$WATCHED_UNIT" >> "$LOG" 2>&1
 echo "$now" >> "$BREAKER_FILE"
+systemctl restart --no-block "$WATCHED_UNIT" >> "$LOG" 2>&1
 sleep "$STEP1_SLEEP"
-# Re-check after restart grace: the unit must no longer be failed AND
-# at least one heartbeat must be within the staleness window. (The
-# unit-state gate is the c244 fix: in the 09-22 disease a FAILED unit
-# plus the sibling's fresh heartbeat produced a false "restored" --
-# the old recheck matched on heartbeat age alone and exited without
-# ever reaching step2.)
+# v3 recheck: unit-state only. Heartbeat recovery is judged next tick;
+# the breaker is the convergence detector (3 failed heals in 1h).
 unit_now=$(systemctl is-failed "$WATCHED_UNIT" 2>/dev/null || true)
 if [ "$unit_now" != "failed" ]; then
-  for hc in "$ARIA_HC" "$CONT_HC"; do
-    [ -f "$hc" ] || continue
-    mtime=$(stat -c %Y "$hc")
-    age=$(( (now - mtime) / 60 ))
-    if [ "$age" -le "$STALE_MINS" ]; then
-      log "heartbeat restored after restart ($hc)"; exit 0
-    fi
-  done
+  log "unit recovered after restart ($WATCHED_UNIT)"; exit 0
 fi
-# Step 2: restore wrapper from git copy + restart
+# Step 2: restore wrapper from git copy + restart (no-block)
 log "step2: restore wrapper from git + restart"
 if [ -f "$WRAPPER_GIT" ]; then
   cp "$WRAPPER_GIT" "$WRAPPER.new"
@@ -132,6 +142,6 @@ if [ -f "$WRAPPER_GIT" ]; then
   # Label law (c243): a cp from a bind-mounted repo can inherit a
   # wrong SELinux label; restorecon pins it back to bin_t.
   restorecon "$WRAPPER" 2>/dev/null || true
-  systemctl restart "$WATCHED_UNIT" >> "$LOG" 2>&1
+  systemctl restart --no-block "$WATCHED_UNIT" >> "$LOG" 2>&1
 fi
 exit 0
