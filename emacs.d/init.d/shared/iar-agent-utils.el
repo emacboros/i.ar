@@ -158,9 +158,21 @@ removed, or TASK-PATH unchanged if it does not start with it."
          (personality (ignore-errors (iar--current-personality-name)))
          (prefix (and project personality
                       (format "%s/%s/" project personality))))
-    (if (and prefix (string-prefix-p prefix task-path))
-        (substring task-path (length prefix))
-      task-path)))
+    (setq task-path
+          (if (and prefix (string-prefix-p prefix task-path))
+              (substring task-path (length prefix))
+            task-path))
+    ;; c273: agents also pass BARE "<project>/<task>" paths
+    ;; (iar/history-dedupe-belt, iar/timeout-fork-guard) which doubled to
+    ;; tasks/<project>/<agent>/<project>/<task> -- 12 tasks filed under
+    ;; the doubled prefix before this. The project name as a leading
+    ;; segment is always redundant: no task dir is named after the
+    ;; project itself, and the doubled dirs prove agents mean the root.
+    (when (and project
+               (> (length task-path) (length project))
+               (string-prefix-p (format "%s/" project) task-path))
+      (setq task-path (substring task-path (1+ (length project)))))
+    task-path))
 
 (provide 'iar-agent-utils)
 ;;; ---------------------------------------------------------

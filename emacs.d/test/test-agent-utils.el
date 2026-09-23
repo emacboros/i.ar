@@ -185,11 +185,14 @@ in one project must not share tasks/<project>/."
                         "aria/aria-something"))))))
 
 (ert-deftest test-agent-utils-strip-agent-prefix-no-personality ()
-  "No personality active: nothing to strip, path unchanged."
+  "No personality active: the bare project segment still strips (c273).
+'iar/continuo/tasks/x' with project=iar resolves to tasks/iar/continuo/
+tasks/x -- the leading 'iar' is the project, always redundant. The old
+expectation (path unchanged) encoded the doubling disease itself."
   (with-temp-buffer
     (let ((iar--current-project "iar")
           (iar--current-personality nil))
-      (should (string= "iar/continuo/tasks/x"
+      (should (string= "continuo/tasks/x"
                        (iar--task-path-strip-agent-prefix
                         "iar/continuo/tasks/x"))))))
 
