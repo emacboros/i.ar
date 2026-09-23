@@ -319,21 +319,16 @@ If CONTEXT is nil, removes the context at point.
 If selection is active, removes all contexts within selection.
 If CONTEXT is a directory, recursively removes all files in it."
   (cond
-   ((overlayp context)                  ;Overlay in buffer
-    (when-let* ((buf (overlay-buffer context)))
-      (delete-overlay context)
-      ;; Remove the overlay from the buffer's :overlays list directly
-      ;; (port of i.ar 44bbed4, corrected: entry dropped only when the
-      ;; list is empty).  The old rescan-everything loop made clearing
-      ;; n contexts from one buffer O(n^2).
-      (let* ((spec (alist-get buf gptel-context))
-             (overlays (plist-get spec :overlays)))
-        (setf (plist-get spec :overlays) (delq context overlays))
-        (unless (plist-get spec :overlays)
-          (setf (alist-get buf gptel-context nil 'remove) nil)))))
-   ((bufferp context)                   ;Full buffer
-    (setf (alist-get context gptel-context nil 'remove) nil)
-    (when (buffer-live-p context)
+     ((overlayp context)                  ;Overlay in buffer
+      (when-let* ((buf (overlay-buffer context)))
+        (delete-overlay context)
+        (let* ((spec (alist-get buf gptel-context))
+               (overlays (plist-get spec :overlays)))
+          ;; Remove the overlay from the overlays list
+          (setf (plist-get spec :overlays) (delete context overlays))
+          ;; If the overlays list is now empty, remove the buffer's context)
+          (when (null (plist-get spec :overlays))
+            (setf (alist-get buf gptel-context nil 'remove) nil)))
       (with-current-buffer context
         (without-restriction
           (remove-overlays nil nil 'gptel-context t)))))
@@ -401,11 +396,6 @@ DATA-BUF is the buffer where the request prompt is constructed."
                    (gptel-context--wrap-in-buffer)))
     (funcall callback)))
 
-(defun gptel-context--parsed-system-prompt (gptel-system-prompt)
-  "If GPTEL-SYSTEM-PROMPT is a function, parse it; otherwise return as is."
-  (if (functionp gptel-system-prompt)
-      (gptel--parse-directive gptel-system-prompt 'raw)
-    gptel-system-prompt))
 (defun gptel-context--wrap-in-buffer (context-string &optional method)
   "Inject CONTEXT-STRING to current buffer using METHOD.
 
@@ -422,9 +412,10 @@ This modifies the buffer."
                 (setq gptel-system-prompt
                       (concat context-string "\n\n" gptel-system-prompt)))
                (function
-;; Fixed: parse directive via helper to avoid buffer mismatch.
-(setq gptel-system-prompt
-         (gptel-context--parsed-system-prompt gptel-system-prompt))
+                ;; FIXME: This parses the directive in the prompt construction
+                ;; buffer, which is wrong.  Wrap in a function instead.
+                (setq gptel-system-prompt
+                      (gptel--parse-directive gptel-system-prompt 'raw))
                 (gptel-context--wrap-in-buffer context-string))
                (list
                 (setq gptel-system-prompt ;cons a new list to avoid mutation
@@ -545,10 +536,10 @@ Returns a sorted list of (START . END) position pairs."
                                (forward-line (cdr pair))
                                (point)))
                   regions)))))
-    ;; FIXED: Updated sort for Emacs 28+ calling convention
+    ;; TODO: Update sort for Emacs 28+ calling convention
     ;; Sort by start position.
     ;; NOTE: This can modify `:bounds' of `context-data' by side-effect!
-    (sort regions :key #'car)))
+    (sort regions #'car-less-than-car)))
 
 (defun gptel-context--insert-buffer-string (buffer context-data &optional header)
   "Insert at point a context string from CONTEXT-DATA in BUFFER.
