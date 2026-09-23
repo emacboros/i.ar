@@ -645,7 +645,6 @@ context overlays, see `gptel-context'."
             nil t)
   (setq-local revert-buffer-function #'gptel-context--buffer-setup))
 
-;; FIXME(targeted-context): This does not handle :bounds and :lines.  Reuse
 ;; `gptel-context--insert-buffer-string'?
 (defun gptel-context--buffer-setup (&optional _ignore-auto _noconfirm context-alist)
   "Set up the gptel context buffer.
@@ -835,7 +834,6 @@ If non-nil, indicates backward movement.")
     (revert-buffer))
   ;; FIXME(context): This should run in the buffer from which the context
   ;; inspection buffer was visited.
-  ;; Update contexts and revert buffer (#482)
   (setq gptel-context (nreverse (gptel-context--collect)))
   (gptel-context-quit))
 
