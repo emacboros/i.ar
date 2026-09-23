@@ -16,14 +16,14 @@
 # touched. NOC_PERS points the wrapper at the sandbox.
 set -u
 W="${1:?usage: nocturne-gate-lineage.sh <nocturne-digest.sh> [sandbox-repo]}"
-REAL_PERS="${2:-/root/personalization}"
+REAL_PERS="${2:-/var/home/nacho/repos/iar-personalization}"
 PASS=0; FAIL=0
 say() { echo "  $*"; }
 check() {
   if [ "$2" = "$3" ]; then PASS=$((PASS+1)); say "PASS $1"; else FAIL=$((FAIL+1)); say "FAIL $1 (expect=$2 actual=$3)"; fi
 }
 
-SBX=${NOC_BELT_TMP:-/root/i.ar/tmp/nocturne-gate-belt.$$}
+SBX=${NOC_BELT_TMP:-/var/home/nacho/repos/i.ar/tmp/nocturne-gate-belt.$$}
 mkdir -p "$SBX"
 trap 'rm -rf "$SBX"' EXIT
 git clone -q --no-hardlinks "$REAL_PERS" "$SBX/repo" 2>/dev/null
