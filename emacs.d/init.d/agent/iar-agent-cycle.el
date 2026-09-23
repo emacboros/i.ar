@@ -11,7 +11,6 @@
 ;; The --agent flag specifies a personality name. The archetype is determined
 ;; by the personality-to-archetype map (e.g., darwin -> autonomous).
 ;; The project is determined by the personality name (e.g., darwin -> darwin project).
-;;
 ;; Usage (batch mode):
 ;;   emacs --batch -l /root/.emacs.d/init.el \
 ;;         --eval '(iar-run-cycle :agent "darwin" :timeout 7200)'
@@ -1180,6 +1179,25 @@ until timeout (c67 zombie: 13m48s dead air after the arm)."
           ;; and the run idled until timeout: the c67 zombie.)
           nil)))))
 
+(defun iar--request-live-in-buffer-p (buf)
+  "Return non-nil if any gptel FSM with :buffer BUF is in a
+non-terminal state (a request is in flight on BUF right now).
+
+c269 (2026-09-23, RESEND-CHECKS-LIVE-SUCCESSOR): the timeout path in
+iar-run-cycle gptel-sent its summary request while a request was
+still mid-stream (continuo 10:14:50-11:17:19Z cycle: -287 forked at
+11:14:54, 18s into -286's 70s stream -- two chains on one buffer,
+~10 wasted requests, duplicate writes). gptel-send has no busy
+guard; every send site must ask this question first."
+  (and (boundp 'gptel--request-alist)
+       (cl-some (lambda (entry)
+                  (let ((fsm (cadr entry)))
+                    (and fsm
+                         (eq (plist-get (gptel-fsm-info fsm) :buffer) buf)
+                         (not (memq (gptel-fsm-state fsm)
+                                    '(ERRS ABRT DONE))))))
+                gptel--request-alist)))
+
 (defun iar--request-successor-live-p (buf)
   "Return non-nil if a live request successor exists after a failed
 request: any FSM in `gptel--request-alist' still in a non-terminal
@@ -1359,6 +1377,21 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                ;; cap, end LOUD -- same terminal contract as the delegate
                ;; path. The flag is consumed (cleared) on read so a
                ;; stale abort cannot poison the next turn.
+               ;; c269 TIMEOUT LANDING (RESEND-CHECKS-LIVE-SUCCESSOR):
+               ;; the deadline expired while THIS turn was in flight.
+               ;; The timeout path deferred its summary request (it
+               ;; must not gptel-send over a live request). Send the
+               ;; landing NOW, serialized inside the event loop.
+               ;; Priority over the abort-aware branch: landing beats
+               ;; recovery; a guard-aborted turn still gets its
+               ;; landing question, which is the changed question.
+               ((plist-get iar--cycle-state :timeout-pending)
+                (setf (plist-get iar--cycle-state :timeout-pending) nil)
+                (unless (iar--cycle-complete-p (current-buffer) start end)
+                  (message "[%s] In-flight turn done -- sending deferred landing prompt" agent)
+                  (goto-char (point-max))
+                  (insert "\nTIME LIMIT REACHED. Stop all tool calls immediately. Write your summary NOW: what you did, what landed, what is next. Update your memory files (append_file still allowed). End with CYCLE_COMPLETE on its own line.\n")
+                  (gptel-send)))
                ((and iar--reqlog-last-abort
                      ;; c81 SCOPE: consume only OUR abort. The flag is
                      ;; global; a delegate abort during this cycle's
@@ -1664,13 +1697,23 @@ Tools are gated by the project's #+TOOLS metadata."
           (message "[%s] Cycle timed out after %ds -- requesting summary (grace 120s)"
                    agent-name timeout)
           (condition-case err
-              (with-current-buffer cycle-buf
-                (goto-char (point-max))
-                (insert (format "\n%s\n"
-                                (or (plist-get iar--cycle-state :continue)
-                                    "Continue.")))
-                (insert "TIME LIMIT REACHED. Stop all tool calls immediately. Write your summary NOW: what you did, what landed, what is next. Update your memory files (append_file still allowed). End with CYCLE_COMPLETE on its own line.\n")
-                (gptel-send))
+              (if (iar--request-live-in-buffer-p cycle-buf)
+                  ;; c269 RESEND-CHECKS-LIVE-SUCCESSOR: a request is
+                  ;; still mid-stream. gptel-send here would create a
+                  ;; SECOND FSM on this buffer (the continuo fork,
+                  ;; 2026-09-23 11:14:54Z). Defer the landing: the
+                  ;; post-response handler sends it serialized when
+                  ;; the in-flight turn completes.
+                  (progn
+                    (setf (plist-get iar--cycle-state :timeout-pending) t)
+                    (message "[%s] Deadline hit with request in flight -- landing deferred to post-response handler" agent-name))
+                (with-current-buffer cycle-buf
+                  (goto-char (point-max))
+                  (insert (format "\n%s\n"
+                                  (or (plist-get iar--cycle-state :continue)
+                                      "Continue.")))
+                  (insert "TIME LIMIT REACHED. Stop all tool calls immediately. Write your summary NOW: what you did, what landed, what is next. Update your memory files (append_file still allowed). End with CYCLE_COMPLETE on its own line.\n")
+                  (gptel-send)))
             (error
              (message "[%s] Summary request failed: %s" agent-name
                       (error-message-string err))))
@@ -1916,6 +1959,14 @@ WALL-TIMEOUT and :start-time: the shared clock source (see
         :cap-warned nil
         :completed nil :exit-code 0 :final-response nil))
 
+(defvar iar--one-shot-abort-strikes 0
+  "Consecutive guard-aborted turns in the current one-shot run.
+c269 port of the c80 cycle discipline: the thinking-loop guard
+aborts mid-stream, the partial thinking lands in the buffer (START <
+END), and the turn takes the SUCCESS path -- without this counter
+the handler re-sent the standard nudge blind (nocturne 09-23 pass:
+7 consecutive aborts, msgs 29->113, each re-send carrying the full
+growing context). Reset on any completed tool call.")
 (defun iar--one-shot-tool-call-tracker (_tool-name _tool-result)
   "Track tool calls in one-shot mode. Increments tool-call-count.
 GLOBAL hook (registered at module load, same reasoning as the
@@ -1926,7 +1977,11 @@ calls exactly the way cycles were undercounted (2026-09-02
 invisible-cycles finding). State-guarded: no active one-shot ->
 silent no-op (safe to fire during cycle runs and interactive use)."
   (when iar--one-shot-state
-    (cl-incf (plist-get iar--one-shot-state :tool-call-count))))
+    (cl-incf (plist-get iar--one-shot-state :tool-call-count))
+    ;; A completed tool call proves the turn that emitted it was not
+    ;; aborted: reset the consecutive-abort counter (c269, mirrors
+    ;; the cycle tracker's STRIKE-RESET-CHANNEL fix).
+    (setq iar--one-shot-abort-strikes 0)))
 
 (defun iar--one-shot-model-text (start end)
   "Return the MODEL-TEXT-ONLY substring of the current buffer in [START,END).
@@ -1998,6 +2053,8 @@ See `iar--cycle-error-strikes' for the failed-request convention.")
   "Transient-error retries used this one-shot run (c357).
 See `iar--cycle-retry-count' for the class split.")
 
+
+
 (defun iar--one-shot-post-response-handler (start end)
   "Post-response handler for one-shot mode. START and END are buffer
 positions delimiting the new response (gptel convention). START == END
@@ -2044,6 +2101,43 @@ marks as completed with exit code 1."
             (setf (plist-get iar--one-shot-state :completed) t)
             (setf (plist-get iar--one-shot-state :exit-code) 1))))
       ;; ---- SUCCESS PATH ----
+      ;; c269 ABORT-AWARE (c80 discipline ported, rule-48-clean): a
+      ;; guard-aborted turn's partial thinking lands in the buffer
+      ;; (START < END), so it arrives HERE. Re-prompt with the SHARED
+      ;; abort-continue prompt (law 41: change the question); past the
+      ;; cap, end LOUD. No cl-return-from (rule 48): the abort path
+      ;; sets iar--one-shot-abort-handled and the rest of the handler
+      ;; is guarded by it.
+      (let ((abort-handled nil))
+        (cond
+         ((and iar--reqlog-last-abort
+               (not (eq iar--reqlog-last-abort-buf
+                        (plist-get iar--one-shot-state :buffer))))
+          (setq iar--reqlog-last-abort nil
+                iar--reqlog-last-abort-buf nil))
+         ((and iar--reqlog-last-abort
+               (eq iar--reqlog-last-abort-buf
+                   (plist-get iar--one-shot-state :buffer)))
+          (setq iar--reqlog-last-abort nil
+                iar--reqlog-last-abort-buf nil)
+          (unless (iar--one-shot-extract-response
+                   (iar--one-shot-model-text
+                    (max (point-min) (min start (point-max)))
+                    (max (point-min) (min end (point-max)))))
+            (cl-incf iar--one-shot-abort-strikes)
+            (if (> iar--one-shot-abort-strikes iar-cycle-abort-reprompts)
+                (progn
+                  (message "[%s] Aborted turn (guard abort, strike %d) past re-prompt cap %d -- ending one-shot LOUD"
+                           agent iar--one-shot-abort-strikes iar-cycle-abort-reprompts)
+                  (setf (plist-get iar--one-shot-state :completed) t)
+                  (setf (plist-get iar--one-shot-state :exit-code) 1))
+              (message "[%s] Turn was guard-aborted (strike %d/%d) -- re-prompting with abort-aware prompt"
+                       agent iar--one-shot-abort-strikes iar-cycle-abort-reprompts)
+              (goto-char (point-max))
+              (insert "\n\n" iar--abort-continue-prompt)
+              (gptel-send))
+            (setq abort-handled t))))
+        (unless abort-handled
       (setq iar--one-shot-error-strikes 0
             iar--one-shot-retry-count 0)
       (cl-incf (plist-get iar--one-shot-state :turn-count))
@@ -2059,6 +2153,16 @@ marks as completed with exit code 1."
                         (max (point-min) (min end (point-max)))))
              (extracted (iar--one-shot-extract-response response)))
         (cond
+         ;; c269 TIMEOUT LANDING (one-shot twin): the deadline expired
+         ;; while THIS turn was in flight; the timeout path deferred
+         ;; its summary request. Send it now, serialized.
+         ((and (plist-get iar--one-shot-state :timeout-pending)
+               (not extracted))
+          (setf (plist-get iar--one-shot-state :timeout-pending) nil)
+          (message "[%s] In-flight turn done -- sending deferred landing prompt" agent)
+          (goto-char (point-max))
+          (insert iar--one-shot-nudge-prompt)
+          (gptel-send))
          (extracted
           (setf (plist-get iar--one-shot-state :final-response) extracted)
           (setf (plist-get iar--one-shot-state :completed) t)
@@ -2074,7 +2178,7 @@ marks as completed with exit code 1."
           ;; No delimiters, under turn limit -- send nudge
           (goto-char (point-max))
           (insert iar--one-shot-nudge-prompt)
-          (gptel-send)))))))
+          (gptel-send)))))))))
 
 (defun iar-run-one-shot (&rest args)
   "Run a one-shot agent in batch mode.
@@ -2181,10 +2285,17 @@ Tools are gated by the project's #+TOOLS metadata."
                  (format "Time limit reached. Stop all tool calls immediately. Summarize all findings so far and wrap your summary in %s and %s markers. Include all vulnerabilities discovered, even partial ones."
                          iar-one-shot-response-open iar-one-shot-response-close)))
             (condition-case err
-                (with-current-buffer os-buf
-                  (goto-char (point-max))
-                  (insert summary-prompt)
-                  (gptel-send))
+                (if (iar--request-live-in-buffer-p os-buf)
+                    ;; c269 RESEND-CHECKS-LIVE-SUCCESSOR (one-shot twin):
+                    ;; never gptel-send over a live request -- defer the
+                    ;; landing to the post-response handler.
+                    (progn
+                      (setf (plist-get iar--one-shot-state :timeout-pending) t)
+                      (message "[%s] Deadline hit with request in flight -- landing deferred to post-response handler" agent-name))
+                  (with-current-buffer os-buf
+                    (goto-char (point-max))
+                    (insert summary-prompt)
+                    (gptel-send)))
               (error
                (message "[%s] One-shot summary request failed: %s" agent-name
                         (error-message-string err)))))
