@@ -43,7 +43,7 @@ run_watchdog() { # run_watchdog <aria_age_min> <aria_status> <unit_state> <tag>
 # DISEASE A: unit FAILED, heartbeat FRESH+ok -> must heal (step1 call logged)
 run_watchdog 5 ok failed diseaseA
 calls=$(cat "$FAKE_SYSTEMCTL_CALLS" 2>/dev/null | wc -l)
-check "diseaseA: failed-unit+fresh-hc triggers heal" "1" "$calls"
+check "diseaseA: failed-unit+fresh-hc triggers heal (step1+step2)" "2" "$calls"
 
 # HEALTHY: unit active, heartbeat fresh+ok -> NO heal calls
 run_watchdog 5 ok active healthy
@@ -53,12 +53,12 @@ check "healthy: no heal" "0" "$calls"
 # DISEASE B: unit active, heartbeat STALE -> must heal (old invariant still works)
 run_watchdog 120 ok active diseaseB
 calls=$(cat "$FAKE_SYSTEMCTL_CALLS" 2>/dev/null | wc -l)
-check "diseaseB: stale-hc+active-unit triggers heal" "1" "$calls"
+check "diseaseB: stale-hc+active-unit triggers heal (step1+step2)" "2" "$calls"
 
 # DISEASE C: unit FAILED, heartbeat STALE -> must heal once (no double-fire)
 run_watchdog 120 ok failed diseaseC
 calls=$(cat "$FAKE_SYSTEMCTL_CALLS" 2>/dev/null | wc -l)
-check "diseaseC: failed+stale triggers heal (single)" "1" "$calls"
+check "diseaseC: failed+stale triggers heal (step1+step2, no double-fire)" "2" "$calls"
 
 echo "== watchdog-is-failed belt: PASS=$PASS FAIL=$FAIL =="
 rm -rf "$SBX"
