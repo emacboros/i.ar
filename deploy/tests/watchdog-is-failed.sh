@@ -18,16 +18,23 @@ SBX=$(mktemp -d)
 mkdir -p "$SBX/bin" "$SBX/state" "$SBX/logdir" "$SBX/brk"
 cat > "$SBX/bin/systemctl" << 'STUB'
 #!/bin/bash
-case "$1 $2" in
-  "is-failed aria-cycle.service") cat "$FAKE_SYSTEMCTL_STATE" 2>/dev/null || echo "active" ;;
-  "try-restart aria-cycle.service") echo "try-restart called" >> "$FAKE_SYSTEMCTL_CALLS"; exit 0 ;;
-  "restart aria-cycle.service") echo "restart called" >> "$FAKE_SYSTEMCTL_CALLS"; exit 0 ;;
+# c277: v3 restarts are --no-block, so $2 is the flag, not the unit.
+# Match on unit name (last arg) + verb (first arg); log the full shape.
+unit="${@: -1}"
+case "$unit" in
+  aria-cycle.service)
+    case "$1" in
+      is-failed) cat "$FAKE_SYSTEMCTL_STATE" 2>/dev/null || echo "active" ;;
+      try-restart|restart) echo "restart called ($*)" >> "$FAKE_SYSTEMCTL_CALLS"; exit 0 ;;
+      *) exit 0 ;;
+    esac ;;
   *) exit 0 ;;
 esac
 STUB
 chmod +x "$SBX/bin/systemctl"
 export FAKE_SYSTEMCTL_STATE="$SBX/state/unit-state"
 export FAKE_SYSTEMCTL_CALLS="$SBX/state/calls"
+cp "$W" "$SBX/state/wrapper-git" 2>/dev/null  # sandboxed WRAPPER_GIT (c277: real /usr/local/bin is read-only rootfs)
 
 run_watchdog() { # run_watchdog <aria_age_min> <aria_status> <unit_state> <tag>
   local age=$1 st=$2 us=$3 tag=$4
@@ -37,6 +44,7 @@ run_watchdog() { # run_watchdog <aria_age_min> <aria_status> <unit_state> <tag>
   printf 'status: %s\nexit: 0\nended: now\n' "$st" > "$hc"
   touch -d "$age minutes ago" "$hc"
   ARIA_HC="$hc" CONT_HC="$hc" LOG="$SBX/logdir/log" BREAKER_FILE="$SBX/brk/breaker" \
+    WRAPPER="$SBX/bin/aria-cycle-rotate.sh" WRAPPER_GIT="$SBX/state/wrapper-git" \
     STEP1_SLEEP=1 PATH="$SBX/bin:$PATH" timeout 30 bash "$W" 2>/dev/null
 }
 
@@ -50,10 +58,13 @@ run_watchdog 5 ok active healthy
 calls=$(cat "$FAKE_SYSTEMCTL_CALLS" 2>/dev/null | wc -l)
 check "healthy: no heal" "0" "$calls"
 
-# DISEASE B: unit active, heartbeat STALE -> must heal (old invariant still works)
+# DISEASE B: unit active, BOTH heartbeats STALE -> v3: both-stale fires
+# -> step1 restart -> recheck (unit-state only) sees 'active' = recovered
+# -> exit. ONE call is the correct v3 shape (step2 only fires when the
+# unit is STILL failed after step1). c277: expect updated to v3 contract.
 run_watchdog 120 ok active diseaseB
 calls=$(cat "$FAKE_SYSTEMCTL_CALLS" 2>/dev/null | wc -l)
-check "diseaseB: stale-hc+active-unit triggers heal (step1+step2)" "2" "$calls"
+check "diseaseB: both-stale+active-unit heals via step1 (recheck=unit-state)" "1" "$calls"
 
 # DISEASE C: unit FAILED, heartbeat STALE -> must heal once (no double-fire)
 run_watchdog 120 ok failed diseaseC

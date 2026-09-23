@@ -43,7 +43,7 @@ WATCHED_UNIT="${WATCHED_UNIT:-aria-cycle.service}"
 STEP1_SLEEP="${STEP1_SLEEP:-90}"
 mkdir -p "$(dirname "$LOG")" "$(dirname "$BREAKER_FILE")"
 
-ts() { date -u "+%Y-%m-%d %H:%M:%SZ"; }
+ts() { date -u "+%Y-%m-%dT%H:%MZ"; }  # relay-parseable format (c277: space+seconds broke relay list age math)
 log() { echo "[$(ts)] $*" >> "$LOG"; }
 
 # --- detection 1: the watched unit itself FAILED (instant, c244) ---
