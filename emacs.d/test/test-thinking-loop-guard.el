@@ -147,6 +147,17 @@ path only)."
                  (lambda (_b _i) "hello") 'backend nil)))
     (should (equal result "hello"))))
 
+(ert-deftest iar-tlg-parse-advice-nil-passthrough-returns-empty-string ()
+  "A nil RETURN from orig-fn (no error -- the response-absent twin:
+stream died mid-flight, parse finds nothing) is coerced to \"\",
+never nil (continuo 7652570, 2026-09-23: her 11:30Z cycle died
+exit 255 on exactly this path -- req -95 START with no RESPONSE,
+demote path returned the nil passthrough to string-blank-p)."
+  (let ((result (iar--thinking-loop-parse-advice
+                 (lambda (_b _i) nil) 'backend nil)))
+    (should (stringp result))
+    (should (string-empty-p result))))
+
 (ert-deftest iar-tlg-parse-advice-demote-never-signals ()
   "The advice itself never signals, even when orig-fn errors and the
 observer path also has no matching request (the never-signals law).
