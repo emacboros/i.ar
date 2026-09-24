@@ -36,6 +36,25 @@ grace per delegate."
   :type 'integer
   :safe #'iar--positive-integer-p
   :group 'iar)
+
+(defcustom iar-delegate-drain-notlive-confirm 3
+  "Consecutive not-live seconds required before the drain aborts.
+c300 (2026-09-24, timeout-fork-guard): the drain's live-check has a
+structural hole -- a LIVE delegate is briefly not-live between turns
+(tool execution, the 1s re-prompt timer). One negative sample hit
+that gap and the c149 abort fired while the delegate's own next
+request was already starting (continuo 09-23 11:53:33Z: -93 PARSE
+and -94 START in the same second; the abort raced the gap, the
+parent re-sent while the implementer kept running -- the fork).
+A single negative sample is not proof of death when the probed
+thing has known gaps in its liveness signal. The drain now requires
+this many CONSECUTIVE not-live ticks (1s each) before concluding
+the delegate is really dead. The drain grace still bounds the
+total wait. Law: LIVE-CHECK-NEEDS-CONFIRMATION."
+  :type 'integer
+  :safe #'iar--positive-integer-p
+  :group 'iar)
+
 (defcustom iar-delegate-abort-reprompts 2
   "Maximum number of re-prompts after a GUARD-ABORTED turn.
 c71 (2026-09-18): the thinking-loop guard aborts a runaway reasoning

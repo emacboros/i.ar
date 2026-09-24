@@ -932,10 +932,14 @@ exactly one buffer-kill timer."
           ;; Simulate a live delegate buffer with partial response text.
           (with-current-buffer buf
             (insert "partial thinking, no result yet"))
-          (iar--delegate-timeout-handler
-           buf (lambda (r) (setq result r) (cl-incf callback-count))
-           "testagent" completed-sym 1 30
-           nil nil)
+          ;; c300: confirm=1 restores the old one-tick abort for this
+          ;; c149 regression test (no request in the alist -> not-live
+          ;; -> immediate c149 path).
+          (let ((iar-delegate-drain-notlive-confirm 1))
+            (iar--delegate-timeout-handler
+             buf (lambda (r) (setq result r) (cl-incf callback-count))
+             "testagent" completed-sym 1 30
+             nil nil))
           ;; Single callback, completed flag set, timeout message.
           (should (= callback-count 1))
           (should (symbol-value completed-sym))
@@ -971,9 +975,12 @@ an aborted request, orphaning a new request in the dying buffer."
           (with-current-buffer buf
             (insert "some partial text"))
           ;; Timeout completes the delegate first.
-          (iar--delegate-timeout-handler
-           buf (lambda (r) (setq timeout-result r)) "testagent" completed-sym 1 30
-           nil nil)
+          ;; c300: confirm=1 restores the old one-tick abort for this
+          ;; c148 regression test.
+          (let ((iar-delegate-drain-notlive-confirm 1))
+            (iar--delegate-timeout-handler
+             buf (lambda (r) (setq timeout-result r)) "testagent" completed-sym 1 30
+             nil nil))
           ;; Now the completion hook fires (as gptel-abort's ABRT
           ;; transition would): with COMPLETED-SYM set it must do
           ;; NOTHING -- no re-prompt, no second callback, no turn bump.
@@ -1110,17 +1117,98 @@ The drain path must leave the completion hook in charge."
            (gptel--request-alist nil))
       (set completed-sym nil)
       (setf (gptel-fsm-info fsm) (list :buffer (current-buffer)))
+      ;; c300: confirm=1 restores the old one-tick abort for this
+      ;; test (the not-live -> c149 path); the multi-tick confirmation
+      ;; has its own tests below.
       (cl-letf (((symbol-function 'gptel-abort)
                  (lambda (_buf) (gptel--fsm-transition fsm 'ABRT)))
                 ;; Hermetic: no real 3s kill timers (cross-test leakage).
                 ((symbol-function 'run-with-timer)
                  (lambda (&rest _args) nil)))
-        (iar--delegate-timeout-handler
-         (current-buffer) (lambda (r) (setq result r)) "testagent"
-         completed-sym nil 30 nil nil))
+        (let ((iar-delegate-drain-notlive-confirm 1))
+          (iar--delegate-timeout-handler
+           (current-buffer) (lambda (r) (setq result r)) "testagent"
+           completed-sym nil 30 nil nil)))
       (should result)
       (should (string-match-p "no response was generated" result))
       (should (symbol-value completed-sym)))))
+
+
+;;; --- c300: drain not-live confirmation (LIVE-CHECK-NEEDS-CONFIRMATION) ---
+
+(ert-deftest test-delegate-drain-notlive-gap-survives ()
+  "c300: ONE not-live sample must NOT abort a drain -- the inter-turn
+gap of a live delegate (tool execution, 1s re-prompt timer) reads as
+not-live. With confirm=3 and stubbed timers, one negative tick leaves
+the delegate un-aborted (no callback, no completed flag)."
+  (with-temp-buffer
+    (let* ((result :unset)
+           (completed-sym (make-symbol "completed"))
+           (gptel--request-alist nil))
+      (set completed-sym nil)
+      (cl-letf (((symbol-function 'run-with-timer) (lambda (&rest _args) nil)))
+        (iar--delegate-timeout-handler
+         (current-buffer) (lambda (r) (setq result r)) "testagent"
+         completed-sym nil 30 nil nil))
+      (should (eq result :unset))            ; callback NOT called
+      (should-not (symbol-value completed-sym)) ; still draining
+      ;; The not-live counter recorded the one negative sample.
+      (should (= (gethash (current-buffer)
+                          iar--delegate-drain-notlive-ticks 0)
+                 1)))))
+
+(ert-deftest test-delegate-drain-notlive-confirms-after-n-ticks ()
+  "c300: N consecutive not-live samples abort. Simulate the drain
+reaching the confirm threshold by pre-seeding the counter to N-1:
+the next not-live tick fires the c149 abort path."
+  (with-temp-buffer
+    (let* ((result nil)
+           (completed-sym (make-symbol "completed"))
+           (gptel--request-alist nil)
+           (iar--delegate-drain-notlive-ticks
+            (make-hash-table :test 'eq :weakness 'key)))
+      (set completed-sym nil)
+      (puthash (current-buffer) 2 iar--delegate-drain-notlive-ticks)
+      (cl-letf (((symbol-function 'gptel-abort)
+                 (lambda (_buf) nil))
+                ((symbol-function 'run-with-timer) (lambda (&rest _args) nil)))
+        (let ((iar-delegate-drain-notlive-confirm 3))
+          (iar--delegate-timeout-handler
+           (current-buffer) (lambda (r) (setq result r)) "testagent"
+           completed-sym nil 30 nil nil)))
+      (should result)
+      (should (string-match-p "no response was generated" result))
+      (should (symbol-value completed-sym))
+      ;; The counter table was cleaned on abort.
+      (should-not (gethash (current-buffer)
+                           iar--delegate-drain-notlive-ticks)))))
+
+(ert-deftest test-delegate-drain-live-resets-notlive-counter ()
+  "c300: a live sample RESETS the not-live counter -- only CONSECUTIVE
+negatives count. Pre-seed 2 negatives, then a live sample, then the
+buffer goes not-live again: the count must restart at 1, not 3."
+  (with-temp-buffer
+    (let* ((result :unset)
+           (completed-sym (make-symbol "completed"))
+           (fsm (gptel-make-fsm))
+           (gptel--request-alist
+            (list (cons (make-symbol "fake-proc") (list fsm (lambda ()))))))
+      (set completed-sym nil)
+      (setf (gptel-fsm-info fsm) (list :buffer (current-buffer)))
+      (setq iar--delegate-drain-notlive-ticks
+            (make-hash-table :test 'eq :weakness 'key))
+      (puthash (current-buffer) 2 iar--delegate-drain-notlive-ticks)
+      (cl-letf (((symbol-function 'run-with-timer) (lambda (&rest _args) nil)))
+        (let ((iar-delegate-drain-notlive-confirm 3))
+          (iar--delegate-timeout-handler
+           (current-buffer) (lambda (r) (setq result r)) "testagent"
+           completed-sym nil 30 nil nil)))
+      ;; Live sample: drain continues, counter reset to 0.
+      (should (eq result :unset))
+      (should-not (symbol-value completed-sym))
+      (should (= (gethash (current-buffer)
+                          iar--delegate-drain-notlive-ticks 0)
+                 0)))))
 
 ;;; --- c63: max-turns fallback must not return raw reasoning ---
 

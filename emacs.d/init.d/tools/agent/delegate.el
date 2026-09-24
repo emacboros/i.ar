@@ -75,6 +75,18 @@ Defined in configs/delegate.el; see defcustom there for the full doc.")
 Weak on keys so dead buffers are collected. Used by the
 timeout handler's drain loop to enforce the drain grace.")
 
+(defvar iar--delegate-drain-notlive-ticks nil
+  "Hash table: delegate buffer -> consecutive not-live ticks.
+Weak on keys so dead buffers are collected. c300
+(timeout-fork-guard): the drain must see this many CONSECUTIVE
+not-live samples before concluding the delegate is dead -- a live
+delegate is briefly not-live between turns (tool execution, the 1s
+re-prompt timer), and one negative sample raced that gap on
+continuo 09-23 11:53:33Z (-93 PARSE and -94 START in the same
+second; the abort fired in the gap and the parent re-sent while
+the implementer kept running). Law: LIVE-CHECK-NEEDS-CONFIRMATION.")
+
+
 (defun iar--delegate-live-subrequests-p (buf)
   "Return non-nil if BUF has a live gptel request.
 Mirrors gptel-abort's own lookup: an entry in
@@ -106,35 +118,68 @@ when the request completes, the completion hook delivers the
 real result through the NORMAL path (completed-sym stays nil
 so the hook is not skipped). If the drain exceeds
 `iar-delegate-drain-grace' seconds, fall through to the c149
-abort path -- the pipeline had its chance."
-  (if (not (iar--delegate-live-subrequests-p buf))
-      ;; Not live: nothing mid-stream, abort path is safe (c149).
-      (iar--delegate-timeout-abort buf callback completed-sym
-                                   resp-start timeout-secs
-                                   parent-agent-sym parent-file-sym)
-    ;; Live: drain. Do NOT set completed-sym -- the completion
-    ;; hook must still fire on DONE and deliver the result.
-    (let* ((drain-table (or iar--delegate-drain-ticks
-                            (setq iar--delegate-drain-ticks
-                                  (make-hash-table :test 'eq :weakness 'key))))
-           (ticks (1+ (gethash buf drain-table 0))))
-      (if (> ticks iar-delegate-drain-grace)
-          (progn
-            (remhash buf drain-table)
-            (message "[delegate] %s drain grace (%ds) expired with request still live -- aborting"
-                     agent iar-delegate-drain-grace)
-            (iar--delegate-timeout-abort buf callback completed-sym
-                                         resp-start timeout-secs
-                                         parent-agent-sym parent-file-sym))
-        (puthash buf ticks drain-table)
-        (run-with-timer
-         1 nil
-         (lambda ()
-           (when (and (not (symbol-value completed-sym))
-                      (buffer-live-p buf))
-             (iar--delegate-drain-or-abort
-              buf callback agent completed-sym resp-start timeout-secs
-              parent-agent-sym parent-file-sym))))))))
+abort path -- the pipeline had its chance.
+
+c300 (timeout-fork-guard, LIVE-CHECK-NEEDS-CONFIRMATION): a live
+delegate is briefly NOT live between turns (tool execution, the 1s
+re-prompt timer). The abort path now requires
+`iar-delegate-drain-notlive-confirm' CONSECUTIVE not-live samples
+(1s apart); a live sample resets the counter. One negative sample
+raced the inter-turn gap on continuo 09-23 11:53:33Z and forked
+the parent while the implementer kept running."
+  (let* ((drain-table (or iar--delegate-drain-ticks
+                          (setq iar--delegate-drain-ticks
+                                (make-hash-table :test 'eq :weakness 'key))))
+         (notlive-table (or iar--delegate-drain-notlive-ticks
+                            (setq iar--delegate-drain-notlive-ticks
+                                  (make-hash-table :test 'eq :weakness 'key)))))
+    (if (iar--delegate-live-subrequests-p buf)
+        ;; Live: drain. Do NOT set completed-sym -- the completion
+        ;; hook must still fire on DONE and deliver the result.
+        ;; c300: a live sample RESETS the not-live confirmation
+        ;; counter -- only CONSECUTIVE negatives count.
+        (let* ((ticks (1+ (gethash buf drain-table 0))))
+          (puthash buf 0 notlive-table)
+          (if (> ticks iar-delegate-drain-grace)
+              (progn
+                (remhash buf drain-table)
+                (remhash buf notlive-table)
+                (message "[delegate] %s drain grace (%ds) expired with request still live -- aborting"
+                         agent iar-delegate-drain-grace)
+                (iar--delegate-timeout-abort buf callback completed-sym
+                                             resp-start timeout-secs
+                                             parent-agent-sym parent-file-sym))
+            (puthash buf ticks drain-table)
+            (run-with-timer
+             1 nil
+             (lambda ()
+               (when (and (not (symbol-value completed-sym))
+                          (buffer-live-p buf))
+                 (iar--delegate-drain-or-abort
+                  buf callback agent completed-sym resp-start timeout-secs
+                  parent-agent-sym parent-file-sym))))))
+      ;; Not live: could be a real death OR the delegate's inter-turn
+      ;; gap (tool execution, re-prompt timer). c300: require
+      ;; iar-delegate-drain-notlive-confirm CONSECUTIVE negative
+      ;; samples before the c149 abort path. One negative is not
+      ;; proof of death (LIVE-CHECK-NEEDS-CONFIRMATION).
+      (let ((nl (1+ (gethash buf notlive-table 0))))
+        (if (>= nl iar-delegate-drain-notlive-confirm)
+            (progn
+              (remhash buf drain-table)
+              (remhash buf notlive-table)
+              (iar--delegate-timeout-abort buf callback completed-sym
+                                           resp-start timeout-secs
+                                           parent-agent-sym parent-file-sym))
+          (puthash buf nl notlive-table)
+          (run-with-timer
+           1 nil
+           (lambda ()
+             (when (and (not (symbol-value completed-sym))
+                        (buffer-live-p buf))
+               (iar--delegate-drain-or-abort
+                buf callback agent completed-sym resp-start timeout-secs
+                parent-agent-sym parent-file-sym)))))))))
 
 (defun iar--delegate-timeout-abort (buf callback completed-sym
                                       resp-start timeout-secs
