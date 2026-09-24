@@ -186,6 +186,10 @@
 ;; Loop guard chain — same-tool chains with varying args (iterator patterns)
 (load (expand-file-name "iar-loop-guard-chain.el" init-security-dir))
 
+;; Progress guard — zero-progress write loops (same content to same
+;; path N times; the c321 digest-diet write/verify fixed point)
+(load (expand-file-name "iar-progress-guard.el" init-security-dir))
+
 ;; Tool guard — block unknown/hallucinated tool names
 (load (expand-file-name "iar-tool-guard.el" init-security-dir))
 
