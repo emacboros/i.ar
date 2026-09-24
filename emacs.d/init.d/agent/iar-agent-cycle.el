@@ -611,6 +611,29 @@ distinguishes them. The nemotron streaming anomaly rate is ~1/900
        (integerp iar--reqlog-last-tokens-out)
        (= iar--reqlog-last-tokens-out 0)))
 
+(defun iar--cycle-thinking-only-end-p ()
+  "Return non-nil if the most recently completed request was a
+THINKING-ONLY END: stop=stop with tokens_out > 0 -- the model
+generated real output but none of it landed as model text (all of it
+reasoning in gptel `ignore' spans), so the post-response region is
+empty (start==end) and gptel signals it as a FAILED request.
+
+c323 (2026-09-24): live-fire aria c322 req 260924185718-159 -- HTTP
+200, stop=stop, tokens_out=626, zero tool calls, zero model text. The
+handler counted a strike; the dead-cycle guard ended the cycle exit 1
+AFTER the work had landed. A clean close misfiled as a death. The
+reqlog already witnesses the truth; this predicate is the handler
+consulting it on the start==end path (law candidate:
+A-FAILED-REQUEST-IS-AN-EMPTY-REGION-UNTIL-PROVEN).
+
+Disjoint from the 0/0 shape (iar--cycle-empty-response-p): that is
+tokens_out=0, this is tokens_out>0. Disjoint from truncation
+(stop=length). Never fires on missing data (nil stop or nil
+tokens-out): no data is not an anomaly, it is absence of evidence."
+  (and (equal iar--reqlog-last-stop "stop")
+       (integerp iar--reqlog-last-tokens-out)
+       (> iar--reqlog-last-tokens-out 0)))
+
 (defun iar--cycle-echo-command (args)
   "Return the COMMAND STRING carried by tool-call ARGS, or nil.
 Shape-tolerant (aria-0030 second correction, 2026-09-10 c168):
@@ -985,6 +1008,13 @@ and on any successful response.")
 Backoff is exponential: 30s, 90s, 270s (worst case +390s of a
 3600s cycle budget).")
 
+(defvar iar--cycle-thinking-only-reprompted nil
+  "One-shot flag: the thinking-only-end re-prompt was already sent
+this cycle (c323). The branch fires once per cycle; the second
+thinking-only end tombstones. Reset on cycle start and on any
+successful (start<end) response -- consecutive counting, same
+contract as the error-strike counter.")
+
 (defvar iar--cycle-abort-strikes 0
   "Consecutive guard-aborted turns in the current cycle (c80).
 The thinking-loop guard aborts a turn mid-stream; the partial
@@ -1276,6 +1306,45 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                     (goto-char (point-max))
                     (insert (or (plist-get iar--cycle-state :continue) "Continue."))
                     (gptel-send))))
+               ;; c323 THINKING-ONLY END: start==end is AMBIGUOUS --
+               ;; it is gptel's failed-request signal, but it is ALSO
+               ;; the shape of a thinking-only response (HTTP 200,
+               ;; stop=stop, tokens_out>0, all output in `ignore'
+               ;; spans: aria c322 req -159, 626 tokens of reasoning,
+               ;; zero model text, work already landed, close misfiled
+               ;; as a death). The reqlog witness disambiguates: a
+               ;; real response with an empty text region gets ONE
+               ;; close-demand re-prompt (the model finished and said
+               ;; nothing -- ask it to say the close), then a
+               ;; tombstone on the second fire (looping in reasoning;
+               ;; a second re-prompt burns the same budget -- the
+               ;; thinking-loop-truncation lesson). Ordered AFTER the
+               ;; transient-retry branch (a 502 with a partial parse
+               ;; must retry) and BEFORE the dead-cycle guard (which
+               ;; would end the cycle on the first fire). The strike
+               ;; IS counted (an empty region is still an anomaly
+               ;; worth witnessing) but the branch fires on the FIRST
+               ;; occurrence via the one-shot flag.
+               ((and (iar--cycle-thinking-only-end-p)
+                     (not iar--cycle-thinking-only-reprompted))
+                (setq iar--cycle-thinking-only-reprompted t)
+                (message "[%s] Thinking-only end (stop=stop, tokens_out=%d, empty text region) -- re-prompting with close demand (c323)"
+                         agent iar--reqlog-last-tokens-out)
+                (with-current-buffer (plist-get iar--cycle-state :buffer)
+                  (goto-char (point-max))
+                  (insert "\nYour previous response arrived EMPTY: all of it was reasoning, no text. If your work is done, write the close NOW as plain text: one short summary line (what landed, what is next) and CYCLE_COMPLETE on its own line. Do not think further.\n")
+                  (gptel-send)))
+               ;; Second thinking-only fire: the re-prompt did not
+               ;; land either -- the model is looping in reasoning.
+               ;; Tombstone, honest exit (aria-0026 discipline: the
+               ;; tombstone records the anomaly; re-prompting is the
+               ;; tombstone's job to record, not the cycle's to do).
+               ((iar--cycle-thinking-only-end-p)
+                (message "[%s] Thinking-only end (2nd fire, stop=stop, tokens_out=%d) -- tombstone, exit 1"
+                         agent iar--reqlog-last-tokens-out)
+                (iar--cycle-tombstone agent 0)
+                (setf (plist-get iar--cycle-state :completed) t)
+                (setf (plist-get iar--cycle-state :exit-code) 1))
                ;; Dead-cycle guard (c326): a failed request with no
                ;; live successor can never reach strike 3 -- gptel
                ;; re-sends only after a tool result, and a failed
@@ -1290,7 +1359,8 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                 (setf (plist-get iar--cycle-state :exit-code) 1))))
           ;; ---- SUCCESS PATH ----
           (setq iar--cycle-error-strikes 0
-                iar--cycle-retry-count 0)
+                iar--cycle-retry-count 0
+                iar--cycle-thinking-only-reprompted nil)
           (cl-incf (plist-get iar--cycle-state :turn-count))
           ;; c39 fix (2026-09-07): the turn guard counted only
           ;; final-responses -- the increment lives in the
@@ -1657,7 +1727,8 @@ Tools are gated by the project's #+TOOLS metadata."
     (iar--usage-reset)
     (setq iar--cycle-state (iar--cycle-make-state agent-name cycle-buf continue-prompt max-turns timeout)
           iar--cycle-error-strikes 0
-          iar--cycle-retry-count 0)
+          iar--cycle-retry-count 0
+          iar--cycle-thinking-only-reprompted nil)
     ;; Reset the shared last-request state so a stale value from a
     ;; previous cycle (or a delegate's request) is never read as this
     ;; cycle's first response by the truncated-output guard.
