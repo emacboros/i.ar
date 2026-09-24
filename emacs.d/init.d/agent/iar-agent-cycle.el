@@ -257,6 +257,7 @@ lies about the time it enforces)."
         :completed nil :exit-code 0
         :cap-blocks 0 :cap-warned nil :same-tool-warned nil
         :cap-landing-pending nil
+        :pre-landing-pending nil :pre-landing-sent nil
         :tool-totals nil :runaway-recovery-given nil
         :cross-rep-window nil))
 
@@ -1422,6 +1423,18 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                   (goto-char (point-max))
                   (insert "\nTOOL-CALL CAP: you have ignored the stop demand. STOP calling non-memory tools NOW. Write your final summary as plain text: what you did, what landed, what is next. Update your memory files (append_file, write_file, write_subtask, write_roadmap, git_commit, send_telegram still work). End with CYCLE_COMPLETE on its own line. Any further non-memory tool call moves the run toward a forced end.\n")
                   (gptel-send)))
+               ;; c317 PRE-LANDING (deferred twin): the T-300s nudge
+               ;; found a request in flight; send the landing now,
+               ;; serialized (same contract as the timeout landing).
+               ;; Ordered after timeout/cap-landing: those are the
+               ;; stronger demands; this one is the early warning.
+               ((plist-get iar--cycle-state :pre-landing-pending)
+                (setf (plist-get iar--cycle-state :pre-landing-pending) nil)
+                (unless (iar--cycle-complete-p (current-buffer) start end)
+                  (message "[%s] In-flight turn done -- sending deferred pre-landing prompt" agent)
+                  (goto-char (point-max))
+                  (insert "\nTIME LIMIT APPROACHING (about 5 minutes). Start landing NOW: finish the current step, write your summary (what you did, what landed, what is next), update your memory files, and end with CYCLE_COMPLETE on its own line. Do not start new investigations or long tool walks.\n")
+                  (gptel-send)))
                ((and iar--reqlog-last-abort
                      ;; c81 SCOPE: consume only OUR abort. The flag is
                      ;; global; a delegate abort during this cycle's
@@ -1698,6 +1711,30 @@ Tools are gated by the project's #+TOOLS metadata."
         (while (and (not (plist-get iar--cycle-state :completed))
                    (time-less-p nil deadline))
           (accept-process-output nil 1)
+          ;; c317 PRE-LANDING NUDGE: at T-300s, start the landing
+          ;; while the event loop can still carry the round-trip.
+          ;; The two 09-24 wall burns (11:44-12:47Z, 14:44-15:47Z) both
+          ;; died in the grace window: a landing that starts at the
+          ;; wall cannot finish inside it. A landing that starts at
+          ;; T-5min lands BEFORE the wall, with the full event loop
+          ;; alive to carry it. In-flight turn -> defer via flag (the
+          ;; c269 serialized pattern); the timeout landing still takes
+          ;; priority if the model burns the whole 5 minutes.
+          (unless (or (plist-get iar--cycle-state :completed)
+                      (plist-get iar--cycle-state :pre-landing-sent))
+            (when (<= (time-convert (time-subtract deadline nil) 'integer)
+                      300)
+              (setf (plist-get iar--cycle-state :pre-landing-sent) t)
+              (if (iar--request-live-in-buffer-p cycle-buf)
+                  (progn
+                    (setf (plist-get iar--cycle-state :pre-landing-pending) t)
+                    (message "[%s] T-300s with request in flight -- pre-landing deferred to post-response handler" agent-name))
+                (with-current-buffer cycle-buf
+                  (unless (iar--cycle-complete-p)
+                    (message "[%s] T-300s -- sending pre-landing prompt" agent-name)
+                    (goto-char (point-max))
+                    (insert "\nTIME LIMIT APPROACHING (about 5 minutes). Start landing NOW: finish the current step, write your summary (what you did, what landed, what is next), update your memory files, and end with CYCLE_COMPLETE on its own line. Do not start new investigations or long tool walks.\n")
+                    (gptel-send))))))
           (if (or (get-buffer-process cycle-buf)
                   ;; gptel curl processes live in their own proc
                   ;; buffers, not the gptel buffer -- check the
@@ -1747,10 +1784,18 @@ Tools are gated by the project's #+TOOLS metadata."
             (error
              (message "[%s] Summary request failed: %s" agent-name
                       (error-message-string err))))
-          ;; Grace window: wait up to 120s for the summary round-trip.
+          ;; Grace window: wait up to 300s for the summary round-trip.
           ;; The post-response handler sees CYCLE_COMPLETE -> completed,
           ;; exit 0. Anything else -> exit 1 (honest failure).
-          (let ((grace-deadline (time-add nil (seconds-to-time 120))))
+          ;; c317: was 120s -- both 09-24 wall burns died here. The
+          ;; landing prompt fires AT the wall and glm-5.3-flash's
+          ;; summary round-trip at high context takes ~150s: 12:47Z's
+          ;; summary PARSE landed 8s after expiry (zero record, turns
+          ;; counted 0); 15:47Z's landing response was killed
+          ;; mid-stream. 300s covers it with margin; a hung summary
+          ;; costs 3 extra teardown minutes -- cheap against a
+          ;; zero-record exit 1.
+          (let ((grace-deadline (time-add nil (seconds-to-time 300))))
             (while (and (not (plist-get iar--cycle-state :completed))
                         (time-less-p nil grace-deadline))
               (accept-process-output nil 1)))
