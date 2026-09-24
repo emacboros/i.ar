@@ -134,6 +134,12 @@
 ;; iar--reqlog-last-msgs) and AFTER iar-context-fence (same pattern).
 (load (expand-file-name "iar-msgs-fence.el" init-tool-call-dir))
 
+;; Context circuit breaker (continuo token-budget design, c303/c317;
+;; c329 audit + fix): graceful end at msgs>=400 -- state written,
+;; continuation task filed, run completed. Loads AFTER iar-msgs-fence
+;; (same data source, fires BEFORE the fence's soft cap at 600).
+(load (expand-file-name "iar-context-circuit-breaker.el" init-tool-call-dir))
+
 ;; Request watchdog (Track A1) -- abort stalled gptel requests.
 ;; No request-level timeout existed in the stack; a dead stream hung
 ;; the session silently. Watchdog makes the invisible failure visible.
