@@ -16,7 +16,7 @@
 ;; The disease is not repetition of CALLS; it is repetition of OUTCOME.
 ;; Same file + same size written N times = zero progress.
 ;;
-;; Design: post-tool-call hook on write_file. Keep a small per-agent
+;; Design: pre-tool-call hook on write_file. Keep a small per-agent
 ;; history of (filepath . content-length) for recent writes. If the
 ;; same filepath was written with the same content length (and same
 ;; content md5) within the last N writes, the write made no progress.
@@ -28,6 +28,20 @@
 ;; Why content md5 AND length: length alone can miss a same-length
 ;; no-progress rewrite; md5 alone is enough but length is the cheap
 ;; pre-filter. Both must match to count as "no progress".
+;;
+;; CONTRACT (c328 fix): the return value MUST be a plist -- (list :block
+;; MSG) -- or nil, matching iar-tool-call.el's documented hook contract
+;; and gptel--handle-pre-tool's consumer. The first version returned a
+;; bare format STRING (":block . PROGRESS GUARD: ..."); the unit tests
+;; were written to that same wrong convention, so the suite stayed
+;; green while the contract was broken. First live fire (continuo run
+;; 260924212851, 2026-09-24 21:47:23Z): gptel--handle-pre-tool ran
+;; plist-member on the string -> wrong-type-argument plistp -> the
+;; signal escaped the hook's own with-demoted-errors, killed the FSM
+;; mid-TPRE, and the run stalled to a 1800s no-request death with
+;; 5.6M tokens burned and zero record. Law: THE-TEST-IS-NOT-THE-
+;; CONTRACT (a unit test written against the implementation's bug
+;; verifies the bug, not the contract).
 ;;
 ;; Fail-open: any error in the guard never blocks a write (a broken
 ;; guard must not take the write path down with it).
@@ -49,7 +63,7 @@ recent first. Trimmed to `iar-progress-guard-history-size'.")
 
 (defun iar--progress-guard (info)
   "Pre-tool-call hook: block a write that repeats a recent identical
-outcome. INFO is the gptel tool-call plist. Returns (:block . msg)
+outcome. INFO is the gptel tool-call plist. Returns (list :block MSG)
 or nil."
   (condition-case err
       (let* ((name (plist-get info :name))
@@ -87,9 +101,9 @@ or nil."
                         (cl-subseq iar--progress-history
                                    0 iar-progress-guard-history-size)))
                 (when (>= streak iar-progress-guard-soft)
-                  (format
-                   ":block . PROGRESS GUARD: this exact content (md5 %s, %d chars) has now been written to '%s' %d times -- zero progress on the last %d writes. Re-writing it again cannot help. Either change the content SUBSTANTIVELY (delete or rewrite a section -- the goal is a DIFFERENT file, not a re-confirmation), or stop writing and move to the next step of your task. If the size cannot go lower, say so in text and proceed."
-                   md5 len filepath streak (1- streak))))))))
+                  (list :block
+                        (format "PROGRESS GUARD: this exact content (md5 %s, %d chars) has now been written to '%s' %d times -- zero progress on the last %d writes. Re-writing it again cannot help. Either change the content SUBSTANTIVELY (delete or rewrite a section -- the goal is a DIFFERENT file, not a re-confirmation), or stop writing and move to the next step of your task. If the size cannot go lower, say so in text and proceed."
+                                md5 len filepath streak (1- streak)))))))))
     (error
      ;; Fail open: a broken guard must not block legitimate writes.
      (message "[progress-guard] internal error (ignored): %s"
