@@ -1210,6 +1210,38 @@ buffer goes not-live again: the count must restart at 1, not 3."
                           iar--delegate-drain-notlive-ticks 0)
                  0)))))
 
+
+(ert-deftest test-delegate-drain-grace-counts-all-ticks ()
+  "c300 reviewer fix-up: the drain grace counts ALL ticks (live AND
+not-live). An oscillating delegate must not stretch the drain past
+the grace. Pre-seed the drain counter at the grace threshold with a
+LIVE buffer: the next tick must abort even though the request is
+live (the old code counted only live ticks and would have kept
+draining)."
+  (with-temp-buffer
+    (let* ((result nil)
+           (completed-sym (make-symbol "completed"))
+           (fsm (gptel-make-fsm))
+           (gptel--request-alist
+            (list (cons (make-symbol "fake-proc") (list fsm (lambda ()))))))
+      (set completed-sym nil)
+      (setf (gptel-fsm-info fsm) (list :buffer (current-buffer)))
+      (setq iar--delegate-drain-ticks
+            (make-hash-table :test 'eq :weakness 'key))
+      (puthash (current-buffer) 5 iar--delegate-drain-ticks)
+      (setq iar--delegate-drain-notlive-ticks
+            (make-hash-table :test 'eq :weakness 'key))
+      (cl-letf (((symbol-function 'gptel-abort) (lambda (_buf) nil))
+                ((symbol-function 'run-with-timer) (lambda (&rest _args) nil)))
+        (let ((iar-delegate-drain-grace 5))
+          (iar--delegate-timeout-handler
+           (current-buffer) (lambda (r) (setq result r)) "testagent"
+           completed-sym nil 30 nil nil)))
+      (should result)
+      (should (string-match-p "TIMEOUT" result))
+      (should (symbol-value completed-sym))
+      (should-not (gethash (current-buffer) iar--delegate-drain-ticks)))))
+
 ;;; --- c63: max-turns fallback must not return raw reasoning ---
 
 (defun iar--test-delegate-reasoning-buffer (reasoning content)

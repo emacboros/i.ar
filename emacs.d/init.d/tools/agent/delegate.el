@@ -133,53 +133,61 @@ the parent while the implementer kept running."
          (notlive-table (or iar--delegate-drain-notlive-ticks
                             (setq iar--delegate-drain-notlive-ticks
                                   (make-hash-table :test 'eq :weakness 'key)))))
-    (if (iar--delegate-live-subrequests-p buf)
-        ;; Live: drain. Do NOT set completed-sym -- the completion
-        ;; hook must still fire on DONE and deliver the result.
-        ;; c300: a live sample RESETS the not-live confirmation
-        ;; counter -- only CONSECUTIVE negatives count.
-        (let* ((ticks (1+ (gethash buf drain-table 0))))
-          (puthash buf 0 notlive-table)
-          (if (> ticks iar-delegate-drain-grace)
-              (progn
-                (remhash buf drain-table)
-                (remhash buf notlive-table)
-                (message "[delegate] %s drain grace (%ds) expired with request still live -- aborting"
-                         agent iar-delegate-drain-grace)
-                (iar--delegate-timeout-abort buf callback completed-sym
-                                             resp-start timeout-secs
-                                             parent-agent-sym parent-file-sym))
-            (puthash buf ticks drain-table)
-            (run-with-timer
-             1 nil
-             (lambda ()
-               (when (and (not (symbol-value completed-sym))
-                          (buffer-live-p buf))
-                 (iar--delegate-drain-or-abort
-                  buf callback agent completed-sym resp-start timeout-secs
-                  parent-agent-sym parent-file-sym))))))
-      ;; Not live: could be a real death OR the delegate's inter-turn
-      ;; gap (tool execution, re-prompt timer). c300: require
-      ;; iar-delegate-drain-notlive-confirm CONSECUTIVE negative
-      ;; samples before the c149 abort path. One negative is not
-      ;; proof of death (LIVE-CHECK-NEEDS-CONFIRMATION).
-      (let ((nl (1+ (gethash buf notlive-table 0))))
-        (if (>= nl iar-delegate-drain-notlive-confirm)
+    ;; c300 (reviewer fix-up): the grace counts ALL drain ticks --
+    ;; live and not-live alike. The grace is the TOTAL drain window,
+    ;; not a live-only window; counting only live ticks let an
+    ;; oscillating delegate (fast requests + tool gaps) stretch the
+    ;; drain to ~grace x confirm wall-clock. The not-live
+    ;; confirmation counter is orthogonal (consecutive negatives).
+    (let ((ticks (1+ (gethash buf drain-table 0))))
+      (puthash buf ticks drain-table)
+      (if (> ticks iar-delegate-drain-grace)
+          (progn
+            (remhash buf drain-table)
+            (remhash buf notlive-table)
+            (message "[delegate] %s drain grace (%ds) expired -- aborting (total drain ticks)"
+                     agent iar-delegate-drain-grace)
+            (iar--delegate-timeout-abort buf callback completed-sym
+                                         resp-start timeout-secs
+                                         parent-agent-sym parent-file-sym))
+        (if (iar--delegate-live-subrequests-p buf)
+            ;; Live: drain. Do NOT set completed-sym -- the completion
+            ;; hook must still fire on DONE and deliver the result.
+            ;; c300: a live sample RESETS the not-live confirmation
+            ;; counter -- only CONSECUTIVE negatives count.
             (progn
-              (remhash buf drain-table)
-              (remhash buf notlive-table)
-              (iar--delegate-timeout-abort buf callback completed-sym
-                                           resp-start timeout-secs
-                                           parent-agent-sym parent-file-sym))
-          (puthash buf nl notlive-table)
-          (run-with-timer
-           1 nil
-           (lambda ()
-             (when (and (not (symbol-value completed-sym))
-                        (buffer-live-p buf))
-               (iar--delegate-drain-or-abort
-                buf callback agent completed-sym resp-start timeout-secs
-                parent-agent-sym parent-file-sym)))))))))
+              (puthash buf 0 notlive-table)
+              (run-with-timer
+               1 nil
+               (lambda ()
+                 (when (and (not (symbol-value completed-sym))
+                            (buffer-live-p buf))
+                   (iar--delegate-drain-or-abort
+                    buf callback agent completed-sym resp-start timeout-secs
+                    parent-agent-sym parent-file-sym)))))
+          ;; Not live: could be a real death OR the delegate's
+          ;; inter-turn gap (tool execution, re-prompt timer). c300:
+          ;; require iar-delegate-drain-notlive-confirm CONSECUTIVE
+          ;; negative samples before the c149 abort path. One
+          ;; negative is not proof of death
+          ;; (LIVE-CHECK-NEEDS-CONFIRMATION).
+          (let ((nl (1+ (gethash buf notlive-table 0))))
+            (if (>= nl iar-delegate-drain-notlive-confirm)
+                (progn
+                  (remhash buf drain-table)
+                  (remhash buf notlive-table)
+                  (iar--delegate-timeout-abort buf callback completed-sym
+                                               resp-start timeout-secs
+                                               parent-agent-sym parent-file-sym))
+              (puthash buf nl notlive-table)
+              (run-with-timer
+               1 nil
+               (lambda ()
+                 (when (and (not (symbol-value completed-sym))
+                            (buffer-live-p buf))
+                   (iar--delegate-drain-or-abort
+                    buf callback agent completed-sym resp-start timeout-secs
+                    parent-agent-sym parent-file-sym)))))))))))
 
 (defun iar--delegate-timeout-abort (buf callback completed-sym
                                       resp-start timeout-secs
