@@ -256,6 +256,7 @@ lies about the time it enforces)."
         :turn-count 0 :tool-call-count 0 :request-count 0
         :completed nil :exit-code 0
         :cap-blocks 0 :cap-warned nil :same-tool-warned nil
+        :cap-landing-pending nil
         :tool-totals nil :runaway-recovery-given nil
         :cross-rep-window nil))
 
@@ -475,8 +476,22 @@ sessions are not capped)."
                             (format "TOOL-CALL LIMIT REACHED (%d ignored soft-cap blocks). This blocked call is your LAST non-memory tool call. Stop all tool calls immediately (memory/record tools excepted: append_file, write_file, write_subtask, write_roadmap, git_commit, send_telegram). Write your summary NOW: what you did, what landed, what is next. Update your memory files. End with CYCLE_COMPLETE on its own line. If you call another non-memory tool, the run ENDS."
                                     blocks))))
                 ;; Soft block: demand the landing, allow memory tools.
-                (message "[%s] Tool-call soft cap (%d) -- blocking tool, demanding summary (block %d/%d)"
-                         agent iar-cycle-tool-call-cap blocks iar-cycle-tool-call-hard-cap)
+                ;; c310 CAP-LANDING ESCALATION: the 09-23/09-24 rage data
+                ;; (Tool-call soft cap recurring 3 days, kills on 2) shows
+                ;; glm ignores the tool-result block 40%+ of the time
+                ;; (2/5 cap-zone cycles burned 5 blocks to a hard exit-1
+                ;; with ZERO record). At block 2 the model has already
+                ;; ignored one demand: arm :cap-landing-pending -- the
+                ;; post-response handler escalates to a USER-MESSAGE
+                ;; landing (the channel the truncation/runaway/timeout
+                ;; graces use, the one glm demonstrably obeys). The
+                ;; serialized-landing pattern (c269/c300), proven live.
+                (when (>= blocks 2)
+                  (setq state (plist-put state :cap-landing-pending t))
+                  (iar--fence-state-writeback state))
+                (message "[%s] Tool-call soft cap (%d) -- blocking tool, demanding summary (block %d/%d)%s"
+                         agent iar-cycle-tool-call-cap blocks iar-cycle-tool-call-hard-cap
+                         (if (>= blocks 2) " [landing armed]" ""))
                 (list :block
                       (format "Tool-call soft cap (%d) reached. STOP calling tools (except memory/record tools: append_file, write_file, write_subtask, write_roadmap, git_commit, send_telegram -- those still work). %s"
                               iar-cycle-tool-call-cap
@@ -1391,6 +1406,21 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                   (message "[%s] In-flight turn done -- sending deferred landing prompt" agent)
                   (goto-char (point-max))
                   (insert "\nTIME LIMIT REACHED. Stop all tool calls immediately. Write your summary NOW: what you did, what landed, what is next. Update your memory files (append_file still allowed). End with CYCLE_COMPLETE on its own line.\n")
+                  (gptel-send)))
+               ;; c310 CAP-LANDING ESCALATION: the model ignored the
+               ;; tool-result block demand (blocks >= 2 armed the flag).
+               ;; The tool-result channel is ignorable for glm; the
+               ;; user-message channel is not (the truncation/runaway/
+               ;; timeout landings land). Serialized here, same contract
+               ;; as the timeout landing: only when the turn is NOT a
+               ;; clean close. Consumed on read (stale flag cannot
+               ;; poison the next turn).
+               ((plist-get iar--cycle-state :cap-landing-pending)
+                (setf (plist-get iar--cycle-state :cap-landing-pending) nil)
+                (unless (iar--cycle-complete-p (current-buffer) start end)
+                  (message "[%s] Cap landing escalation -- sending user-message landing (model ignored tool-result demand)" agent)
+                  (goto-char (point-max))
+                  (insert "\nTOOL-CALL CAP: you have ignored the stop demand. STOP calling non-memory tools NOW. Write your final summary as plain text: what you did, what landed, what is next. Update your memory files (append_file, write_file, write_subtask, write_roadmap, git_commit, send_telegram still work). End with CYCLE_COMPLETE on its own line. Any further non-memory tool call moves the run toward a forced end.\n")
                   (gptel-send)))
                ((and iar--reqlog-last-abort
                      ;; c81 SCOPE: consume only OUR abort. The flag is
