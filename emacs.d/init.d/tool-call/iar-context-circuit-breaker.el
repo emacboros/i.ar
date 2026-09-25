@@ -24,8 +24,19 @@
 ;; hard-cap at 900. One fire per run (:context-circuit-breaker-fired
 ;; in the run state, not a global -- a global survives across runs
 ;; and would silently disarm the breaker forever).
+;;
+;; c363 (state-md-two-writers-gap, Option A): every fire record now
+;; carries a machine-only witness line (iar--breaker-witness-line,
+;; iar-breaker-witness.el) built from iar--reqlog-epoch + counter --
+;; values the model cannot synthesize at write time. Continuo's
+;; 2026-09-25 15:26:11 fake fire line (hand-written via append_file,
+;; zero emissions anywhere) is structurally impossible to fake
+;; convincingly now: the belt cross-checks witness against
+;; REQUESTS.log REQ START ids. INSTRUMENT-RECORDS-ARE-NOT-HAND-WRITTEN
+;; moves from convention to structure.
 
 (require 'iar-utils)
+(require 'iar-breaker-witness)
 
 ;; Forward-declared: owned by iar-request-log.el (loads via `load' in
 ;; init.el; runtime reads are safe, standalone loads need the default).
@@ -90,9 +101,10 @@ down (fail-open)."
               (condition-case werr
                   (iar--fs-append-file
                    (expand-file-name "STATE.md" record-dir)
-                   (format "\n** Context circuit breaker fired %s\nmsgs=%d (threshold %d), agent=%s. State written for continuation; continuation task filed at tasks/%s.\n"
+                   (format "\n** Context circuit breaker fired %s\nmsgs=%d (threshold %d), agent=%s. State written for continuation; continuation task filed at tasks/%s.\n%s\n"
                            ts msgs iar-context-circuit-breaker-threshold
-                           (or agent "unknown") task-path))
+                           (or agent "unknown") task-path
+                           (iar--breaker-witness-line)))
                 (error
                  (message "[context-circuit-breaker] state write failed: %s"
                           (error-message-string werr)))))

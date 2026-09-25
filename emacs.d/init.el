@@ -134,6 +134,14 @@
 ;; iar--reqlog-last-msgs) and AFTER iar-context-fence (same pattern).
 (load (expand-file-name "iar-msgs-fence.el" init-tool-call-dir))
 
+;; Breaker witness (c363, state-md-two-writers-gap Option A): a
+;; machine-only witness line on every breaker fire record -- epoch+req
+;; from the request log, values the model cannot synthesize at write
+;; time. Loads AFTER iar-request-log (reads iar--reqlog-epoch/counter)
+;; and BEFORE iar-context-circuit-breaker (which calls
+;; iar--breaker-witness-line at fire time).
+(load (expand-file-name "iar-breaker-witness.el" init-tool-call-dir))
+
 ;; Context circuit breaker (continuo token-budget design, c303/c317;
 ;; c329 audit + fix): graceful end at msgs>=400 -- state written,
 ;; continuation task filed, run completed. Loads AFTER iar-msgs-fence
