@@ -33,6 +33,13 @@
 ;; zero emissions anywhere) is structurally impossible to fake
 ;; convincingly now: the belt cross-checks witness against
 ;; REQUESTS.log REQ START ids. INSTRUMENT-RECORDS-ARE-NOT-HAND-WRITTEN
+;;
+;; c366 (continuation-task honesty): the fire path previously claimed
+;; "continuation task filed" BEFORE the create ran and discarded the
+;; create's error string (create_task returns error STRINGS, never
+;; signals -- error-handler-as-accomplice). Now: create FIRST, classify
+;; the result, fires 2..N append to the existing description.org, and
+;; STATE.md records only what actually happened.
 ;; moves from convention to structure.
 
 (require 'iar-utils)
@@ -55,6 +62,7 @@ early-exit lane, the fence is the backstop.")
 
 (declare-function iar--fs-append-file "append_file.el" (filepath content))
 (declare-function iar--tool-create-task "create_task.el" (path description))
+(declare-function iar--resolve-task-dir "iar-agent-utils.el" (task-path))
 (declare-function iar--fence-state-writeback "iar-agent-cycle.el" (state))
 
 (defun iar--context-circuit-breaker-active-state ()
@@ -93,42 +101,76 @@ down (fail-open)."
                (msgs iar--reqlog-last-msgs)
                (record-dir (iar--context-circuit-breaker-record-dir))
                (ts (format-time-string "%Y-%m-%d %H:%M:%S"))
-               (task-path "token-budget/context-circuit-breaker-continuation"))
+               (task-path "token-budget/context-circuit-breaker-continuation")
+               (task-desc-file (and task-path
+                                    (condition-case nil
+                                        (expand-file-name
+                                         "description.org"
+                                         (iar--resolve-task-dir task-path))
+                                      (error nil)))))
           (when (and state (not (plist-get state :completed))
                      (not (plist-get state :context-circuit-breaker-fired)))
-            ;; 1. State write (best-effort; the run ends either way).
-            (when record-dir
-              (condition-case werr
-                  (iar--fs-append-file
-                   (expand-file-name "STATE.md" record-dir)
-                   (format "\n** Context circuit breaker fired %s\nmsgs=%d (threshold %d), agent=%s. State written for continuation; continuation task filed at tasks/%s.\n%s\n"
-                           ts msgs iar-context-circuit-breaker-threshold
-                           (or agent "unknown") task-path
-                           (iar--breaker-witness-line)))
-                (error
-                 (message "[context-circuit-breaker] state write failed: %s"
-                          (error-message-string werr)))))
-            ;; 2. Continuation task (best-effort).
-            (condition-case terr
-                (iar--tool-create-task
-                 task-path
-                 (format "Continuation after context circuit breaker fired at %s. Message count was %d (threshold %d), agent %s. Read STATE.md (last entry) and the previous cycle's journal to resume."
-                         ts msgs iar-context-circuit-breaker-threshold
-                         (or agent "unknown")))
-              (error
-               (message "[context-circuit-breaker] continuation task failed: %s"
-                        (error-message-string terr))))
+            ;; 1. Continuation task FIRST (c366 honesty): create_task
+            ;; RETURNS "Error creating task: ..." as a STRING, never
+            ;; signals (error-handler-as-accomplice). The old order
+            ;; claimed "task filed" in STATE.md before the create ran,
+            ;; and fires 2..N silently no-op'd on "Task already exists".
+            (let* ((create-result
+                    (condition-case cerr
+                        (iar--tool-create-task
+                         task-path
+                         (format "Continuation after context circuit breaker fired at %s. Message count was %d (threshold %d), agent %s. Read STATE.md (last entry) and the previous cycle's journal to resume."
+                                 ts msgs iar-context-circuit-breaker-threshold
+                                 (or agent "unknown")))
+                      (error (format "Error creating task: %s"
+                                     (error-message-string cerr)))))
+                   (task-outcome
+                    (cond
+                     ((and (stringp create-result)
+                           (string-prefix-p "Task created" create-result))
+                      "continuation task filed")
+                     ((and (stringp create-result)
+                           (string-match-p "Task already exists" create-result))
+                      ;; Fires 2..N: append this fire's line to the
+                      ;; existing description.org so the record of THIS
+                      ;; fire is not lost.
+                      (when (and task-desc-file
+                                 (file-exists-p task-desc-file))
+                        (condition-case aerr
+                            (iar--fs-append-file
+                             task-desc-file
+                             (format "\n** Additional fire %s: msgs=%d (threshold %d), agent %s. State written for continuation; see STATE.md.\n"
+                                     ts msgs iar-context-circuit-breaker-threshold
+                                     (or agent "unknown")))
+                          (error
+                           (message "[context-circuit-breaker] description append failed: %s"
+                                    (error-message-string aerr)))))
+                      "continuation task already existed (fire line appended)")
+                     (t (format "continuation task FAILED: %s" create-result)))))
+              ;; 2. STATE.md fire record SECOND, with the honest outcome.
+              (when record-dir
+                (condition-case werr
+                    (iar--fs-append-file
+                     (expand-file-name "STATE.md" record-dir)
+                     (format "\n** Context circuit breaker fired %s\nmsgs=%d (threshold %d), agent=%s. State written for continuation; %s (tasks/%s).\n%s\n"
+                             ts msgs iar-context-circuit-breaker-threshold
+                             (or agent "unknown") task-outcome task-path
+                             (iar--breaker-witness-line)))
+                  (error
+                   (message "[context-circuit-breaker] state write failed: %s"
+                            (error-message-string werr)))))
             ;; 3. Graceful end: mark completed, writeback, block.
             (setq state (plist-put state :context-circuit-breaker-fired t))
             (setq state (plist-put state :completed t))
             (setq state (plist-put state :exit-code 0))
             (iar--fence-state-writeback state)
-            (message "[%s] Context circuit breaker: msgs=%d >= %d -- state written, continuation filed, ending run"
+            (message "[%s] Context circuit breaker: msgs=%d >= %d -- state written, %s, ending run"
                      (or agent "unknown") msgs
-                     iar-context-circuit-breaker-threshold)
+                     iar-context-circuit-breaker-threshold task-outcome)
             (list :block
-                  (format "Context circuit breaker: message count %d >= threshold %d. The run is ending gracefully. State was written and a continuation task was filed. Write nothing more except your final summary as text."
-                          msgs iar-context-circuit-breaker-threshold)))))
+                  (format "Context circuit breaker: message count %d >= threshold %d. The run is ending gracefully. %s. Write nothing more except your final summary as text."
+                          msgs iar-context-circuit-breaker-threshold
+                          (capitalize (substring task-outcome 0 1))))))))
     (error
      (message "[context-circuit-breaker] internal error (ignored): %s"
               (error-message-string err))
