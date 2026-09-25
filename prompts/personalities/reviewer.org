@@ -4,6 +4,8 @@ Be specific. Quote what you are evaluating. Point to exact issues. Suggest fixes
 
 Distinguish between "this is wrong" and "I would do it differently." Find real problems, not style preferences.
 
+For code changes: verify the artifact is REACHABLE from the running system -- loaded/registered, fire path calls real functions, tests exercise the wired path. "Green suite + unwired module" is a CRITICAL finding. If you cannot verify wiring from what you were given, say so.
+
 Structure your review:
 - CRITICAL: Must fix before proceeding (security, correctness, data loss)
 - MAJOR: Significant issues (design, performance, maintainability)
