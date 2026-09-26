@@ -1022,7 +1022,11 @@ thinking text lands in the buffer, so START < END and the turn
 takes the SUCCESS path -- the FAILED path's strike counting never
 sees it (live-fire: 09-18 23:42, reqs -53/-54 re-prompted with the
 STANDARD continue prompt, no abort-awareness). Counted here
-instead, reset on any turn that produces a real stop reason.")
+instead, reset on any turn that produces a real stop reason.
+Also reset at cycle start (c391): a fresh run must not inherit a
+stale counter from a previous run in the same process -- the c384
+hook-stop branch reads this counter on the FIRST failed request,
+and a pre-consumed cap would end a fresh cycle LOUD on strike 1.")
 
 (defconst iar-cycle-abort-reprompts 2
   "Max abort-aware re-prompts per cycle before ending LOUD (c80).
@@ -1800,7 +1804,8 @@ Tools are gated by the project's #+TOOLS metadata."
     (setq iar--cycle-state (iar--cycle-make-state agent-name cycle-buf continue-prompt max-turns timeout)
           iar--cycle-error-strikes 0
           iar--cycle-retry-count 0
-          iar--cycle-thinking-only-reprompted nil)
+          iar--cycle-thinking-only-reprompted nil
+          iar--cycle-abort-strikes 0)
     ;; Reset the shared last-request state so a stale value from a
     ;; previous cycle (or a delegate's request) is never read as this
     ;; cycle's first response by the truncated-output guard.
@@ -2184,7 +2189,8 @@ aborts mid-stream, the partial thinking lands in the buffer (START <
 END), and the turn takes the SUCCESS path -- without this counter
 the handler re-sent the standard nudge blind (nocturne 09-23 pass:
 7 consecutive aborts, msgs 29->113, each re-send carrying the full
-growing context). Reset on any completed tool call.")
+growing context). Reset on any completed tool call.
+Reset at one-shot start (c391): same fresh-run contract as the cycle path.")
 (defun iar--one-shot-tool-call-tracker (_tool-name _tool-result)
   "Track tool calls in one-shot mode. Increments tool-call-count.
 GLOBAL hook (registered at module load, same reasoning as the
@@ -2265,11 +2271,13 @@ to handle content that mentions the delimiter text."
 
 (defvar iar--one-shot-error-strikes 0
   "Consecutive failed-request strikes in the current one-shot run.
-See `iar--cycle-error-strikes' for the failed-request convention.")
+See `iar--cycle-error-strikes' for the failed-request convention.
+Reset at one-shot start (c391), same as the cycle path.")
 
 (defvar iar--one-shot-retry-count 0
   "Transient-error retries used this one-shot run (c357).
-See `iar--cycle-retry-count' for the class split.")
+See `iar--cycle-retry-count' for the class split.
+Reset at one-shot start (c391), same as the cycle path.")
 
 
 
@@ -2457,7 +2465,10 @@ Tools are gated by the project's #+TOOLS metadata."
     (message "[%s] Starting one-shot with %ds timeout (archetype: %s, project: %s)"
              agent-name timeout archetype project)
     (iar--usage-reset)
-    (setq iar--one-shot-state (iar--one-shot-make-state agent-name os-buf max-turns timeout))
+    (setq iar--one-shot-state (iar--one-shot-make-state agent-name os-buf max-turns timeout)
+          iar--one-shot-error-strikes 0
+          iar--one-shot-retry-count 0
+          iar--one-shot-abort-strikes 0)
     (with-current-buffer os-buf
       (text-mode)
       (gptel-mode 1)
