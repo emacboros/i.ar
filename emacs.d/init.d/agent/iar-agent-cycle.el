@@ -1058,7 +1058,7 @@ class -> do not retry; the dead-cycle guard keeps its teeth)."
        ((string-match-p "404\\|not found\\|model.*not\\|unauthorized\\|401\\|403" both) nil)
        ;; TRANSIENT: server-side 5xx, gateway errors, connection-level
        ;; failures, malformed/truncated responses.
-       ((string-match-p "50[0-4]\\|Bad Gateway\\|Service Unavailable\\|Gateway Timeout" both) t)
+       ((string-match-p "50[0-4]\\|Bad Gateway\\|Service Unavailable\\|Gateway Timeout\\|Internal Server Error" both) t)
        ((string-match-p "Curl failure\\|connection reset\\|connection refused\\|timed out\\|Malformed JSON" both) t)
        ;; Unknown class: no retry (fail safe, guard keeps its teeth).
        (t nil)))))

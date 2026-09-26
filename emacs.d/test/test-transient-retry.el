@@ -140,3 +140,17 @@ the strike counter)."
           (should (= 0 iar--cycle-retry-count))
           (should (= 0 iar--cycle-error-strikes)))
       (kill-buffer buf))))
+(ert-deftest test-transient-retry-internal-server-error ()
+  "Ollama's bare 'Internal Server Error (ref: ...)' string carries NO
+numeric 5xx code; the c357 pattern '50[0-4]' never matched it, the
+classifier fell through to unknown-class (no retry), and the
+dead-cycle guard killed the cycle on strike 1 (aria 09-24 ~11:42Z,
+12.2M tokens of work, zero record). The bare phrase must classify
+transient."
+  (let ((buf (get-buffer-create "*test-transient5*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (iar-test--make-fsm-with-error "Ollama error: (Ollama error: Internal Server Error (ref: 5263f6a3-598b-4332-b07d-0ec0c8772fd8)) Internal Server Error (ref: 5263f6a3-598b-4332-b07d-0ec0c8772fd8)" nil)
+            (should (iar--request-transient-error-p))))
+      (kill-buffer buf))))
