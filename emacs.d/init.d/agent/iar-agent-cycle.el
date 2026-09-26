@@ -1059,6 +1059,45 @@ class -> do not retry; the dead-cycle guard keeps its teeth)."
        ;; Unknown class: no retry (fail safe, guard keeps its teeth).
        (t nil)))))
 
+(defun iar--request-hook-stopped-p ()
+  "Return non-nil if the last request was STOPPED BY A TOOL-CALL HOOK.
+gptel sets info :status to the exact string \"Stopped by hook\" when
+a pre/post-tool-call hook returns :stop (gptel.el 1521/1581) -- the
+loop-guard hard stop, the chain guard, the context breaker. The
+request then flows into the FAILED path (start==end) with the hook's
+reason as :error. A hook stop is a GUARD ABORT, not a backend
+failure: the model is alive, the context is intact, the correct
+recovery is an abort-aware re-prompt (law 41: change the question),
+not cycle death. Production case RUN11 (09-24 05:57Z): hook-stop ->
+request-FAILED -> no live successor -> exit 1, strike 1/3, zero
+re-prompt, 100 tool calls of work intent lost. Reads the FSM info
+(gptel--fsm-last, buffer-local); returns nil on missing data (the
+dead-cycle guard keeps its teeth on unknown classes)."
+  (when (and (boundp 'gptel--fsm-last) (gptel-fsm-p gptel--fsm-last))
+    (let ((info (gptel-fsm-info gptel--fsm-last)))
+      (when info
+        (equal (plist-get info :status) "Stopped by hook")))))
+
+(defconst iar--hook-stop-continue-prompt
+  "Your previous turn was HARD-STOPPED by the loop guard: you called
+the same tool with identical arguments past the threshold and did not
+self-correct after the soft-block corrections. Do NOT re-emit that
+call -- it will be stopped again. Change strategy NOW: (a) batch
+several operations into ONE command, read the data you already
+collected, or switch to a different tool/approach; or (b) if the
+work is effectively done, LAND it: write your summary as plain text,
+update your memory files, and end with CYCLE_COMPLETE on its own
+line. Repeating the blocked pattern moves the run toward a forced
+end."
+  "Re-prompt inserted after a hook-stopped request (c384): the
+loop-guard/chain-guard hard stop arrives through the request-FAILED
+path, which the c80/c325 abort-aware branches never see (those fire
+on the SUCCESS path keyed on iar--reqlog-last-abort -- a hook stop
+sets neither that flag nor a stop reason gptel's done_reason carries).
+Distinct from `iar--abort-continue-prompt': that one names the
+thinking-loop guard; this one names the identical-call loop -- the
+actual failure (law 41: change the question, not the volume).")
+
 (defun iar--cycle-context-over-limit-p (state)
   "Return the cycle buffer size if STATE's buffer exceeds the
 context limit, nil otherwise. Shared by the pre-tool-call breaker
@@ -1287,6 +1326,39 @@ Wrapped in condition-case to prevent errors from hanging the event loop."
                 (message "[%s] Three failed requests in a row -- ending cycle" agent)
                 (setf (plist-get iar--cycle-state :completed) t)
                 (setf (plist-get iar--cycle-state :exit-code) 1))
+               ;; c384 HOOK-STOP RECOVERY: a pre/post-tool-call hook
+               ;; (loop guard, chain guard, breaker) stopped the
+               ;; request. gptel delivers it as a FAILED request
+               ;; (:status "Stopped by hook") and the dead-cycle guard
+               ;; below ended the cycle on strike 1 with zero
+               ;; re-prompt (RUN11 09-24, RUN42 09-23 -- the kills the
+               ;; rage organ could not see until c382). A hook stop is
+               ;; a GUARD ABORT, not a backend failure: re-prompt with
+               ;; an abort-aware prompt naming the identical-call loop
+               ;; (law 41). Cap = iar-cycle-abort-reprompts (2) via the
+               ;; abort-strike counter (shared with the c80 SUCCESS-path
+               ;; abort branch, reset on any completed tool call); past
+               ;; the cap, end LOUD. Placed BEFORE transient-retry: a
+               ;; guard abort is not a transport failure -- a blind
+               ;; re-send would re-enter the exact loop the guard just
+               ;; killed. The error-strike counter still counts (a
+               ;; hook-stop IS a failed request): a third consecutive
+               ;; failure ends via the 3-strikes check above, whichever
+               ;; class it is.
+               ((iar--request-hook-stopped-p)
+                (if (< iar--cycle-abort-strikes iar-cycle-abort-reprompts)
+                    (progn
+                      (cl-incf iar--cycle-abort-strikes)
+                      (message "[%s] Hook-stopped request (guard abort, strike %d/%d) -- re-prompting with abort-aware prompt"
+                               agent iar--cycle-abort-strikes iar-cycle-abort-reprompts)
+                      (with-current-buffer (plist-get iar--cycle-state :buffer)
+                        (goto-char (point-max))
+                        (insert "\n\n" iar--hook-stop-continue-prompt)
+                        (gptel-send)))
+                  (message "[%s] Hook-stopped request (strike %d) past abort-reprompt cap %d -- ending cycle LOUD"
+                           agent iar--cycle-error-strikes iar-cycle-abort-reprompts)
+                  (setf (plist-get iar--cycle-state :completed) t)
+                  (setf (plist-get iar--cycle-state :exit-code) 1)))
                ;; Transient retry (c357): a 5xx / connection-level
                ;; failure is a DIFFERENT class from the c326 quota
                ;; storm -- a 429 never succeeds on retry, a 502
@@ -2225,6 +2297,25 @@ marks as completed with exit code 1."
             (message "[%s] Three failed requests in a row -- ending one-shot" agent)
             (setf (plist-get iar--one-shot-state :completed) t)
             (setf (plist-get iar--one-shot-state :exit-code) 1))
+           ;; c384 HOOK-STOP RECOVERY (one-shot mirror): same shape as
+           ;; the cycle path -- a hook-stopped request re-prompts with
+           ;; the abort-aware prompt (cap 2 via the one-shot
+           ;; abort-strike counter) instead of dying on the dead-run
+           ;; guard with zero re-prompt.
+           ((iar--request-hook-stopped-p)
+            (if (< iar--one-shot-abort-strikes iar-cycle-abort-reprompts)
+                (progn
+                  (cl-incf iar--one-shot-abort-strikes)
+                  (message "[%s] Hook-stopped request (guard abort, strike %d/%d) -- re-prompting with abort-aware prompt"
+                           agent iar--one-shot-abort-strikes iar-cycle-abort-reprompts)
+                  (with-current-buffer (plist-get iar--one-shot-state :buffer)
+                    (goto-char (point-max))
+                    (insert "\n\n" iar--hook-stop-continue-prompt)
+                    (gptel-send)))
+              (message "[%s] Hook-stopped request (strike %d) past abort-reprompt cap %d -- ending one-shot LOUD"
+                       agent iar--one-shot-error-strikes iar-cycle-abort-reprompts)
+              (setf (plist-get iar--one-shot-state :completed) t)
+              (setf (plist-get iar--one-shot-state :exit-code) 1)))
            ;; Transient retry (c357): same class split as the cycle
            ;; path -- 5xx/connection failures retry with backoff,
            ;; permanent failures (429, model errors) do not.
