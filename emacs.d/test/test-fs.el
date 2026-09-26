@@ -1285,3 +1285,87 @@ With the guard, non-integers are rejected and truncation is skipped."
 (provide 'test-fs)
 ;;; --- write_file error handler test ---
 
+
+;;; --- read_file tail_lines tests (c409: journal head-bias fix) ---
+
+(ert-deftest test-fs-read-file-tail-lines-returns-last-n ()
+  "read_file with tail_lines returns only the last N lines."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "journal.txt" test-fs--tmpdir))
+           (content (mapconcat (lambda (i) (format "line-%d" i))
+                               (number-sequence 1 30) "\n")))
+      (with-temp-file target (insert content))
+      (let ((result (iar--fs-read-file target 5)))
+        (should (stringp result))
+        ;; Head notice present
+        (should (string-match-p
+                 "\\[\\.\\.\\. showing last 5 of 30 lines \\.\\.\\.\\]" result))
+        ;; Contains the LAST 5 lines
+        (should (string-match-p "line-30" result))
+        (should (string-match-p "line-26" result))
+        ;; Does NOT contain early lines
+        (should-not (string-match-p "line-1\n" result))
+        (should-not (string-match-p "line-25" result))))))
+
+(ert-deftest test-fs-read-file-tail-lines-over-file-returns-whole ()
+  "tail_lines >= total lines returns the whole file, no notice."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "small.txt" test-fs--tmpdir))
+           (content "alpha\nbeta\ngamma\n"))
+      (with-temp-file target (insert content))
+      (let ((result (iar--fs-read-file target 100)))
+        (should (string= result content))
+        (should-not (string-match-p "showing last" result))))))
+
+(ert-deftest test-fs-read-file-tail-lines-zero-or-negative-full-read ()
+  "tail_lines <= 0 is an honest no-op: full read, no notice."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "neg.txt" test-fs--tmpdir))
+           (content "one\ntwo\nthree\n"))
+      (with-temp-file target (insert content))
+      (let ((r0 (iar--fs-read-file target 0))
+            (rneg (iar--fs-read-file target -5)))
+        (should (string= r0 content))
+        (should (string= rneg content))
+        (should-not (string-match-p "showing last" r0))
+        (should-not (string-match-p "showing last" rneg))))))
+
+(ert-deftest test-fs-read-file-tail-lines-no-trailing-newline ()
+  "tail_lines works on a file whose last line has no newline."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "nonl.txt" test-fs--tmpdir))
+           (content "a\nb\nc\nd\ne\nlast-line-no-newline"))
+      (with-temp-file target (insert content))
+      (let ((result (iar--fs-read-file target 2)))
+        (should (string-match-p "last-line-no-newline" result))
+        (should (string-match-p "showing last 2 of 6 lines" result))
+        (should-not (string-match-p "\\bc\\b" result))))))
+
+(ert-deftest test-fs-read-file-tail-lines-before-max-size ()
+  "The tail filter runs BEFORE max-size truncation: a tail read of a
+huge file returns the TAIL, not the head."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "huge.txt" test-fs--tmpdir))
+           (content (concat (make-string 5000 ?h) "\n"
+                            "RECENT-TAIL-MARKER\n")))
+      (with-temp-file target (insert content))
+      (let ((iar-fs-read-max-size 100))
+        (let ((result (iar--fs-read-file target 1)))
+          (should (string-match-p "RECENT-TAIL-MARKER" result))
+          ;; The head notice survives
+          (should (string-match-p "showing last 1 of" result)))))))
+
+(ert-deftest test-fs-read-file-tail-lines-notice-not-poison ()
+  "The tail notice must NOT match the write-guard poison pattern
+(that skeleton is the middle-truncation notice, a different shape)."
+  (with-fs-fixture
+    (let* ((target (expand-file-name "tailnote.txt" test-fs--tmpdir))
+           (content (mapconcat (lambda (i) (format "l%d" i))
+                               (number-sequence 1 20) "\n")))
+      (with-temp-file target (insert content))
+      (let ((result (iar--fs-read-file target 3)))
+        (should (string-match-p "showing last 3 of 20 lines" result))
+        ;; The write-guard skeleton must NOT match
+        (should-not (string-match-p
+                     "\\[\\.\\.\\. truncated: [0-9]+ total chars, kept first [0-9]+ and last [0-9]+ \\.\\.\\.\\]"
+                     result))))))
