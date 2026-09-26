@@ -19,11 +19,16 @@
 ;;     (audit/<project>/<personality>/)
 ;;   - iar--fence-state-writeback (iar-agent-cycle.el)
 ;;
-;; Threshold: 400 < msgs-fence soft 600 -- this fires FIRST and ends
-;; the run with a record instead of letting the fence warn at 600 and
-;; hard-cap at 900. One fire per run (:context-circuit-breaker-fired
-;; in the run state, not a global -- a global survives across runs
-;; and would silently disarm the breaker forever).
+;; Threshold: 600 < 800 < 900 (c428 recalibration): the msgs fence's
+;; soft cap (600) is the working-bound warning; this breaker is the
+;; graceful early-exit lane before the hard cap (900). Originally 400,
+;; calibrated when the fence soft cap was 400 (pre-relay-0101); stale
+;; after relay 0101 raised the fence to 600/900 -- at 400 the breaker
+;; bound aria at ~200 requests, 200 msgs below the soft warning, and
+;; amputated the deepest working runs. One fire per run
+;; (:context-circuit-breaker-fired in the run state, not a global -- a
+;; global survives across runs and would silently disarm the breaker
+;; forever).
 ;;
 ;; c363 (state-md-two-writers-gap, Option A): every fire record now
 ;; carries a machine-only witness line (iar--breaker-witness-line,
@@ -54,11 +59,18 @@ completes (or when the count was unavailable).")
 
 ;; Owned by this module (defvar, not defcustom: the threshold is a
 ;; design constant of the token-budget ruling, not a tuning knob).
-(defvar iar-context-circuit-breaker-threshold 400
+(defvar iar-context-circuit-breaker-threshold 800
   "Message count at which the context circuit breaker ends the run
 gracefully: state written, continuation task filed, :completed set.
-Fires once per run. 400 < iar-msgs-soft-cap (600): this is the
-early-exit lane, the fence is the backstop.")
+Fires once per run. 600 < 800 < 900: the msgs fence's soft cap (600)
+warns at the working bound, this breaker is the graceful early-exit
+lane before the hard cap (900). c428 (2026-09-26): was 400 -- the
+pre-0101 calibration, stale after relay 0101 raised the fence to
+600/900. At 400 the breaker bound aria at ~200 requests (msgs grows
++2/request), 200 msgs BELOW the soft warning it precedes, killing
+the deepest working runs (9 witnessed fires in 2 days, each a
+legitimate deep run amputated mid-work). See
+knowledge/iar/breaker-threshold-stale-2026-09-26.md.")
 
 (declare-function iar--fs-append-file "append_file.el" (filepath content))
 (declare-function iar--tool-create-task "create_task.el" (path description))
