@@ -235,7 +235,7 @@ error with no diagnosis."
                  :name "gptel-remote-ssh"
                  :buffer buf
                  :connection-type 'pipe
-                 :command (list "ssh"
+                 :command (list "ssh" "-n"
                                 "-o" "StrictHostKeyChecking=accept-new"
                                 "-o" "BatchMode=yes"
                                 "-o" "ConnectTimeout=10"

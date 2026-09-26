@@ -60,7 +60,7 @@ needed."
                :name "gptel-async-cmd"
                :buffer buf
                :connection-type 'pipe
-               :command (list shell-file-name "-c" cmd)
+               :command (list shell-file-name "-c" (concat "exec < /dev/null; " cmd))
                :sentinel
                (lambda (proc _event)
                  (when (memq (process-status proc) '(exit signal))
