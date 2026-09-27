@@ -153,8 +153,8 @@ fails in async sentinel contexts)."
                     ((or "execute_code_local" "execute_code_remote")
                      (when-let* ((cmd (plist-get args :command)))
                        (format " cmd=%s"
-                               (if (> (length cmd) 200)
-                                   (concat (substring cmd 0 197) "...")
+                               (if (> (length cmd) 2000)
+                                   (concat (substring cmd 0 1997) "...")
                                  cmd))))
                     ((or "read_file")
                      (when-let* ((fp (plist-get args :filepath)))

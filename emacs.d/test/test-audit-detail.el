@@ -18,7 +18,7 @@
       (should (string-match-p "status=success" logged)))))
 
 (ert-deftest test-audit-log-tool-call-writes-cmd-for-exec ()
-  "execute_code_local tool calls audit the command text, capped at 200."
+  "execute_code_local tool calls audit the command text, capped at 2000."
   (let ((iar--audit-log-path "/tmp/test-audit-detail-exec.log"))
     (ignore-errors (delete-file iar--audit-log-path))
     (unwind-protect
@@ -28,13 +28,15 @@
           (let ((line (with-temp-buffer (insert-file-contents iar--audit-log-path)
                                         (buffer-string))))
             (should (string-match-p "cmd=echo hi" line)))
-          ;; long commands are capped at 197 chars + "..."
+          ;; long commands are capped at 1997 chars + "..." (c460:
+          ;; raised from 200 -- the 0071 belt reads these lines, and a
+          ;; nested camera ssh beyond char 200 was invisible to it)
           (iar--audit-log-tool-call-with-agent
-           "execute_code_local" (list :command (make-string 500 ?x)) "out" "aria")
+           "execute_code_local" (list :command (make-string 5000 ?x)) "out" "aria")
           (let ((line (with-temp-buffer (insert-file-contents iar--audit-log-path)
                                         (buffer-string))))
             (should (string-match "cmd=\\(x+\\)\\.\\.\\." line))
-            (should (= 197 (length (match-string 1 line))))))
+            (should (= 1997 (length (match-string 1 line))))))
       (ignore-errors (delete-file iar--audit-log-path)))))
 
 (ert-deftest test-audit-log-tool-call-nil-agent-becomes-unknown ()
