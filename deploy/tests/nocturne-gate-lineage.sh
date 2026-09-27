@@ -93,21 +93,21 @@ check "f3a no-op on unchanged gate" pass "$(echo "$OUT" | grep -q "no change sin
 # v8.6 (aria c415): the cap is SIGNAL-AWARE -- belt #2 durability
 # commits are excluded from the count and the capped head. Fixtures
 # compute the expected capped head the same way the wrapper now does.
-if git rev-parse HEAD~310 >/dev/null 2>&1; then
-  G310=$(git rev-parse HEAD~310)
-  C100=$(git rev-list --first-parent --reverse --grep="belt #2 durability" --invert-grep "$G310..HEAD" | sed -n '100p')
-  DEFERRED=$(git rev-list --count --first-parent --grep="belt #2 durability" --invert-grep "$C100..HEAD")
+if git rev-parse HEAD~500 >/dev/null 2>&1; then
+  G310=$(git rev-parse HEAD~500)
+  C100=$(git rev-list --first-parent --reverse --grep="belt #2 durability" --invert-grep "$G310..HEAD" -- ":(exclude)audit" ":(exclude)tasks" ":(exclude)affect" | sed -n '100p')
+  DEFERRED=$(git rev-list --count --first-parent --grep="belt #2 durability" --invert-grep "$C100..HEAD" -- ":(exclude)audit" ":(exclude)tasks" ":(exclude)affect")
   gate_set "$G310"
   OUT=$(NOC_PERS="$SBX/repo" NOC_DRY_RUN=1 NOC_MAX_RANGE=100 timeout 60 bash "$W" 2>/dev/null)
   check "f4a cap fires at MAX_RANGE" pass "$(echo "$OUT" | grep -q "RANGE-CAP" && echo pass || echo FAIL)"
   CAPLINE=$(echo "$OUT" | grep "RANGE-CAP" | grep -o '[0-9a-f]\{40\}' | sed -n 3p)
-  check "f4b capped head is 100th SIGNAL commit" "$C100" "$CAPLINE"
-  check "f4c deferred signal count" "$DEFERRED" "$(echo "$OUT" | grep -o '[0-9]* signal commits deferred' | grep -o '^[0-9]*')"
+  check "f4b capped head is 100th SUBSTANTIVE commit" "$C100" "$CAPLINE"
+  check "f4c deferred substantive count" "$DEFERRED" "$(echo "$OUT" | grep -o '[0-9]* substantive commits deferred' | grep -o '^[0-9]*')"
   # f4d: the capped head must NOT be a belt#2 commit (signal-only walk)
   ISBELT=$(git log -1 --format=%s "$C100" | grep -c "belt #2 durability" || true)
   check "f4d capped head is not belt#2" "0" "$ISBELT"
 else
-  say "SKIP f4 (clone shallower than 310 fp commits)"
+  say "SKIP f4 (clone shallower than 500 fp commits)"
 fi
 
 # ---- Fixture 5: empty gate file -> first-run fallback path ----
