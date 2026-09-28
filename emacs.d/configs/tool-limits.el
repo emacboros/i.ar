@@ -135,13 +135,18 @@ thinking-loop guard aborts the stream. Overridden per-model by
 ;; Per-model threshold (aria c85, 2026-09-19): the 16000 uniform cap
 ;; was falsified -- glm-5.3-flash's legitimate census synthesis
 ;; measurably exceeds 16k (c82/c83/c84: 5 legit kills, one cycle died
-;; exit 1 on 3 legit strikes). glm gets 32000; nemotron-3-super keeps
-;; 16000 (her healthy thinking is <2k, her runaways 1.2M+ chars, so
-;; 16k fires at ~1.5% of the smallest runaway -- keep the early
-;; abort). Matched by string-prefix-p against the model name.
+;; exit 1 on 3 legit strikes). glm gets 32000; nemotron-3-super 16000.
+;; HISTORY: 09-23 raised nemotron 32000->64000 (6d1175d) on the theory
+;; the fires were false positives; that made the threshold UNREACHABLE
+;; (rotate.sh caps her at --num-predict 8192 tokens ~ 20-33k chars), so
+;; the guard never fired again -- starved, not dead (aria c496). The
+;; 09-23 fires at 32000 were real, near the ceiling. 16000 restores the
+;; early abort: runaway -> ~4-6k token abort instead of an 8192-token
+;; num_predict tombstone. Her healthy thinking <2k chars: 16000 = 8x.
+;; Matched by string-prefix-p against the model name.
 (defcustom iar-thinking-loop-max-chars-per-model
   '(("glm-5.3-flash" . 32000)
-    ("nemotron-3-super" . 64000))
+    ("nemotron-3-super" . 16000))
   "Alist of (MODEL-PREFIX . MAX-CHARS) overriding
 `iar-thinking-loop-max-chars' for matching models. First prefix
 match wins; no match falls back to the uniform threshold."
