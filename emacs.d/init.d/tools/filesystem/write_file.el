@@ -3,10 +3,14 @@
 ;;; write_file tool for gptel
 ;; Creates or overwrites a file with new content.
 ;; Security: checks iar-file-guard before writing. Logs to audit log.
+;; 2026-09-29 (aria c547): content-shape check -- a truncated write
+;; (the c546 nemotron arg-level stop class) surfaces a WARNING in the
+;; tool result instead of landing silently.
 
 (require 'iar-tool-call)
 (require 'iar-file-guard)
 (require 'iar-utils)  ; iar--with-suppressed-save-hooks
+(require 'iar-content-shape)
 
 (defun iar--fs-write-file (filepath content)
   "Write CONTENT to FILEPATH, creating parent dirs if needed.
@@ -36,11 +40,14 @@ Returns a string starting with \\='Success:\\=' or \\='Error:\\='."
                       (iar--with-suppressed-save-hooks
                         (save-buffer))
                       (format "Success: File written to '%s'" expanded-path))))
-                (let ((tmp-file (make-temp-file "iar-write-")))
+                (let* ((shape-warning (iar--content-shape--check content expanded-path))
+                       (tmp-file (make-temp-file "iar-write-")))
                   (with-temp-file tmp-file
                     (insert content))
                   (rename-file tmp-file expanded-path t)
-                  (format "Success: File written to '%s'" expanded-path))))
+                  (if shape-warning
+                      (format "Success: File written to '%s'\n%s" expanded-path shape-warning)
+                    (format "Success: File written to '%s'" expanded-path)))))
           (error (format "Error: Failed to write file to '%s'. Emacs says: %s"
                          expanded-path (error-message-string err))))))))
 

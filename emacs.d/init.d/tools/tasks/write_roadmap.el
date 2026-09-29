@@ -10,19 +10,24 @@
 ;; write_roadmap(content): Overwrites ROADMAP.org with the provided content.
 ;;                        File-guard protected (append-only -- cannot overwrite
 ;;                        existing roadmap without explicit guard check).
+;; 2026-09-29 (aria c547): content-shape check -- a truncated write (the
+;; c546 nemotron arg-level stop class) now surfaces a WARNING in the
+;; tool result instead of landing silently.
 
 (require 'iar-tool-call)
 (require 'subr-x)
 (require 'iar-agent-utils)
 (require 'iar-file-guard)
 (require 'iar-audit-log)
+(require 'iar-content-shape)
 
 (defun iar--tool-write-roadmap (content)
   "Write CONTENT to ROADMAP.org in the current agent's tasks directory.
 Overwrites any existing roadmap. File-guard protected."
   (condition-case err
       (let* ((agent-dir (iar--resolve-project-tasks-dir))
-             (roadmap-path (expand-file-name "ROADMAP.org" agent-dir)))
+             (roadmap-path (expand-file-name "ROADMAP.org" agent-dir))
+             (shape-warning (iar--content-shape--check content roadmap-path)))
         ;; File guard check -- write_file enforces this, but we check
         ;; here too for a clear error message before attempting the write.
         (iar--guard-check-write roadmap-path)
@@ -34,7 +39,9 @@ Overwrites any existing roadmap. File-guard protected."
             (insert content)))
         ;; Audit log
         (iar--audit-log-write roadmap-path)
-        (format "Success: Roadmap written to %s" roadmap-path))
+        (if shape-warning
+            (format "Success: Roadmap written to %s\n%s" roadmap-path shape-warning)
+          (format "Success: Roadmap written to %s" roadmap-path)))
     (error
      (format "Error writing roadmap: %s" (error-message-string err)))))
 

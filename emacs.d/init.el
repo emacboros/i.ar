@@ -55,6 +55,10 @@
 ;; Shared utilities (must load before all other init.d modules)
 (load (expand-file-name "iar-utils.el" init-shared-dir))
 
+;; Content-shape guard (full-file write truncation checks; c546 class,
+;; must load before the write tools that require it)
+(load (expand-file-name "iar-content-shape.el" init-shared-dir))
+
 ;; Shared agent utilities (validation + path resolution, must load before
 ;; task_tools, iar-agent-loader, iar-delegate, iar-reload-os, iar-reload-agent, iar-memory-tools)
 (load (expand-file-name "iar-agent-utils.el" init-shared-dir))
