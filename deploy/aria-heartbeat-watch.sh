@@ -44,6 +44,27 @@ STEP1_SLEEP="${STEP1_SLEEP:-90}"
 mkdir -p "$(dirname "$LOG")" "$(dirname "$BREAKER_FILE")"
 
 ts() { date -u "+%Y-%m-%dT%H:%MZ"; }  # relay-parseable format (c277: space+seconds broke relay list age math)
+
+# Per-day relay seq (c595 scar: the 20261002 filing had no seq token ->
+# short_id returned empty, find_req could never match -> UNADDRESSABLE).
+# Seq = 1 + count of today's aria-* filings already in open/ + answered/
+# (the watchdog files at most once/day, so a monotone count is enough;
+# collisions self-heal: if the target name exists, increment until free).
+relay_seq() {
+  local day="$1" n=1
+  while :; do
+    local found=0
+    for f in "$PERS"/relay/open/"$day"-aria-* "$PERS"/relay/answered/"$day"-aria-*; do
+      [ -f "$f" ] || continue
+      case "$(basename "$f")" in
+        "$day"-aria-$(printf "%04d" "$n")-*) found=1 ;;
+      esac
+    done
+    [ "$found" = 0 ] && break
+    n=$((n+1))
+  done
+  printf "%04d" "$n"
+}
 log() { echo "[$(ts)] $*" >> "$LOG"; }
 
 # --- detection 1: the watched unit itself FAILED (instant, c244) ---
@@ -96,10 +117,12 @@ fi
 if [ "$strikes" -ge 3 ]; then
   log "CIRCUIT BREAKER OPEN ($strikes strikes in window) -- escalating to relay + telegram, healing STOPPED"
   RELAY="$PERS/relay/open"
-  F="$RELAY/$(date +%Y%m%d)-aria-watchdog-breaker-trip.md"
+  DAY=$(date +%Y%m%d)
+  SEQ=$(relay_seq "$DAY")
+  F="$RELAY/$DAY-aria-$SEQ-watchdog-breaker-trip.md"
   if [ ! -f "$F" ]; then
     cat > "$F" << EOR
-# REQ $(date +%Y%m%d)-aria-watchdog-breaker
+# REQ $DAY-aria-$SEQ-watchdog-breaker
 filed: $(ts)
 filer: aria-heartbeat-watchdog
 class: nacho-arch
