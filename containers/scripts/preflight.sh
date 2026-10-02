@@ -201,7 +201,7 @@ if [ -d "$FORK_DIR/.git" ]; then
         rel="${f#$FORK_DIR/}"
         if ! readcheck "$f"; then
             warn "fork parse FAIL: $rel -- restoring from HEAD"
-            if git -C "$FORK_DIR" checkout -- "$rel" 2>/dev/null && readcheck "$f"; then
+            if git -C "$FORK_DIR" -c safe.directory="$FORK_DIR" checkout -- "$rel" 2>/dev/null && readcheck "$f"; then
                 pass "fork healed: $rel restored from HEAD, re-verified parse-clean"
             else
                 fail "fork heal FAILED: $rel still unparseable -- refusing to start (poison would kill init)"
