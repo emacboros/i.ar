@@ -173,6 +173,59 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
+# 5. gptel fork parse audit (aria c592, 2026-10-02) -- the fork-dirty belt
+# ---------------------------------------------------------------------------
+# The gptel fork is a SEPARATE repo mounted writable, load-bearing at init,
+# and was covered by NO reset belt: three fork-break outages (09-29, 10-01,
+# 10-02 -- 834 dead cycles in the last one) ran until a human healed the
+# file by hand, because reset_worktree only resets REPO_DIR (i.ar).
+# This phase read-checks every fork .el BEFORE init loads it; a file that
+# fails to parse is restored from HEAD and re-verified. A poison edit now
+# heals in ONE cycle instead of 834. Also removes stale .elc files that
+# shadow a newer .el (the c581 stale-.elc class).
+echo ""
+echo "--- Phase 5: gptel fork parse audit ---"
+
+FORK_DIR="/root/.emacs.d/gptel-fork"
+
+readcheck() {
+    # v2 (c592): the loop-read form swallows an UNBALANCED-OPEN tail as
+    # end-of-file (a truncated file reads "clean"). The correct shape:
+    # read until end-of-file is CLEAN, any other error is a parse FAIL.
+    emacs --batch -Q --eval "(with-temp-buffer (insert-file-contents \"$1\") (goto-char (point-min)) (condition-case e (progn (while t (read (current-buffer))) (message \"UNEXPECTED-OK\")) (end-of-file (message \"EOF-CLEAN\")) (error (message \"ERR: %S\" e) (kill-emacs 1))))" >/dev/null 2>&1
+}
+
+if [ -d "$FORK_DIR/.git" ]; then
+    for f in "$FORK_DIR"/*.el; do
+        [ -e "$f" ] || continue
+        rel="${f#$FORK_DIR/}"
+        if ! readcheck "$f"; then
+            warn "fork parse FAIL: $rel -- restoring from HEAD"
+            if git -C "$FORK_DIR" checkout -- "$rel" 2>/dev/null && readcheck "$f"; then
+                pass "fork healed: $rel restored from HEAD, re-verified parse-clean"
+            else
+                fail "fork heal FAILED: $rel still unparseable -- refusing to start (poison would kill init)"
+            fi
+        fi
+    done
+    # Stale .elc shadowing a newer .el: Emacs load prefers .elc whenever it
+    # exists, so a fixed .el under an old .elc stays broken. Remove the .elc;
+    # the .el loads (slower, correct).
+    for c in "$FORK_DIR"/*.elc; do
+        [ -e "$c" ] || continue
+        s="${c%.elc}.el"
+        [ -e "$s" ] || continue
+        if [ "$s" -nt "$c" ]; then
+            warn "stale .elc: ${c##*/} older than ${s##*/} -- removing (c581 class)"
+            rm -f "$c"
+        fi
+    done
+else
+    warn "gptel fork not a git repo ($FORK_DIR) -- parse audit skipped"
+fi
+
+
+# ---------------------------------------------------------------------------
 # Result
 # ---------------------------------------------------------------------------
 echo "============================================"
