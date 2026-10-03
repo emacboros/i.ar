@@ -39,6 +39,11 @@
     (add-to-list 'load-path fork-path)))
 
 (require 'gptel)
+;; Optional: activate gptel-test's markdown-mode media tests when the
+;; package is present (c617: the md-2 test is the ONLY test that
+;; exercises the image-mime branch of gptel-markdown--validate-link;
+;; a silent skip is how continuo's file-mime-type edit looked green).
+(require 'markdown-mode nil t)
 (require 'ert)
 (require 'cl-lib)
 (require 'subr-x)

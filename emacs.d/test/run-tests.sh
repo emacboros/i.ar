@@ -31,12 +31,16 @@ cd /root/i.ar/emacs.d
 # gitignored and versioned per environment (container 20260819.446,
 # sophon 20260826.2228) -- a hardcoded path breaks whichever host it
 # was not written on (the stale-path failure class, 426a985 addendum).
-GPTEL_DIR=$(ls -d /root/i.ar/emacs.d/elpa/gptel-* 2>/dev/null | sort | tail -1)
+GPTEL_DIR=$(ls -d /root/i.ar/emacs.d/elpa/gptel-* 2>/dev/null | grep -v ".bak$" | sort | tail -1)
+# Optional packages that activate skipped-by-default gptel-test tests
+# (markdown-mode -> media-link md-1/md-2). Absent dir is harmless (-L
+# of a nonexistent path is a no-op).
+MD_DIR=$(ls -d /root/i.ar/emacs.d/elpa 2>/dev/null)
 
 if [ $# -gt 0 ]; then
-  IAR_TEST_FILTER="$1" exec emacs --batch -L "${GPTEL_DIR}" -L test \
+  IAR_TEST_FILTER="$1" exec emacs --batch -L "${GPTEL_DIR}" -L test -L "${MD_DIR}" \
     -l test/run-tests.el
 else
-  exec emacs --batch -L "${GPTEL_DIR}" -L test \
+  exec emacs --batch -L "${GPTEL_DIR}" -L test -L "${MD_DIR}" \
     -l test/run-tests.el
 fi
