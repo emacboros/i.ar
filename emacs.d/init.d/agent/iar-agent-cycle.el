@@ -61,7 +61,8 @@
   ;; --loop invocation without :cycle now fails loud (prompt not
   ;; found), which is the honest behavior.
   '(("aria" . "aria_daily")
-    ("continuo" . "continuo_daily"))
+    ("continuo" . "continuo_daily")
+    ("aria-twin" . "twin_daily")) ; c626 substrate-experiment twin
   "Mapping from personality names to default cycle files.
 Used when :cycle is not explicitly provided to iar-run-cycle.")
 

@@ -77,6 +77,7 @@ Set buffer-local by `iar-load-agent'. Kept for backward compat.")
     ("bessie" . "interactive")
     ("aria" . "aria-cycle") ; cycle runner only; interactive sessions hardcode interactive (C-c a)
     ("continuo" . "aria-cycle") ; second cycle agent (sibling); same runner, rotated by timer
+    ("aria-twin" . "aria-cycle") ; c626 substrate-experiment twin: aria personality, one-off engine A/B
     ("darwin" . "autonomous")
     ("gardener" . "continuous")
     ("librarian" . "continuous")
