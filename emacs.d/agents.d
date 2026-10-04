@@ -1,1 +1,0 @@
-/root/i.ar/prompts
