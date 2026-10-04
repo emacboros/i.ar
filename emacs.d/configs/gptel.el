@@ -97,7 +97,8 @@ When NO-THINK is non-nil, append think:false to disable model thinking
                                    "deepseek-v4.1-flash:cloud"
                                    "deepseek-v4-pro:cloud"
                                    "glm-5.3:cloud"
-                                   "glm-5.3-flash:cloud")
+                                   "glm-5.3-flash:cloud"
+                                   "kimi-k3:cloud")
                          :request-params (iar--gptel-request-params iar-ollama-no-think)))
 
 ;; Default model: check EMACBOROS_OLLAMA_MODEL env var first (set by
