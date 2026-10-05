@@ -260,7 +260,13 @@ be unstaged, not committed (c270 resurrection vector)."
 (ert-deftest test-git-commit-dated-transcript-still-commits ()
   "Dated transcripts (cycle-YYYY-MM-DD.log) are belt-discipline
 artifacts, tracked intentionally -- the guard must NOT refuse them."
-  (with-git-fixture
+  ;; Pin the committing agent to the fixture tree's owner (aria): the
+  ;; 0126 foreign-tree guard correctly refuses audit/iar/<other>/ paths,
+  ;; and in the FULL suite the default agent name is whatever an earlier
+  ;; test left behind (testagent) -- a fixture artifact, not the guard's
+  ;; concern. In isolation the agent is nil and the guard is silent.
+  (cl-letf (((symbol-function 'iar--get-agent-name) (lambda () "aria")))
+    (with-git-fixture
     (make-directory (expand-file-name "audit/iar/aria" test-git--tmpdir) t)
     (with-temp-file (expand-file-name "audit/iar/aria/cycle-2026-09-13.log" test-git--tmpdir)
       (insert "dated transcript\n"))
@@ -282,7 +288,7 @@ artifacts, tracked intentionally -- the guard must NOT refuse them."
             (call-process "git" nil out nil "show" "--stat" "--format=" "HEAD")
             (with-current-buffer out
               (should (string-match-p "cycle-2026-09-13.log" (buffer-string)))))
-        (kill-buffer out)))))
+        (kill-buffer out))))))
 
 (ert-deftest test-git-commit-guard-silent-when-clean ()
   "No refused paths -> no refusal note in the result."

@@ -84,6 +84,65 @@ add -A on every commit in a stale checkout."
       (iar--git-run repo-dir "rm" "--cached" "--quiet" path))
     offenders))
 
+;; 0126 (Nacho approved 2026-10-05): the foreign-tree commit guard.
+;; c540/c546 evidence: belt commits carried the OTHER agent's audit
+;; files (3 her-roadmap rides, 0 reverse; one deliberate add of a file
+;; I did not write in a state I did not check). The staged-set is the
+;; right seam: it covers add -A sweeps AND explicit adds, at commit
+;; time where the damage actually happens.
+;;
+;; Rule: staged paths under ANOTHER agent's audit/ tree are unstaged
+;; and reported (hard refuse -- no agent ever has a reason to commit
+;; another agent's audit tree). Staged paths under another agent's
+;; tasks/ tree are also refused UNLESS IAR_ALLOW_FOREIGN=1 is set in
+;; the environment (heals legitimately touch the other's tasks; the
+;; override makes that deliberate).
+
+(defvar iar-git-foreign-audit-refusals nil
+  "Foreign audit paths unstaged by the last git_commit (for tests).")
+
+(defun iar--git-agent-of-path (path)
+  "Return the agent name embedded in an audit/ or tasks/ PATH, or nil.
+audit/iar/aria/x.org -> aria; tasks/iar/continuo/foo -> continuo.
+Shape: <top>/<project>/<agent>/... -- the agent is segment 3."
+  (when (stringp path)
+    (let ((segments (split-string path "/" t)))
+      (when (>= (length segments) 3)
+        (let ((top (nth 0 segments))
+              (agent (nth 2 segments)))
+          (when (and (member top '("audit" "tasks"))
+                     (string-match-p "^[a-z][a-z0-9-]*$" agent))
+            agent))))))
+
+(defun iar--git-unstage-foreign (repo-dir agent)
+  "Unstage staged paths in REPO-DIR belonging to OTHER agents'
+audit/ or tasks/ trees. AUDIT paths: hard refuse. TASKS paths:
+refuse unless the IAR_ALLOW_FOREIGN env var is set (deliberate
+heal override). Returns the list of refused paths."
+  (let* ((staged-result (iar--git-run repo-dir "diff" "--cached" "--name-only"))
+         (staged (when (= 0 (car staged-result))
+                   (split-string (cdr staged-result) "
+" t)))
+         (allow-foreign (equal (getenv "IAR_ALLOW_FOREIGN") "1"))
+         refused)
+    (dolist (path staged)
+      (let ((owner (iar--git-agent-of-path path)))
+        (when (and owner agent (not (equal owner agent)))
+          (let ((audit-p (string-prefix-p "audit/" path))
+                (tasks-p (string-prefix-p "tasks/" path)))
+            (when (or audit-p
+                      (and tasks-p (not allow-foreign)))
+              (push path refused)
+              (iar--git-run repo-dir "rm" "--cached" "--quiet" path))))))
+    (setq refused (nreverse refused))
+    (setq iar-git-foreign-audit-refusals refused)
+    (when refused
+      (message "[git-commit] FOREIGN-TREE refuse: unstaged %s (agent %s%s)"
+               (mapconcat #'identity refused ", ")
+               agent
+               (if allow-foreign " -- IAR_ALLOW_FOREIGN ignored for audit paths" "")))
+    refused))
+
 (defun iar--tool-git-commit (repo_path message)
   "Stage all changes and commit in REPO_PATH with MESSAGE.
 Returns a string starting with Success: or Error:."
@@ -105,9 +164,10 @@ Returns a string starting with Success: or Error:."
       (let ((add-result (iar--git-run repo-dir "add" "-A")))
         (if (/= 0 (car add-result))
             (format "Error: git add -A failed: %s" (cdr add-result))
-          (let* ((refused (iar--git-unstage-refused repo-dir))
+          (let* ((refused (append (iar--git-unstage-foreign repo-dir agent)
+                                  (iar--git-unstage-refused repo-dir)))
                  (refused-note (if refused
-                                   (format "\nNote: refused to stage gitignored transcript file(s): %s"
+                                   (format "\nNote: refused to stage file(s): %s"
                                            (mapconcat #'identity refused ", "))
                                  ""))
                  (status-result (iar--git-run repo-dir "diff" "--cached" "--quiet")))
