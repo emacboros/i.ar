@@ -580,10 +580,41 @@ still readable."
                  (or stop "nil")
                  (or tok-in "NA")
                  (or tok-out "NA")
-                 (iar--reqlog-msgs-count info)))))))
+                 (iar--reqlog-msgs-count info))
+          ;; 0117 ask 3: invisible-burn witness (fires AFTER the PARSE
+          ;; line, same agent context).
+          (when (iar--reqlog-invisible-burn-p stop tok-out tool-use)
+            (iar--reqlog-append
+             "REQ %s WITNESS INVISIBLE-BURN stop=length tokens_out=%s tools=0 -- output budget consumed with no content, no tool calls, no guard fire"
+             id (or tok-out "NA"))))))))
     (error
      (message "[request-log] dump failed: %s"
               (error-message-string err)))))
+
+;; 0117 ask 3 (Nacho approved 2026-10-05): the invisible-burn witness.
+;; c521 shape: 32768 eval tokens (the num_predict ceiling), stop=length,
+;; ZERO content, ZERO tool calls, and NO thinking-loop-guard fire -- the
+;; tokens landed in neither :reasoning nor content nor a complete
+;; tool_call, so every fence saw nothing. The PARSE line already carries
+;; the raw data (stop, tokens_out, tools count); the witness makes the
+;; pathological combination LOUD at the log layer so the census can see
+;; it without re-deriving from body tails.
+
+(defvar iar--reqlog-witness-ceiling 29500
+  "tokens_out at/above which a no-content no-tools request is
+witnessed as invisible burn. 0.9 x the 32768 default num_predict;
+the thinking-loop-guard aborts the stream earlier when thinking is
+visible, so a request that reaches the ceiling WITHOUT the guard
+firing is by definition burn the guards cannot see.")
+
+(defun iar--reqlog-invisible-burn-p (stop tok-out tool-use)
+  "Non-nil when the completed request matches the c521 invisible-burn
+shape: stop=length at/above the ceiling with zero tool calls. Never
+fires on missing data (NA tokens, nil stop)."
+  (and (equal stop "length")
+       (integerp tok-out)
+       (>= tok-out iar--reqlog-witness-ceiling)
+       (not (and (listp tool-use) (> (length tool-use) 0)))))
 
 (defun iar--reqlog-dump-advice (process _status)
   ":before advice on cleanup/sentinel: dump before buffer destruction."
