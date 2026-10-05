@@ -82,6 +82,33 @@ wants patterns that LOOK different call to call.")
 (defvar iar-loop-guard-chain-hard 20
   "Consecutive same-tool calls before hard stop.")
 
+(defvar iar-loop-guard-chain-share-window 20
+  "0117 ask 2 (Nacho approved 2026-10-05): rolling-window same-tool
+share. The CONSECUTIVE chain misses the interleaved pattern (c521:
+17 soft blocks, never 20 consecutive -- read_file interleave reset
+the chain while the model burned 150 requests on one tool). This
+window counts the tool's share of the last WINDOW calls regardless
+of interleaving.")
+
+(defvar iar-loop-guard-chain-share-soft 0.6
+  "Share threshold (0-1) for the window soft block. Calibrated
+against c521: her window share was ~0.87 (145/166) while the
+consecutive chain stayed under 20.")
+
+(defvar iar-loop-guard-chain-share-min 20
+  "Minimum calls in the window before the share guard counts.
+Below this the share is noise: short iterators (tail -1..-8) and
+chain-recovery patterns (9+1+9 = 19 calls) are the CONSECUTIVE
+chain guard's job -- a window that ignores interleaving must not
+fire on shapes the ratified recovery contract allows. The share
+guard speaks only at full-window depth (c521: 145/166 = 0.87 held
+for hours).")
+
+(defvar iar-loop-guard-chain-share-hard 0.85
+  "Share threshold for the window hard stop (stop the request).
+c521's terminal shape: 166 near-identical greps at ~0.87 share with
+no escalation anywhere.")
+
 (defvar iar-loop-guard-chain-similarity 0.5
   "Minimum token-set Jaccard similarity between consecutive
 same-tool calls' args for them to count as one chain.
@@ -140,7 +167,7 @@ count as similar (conservative: never reset on unparseable args)."
 
 ;;; --- Hook function ---
 
-(defun iar--loop-guard-chain (info)
+(cl-defun iar--loop-guard-chain (info)
   "Pre-tool-call hook: detect same-tool chains with different args.
 INFO is the plist from `gptel-pre-tool-call-functions'.
 
@@ -160,57 +187,103 @@ or (:stop t :stop-reason REASON) to stop the request."
       (when (> (length iar--chain-history) max-size)
         (setq iar--chain-history
               (cl-subseq iar--chain-history 0 max-size))))
-    ;; Count backwards from the entry BEFORE this call. prev-args
-    ;; starts as THIS call's args: similarity is judged between
-    ;; consecutive calls, walking most-recent-first.
-    (let ((chain 0)
-          (prev-args args)
-          (hist (cdr iar--chain-history)))
-      ;; Skip a trailing run of identical calls (the identical
-      ;; guard's domain): they neither count toward the chain nor
-      ;; break it.
-      (while (and hist
-                  (equal (caar hist) name)
-                  (equal (nth 1 (car hist)) md5))
-        (setq hist (cdr hist)))
-      ;; Count while same tool AND each successive call's args are
-      ;; SIMILAR to the previous call's args. A dissimilar-args call
-      ;; is a new question: stop counting there (convergence reset).
-      ;; Iterator patterns have similar args (long common prefixes)
-      ;; and keep their monotone count.
-      (while (and hist
-                  (equal (caar hist) name))
-        (let ((entry-args (nth 2 (car hist))))
-          (if (and prev-args
-                   (not (iar--chain-args-similar-p prev-args entry-args)))
-              ;; Dissimilar: the chain broke here.
-              (setq hist nil)
-            (setq chain (1+ chain)
-                  prev-args entry-args
-                  hist (cdr hist)))))
-      ;; Total chain length including this call.
-      (setq chain (1+ chain))
-      ;; let* (not let): final-hard references the sibling bindings.
-      (let* ((effective-soft
-              (let ((s iar-loop-guard-chain-soft))
-                (if (and (integerp s) (> s 0)) s 10)))
-             (effective-hard
-              (let ((h iar-loop-guard-chain-hard))
-                (if (and (integerp h) (> h 0)) h 20)))
-             ;; Ensure hard > soft so the model always gets a warning.
-             (final-hard (max effective-hard (1+ effective-soft))))
-        (cond
-         ((>= chain final-hard)
-          (let ((reason (format (iar--load-prompt "loop_chain_stop")
-                                name chain)))
-            (message "[loop-guard-chain] HARD STOP: %s chained %d times" name chain)
-            (list :stop t :stop-reason reason)))
-         ((>= chain effective-soft)
-          (let ((msg (format (iar--load-prompt "loop_chain_block")
-                             name chain name)))
-            (message "[loop-guard-chain] SOFT BLOCK: %s chained %d times" name chain)
-            (list :block msg)))
-         (t nil))))))
+    ;; 0117 ask 2: rolling-window share. Counts THIS tool's share of
+    ;; the last WINDOW calls (any interleaving allowed) -- the
+    ;; consecutive chain cannot see the interleaved enumeration
+    ;; pattern (c521: 17 chain blocks, zero escalation, 166 greps).
+    ;; Result-capture pattern (rule 48: no cl-return-from): the share
+    ;; verdict, when it fires, IS the hook return; the consecutive
+    ;; chain logic runs only when the share guard is silent.
+    (or (let* ((window (if (and (integerp iar-loop-guard-chain-share-window)
+                                (> iar-loop-guard-chain-share-window 0))
+                           iar-loop-guard-chain-share-window 20))
+               (min-calls (if (and (integerp iar-loop-guard-chain-share-min)
+                                   (> iar-loop-guard-chain-share-min 0))
+                              iar-loop-guard-chain-share-min 20))
+               (recent (cl-subseq iar--chain-history
+                                  0 (min window (length iar--chain-history))))
+               (n (length recent))
+               (same (cl-count name recent :test #'equal :key #'car))
+               (share (if (> n 0) (/ (float same) n) 0.0))
+               ;; Memory/record tools are exempt (the landing must
+               ;; always be writable) -- same list as the cap fences.
+               (exempt (member name '("append_file" "write_file"
+                                      "write_subtask" "write_roadmap"
+                                      "git_commit" "send_telegram")))
+               (soft-share (if (and (floatp iar-loop-guard-chain-share-soft)
+                                    (> iar-loop-guard-chain-share-soft 0.0)
+                                    (<= iar-loop-guard-chain-share-soft 1.0))
+                               iar-loop-guard-chain-share-soft 0.6))
+               (hard-share (if (and (floatp iar-loop-guard-chain-share-hard)
+                                    (> iar-loop-guard-chain-share-hard 0.0)
+                                    (<= iar-loop-guard-chain-share-hard 1.0))
+                               iar-loop-guard-chain-share-hard 0.85)))
+          (when (and (not exempt) (>= n min-calls))
+            (cond
+             ((>= share hard-share)
+              (let ((reason (format (iar--load-prompt "loop_chain_stop")
+                                    name (round (* 100 share)))))
+                (message "[loop-guard-chain] SHARE HARD STOP: %s = %d%% of last %d calls"
+                         name (round (* 100 share)) n)
+                (list :stop t :stop-reason reason)))
+             ((>= share soft-share)
+              (let ((msg (format (iar--load-prompt "loop_chain_block")
+                                 name (round (* 100 share)) name)))
+                (message "[loop-guard-chain] SHARE SOFT BLOCK: %s = %d%% of last %d calls"
+                         name (round (* 100 share)) n)
+                (list :block msg)))
+             (t nil))))
+        ;; Share guard silent -> the consecutive chain logic runs.
+        (let ((chain 0)
+              (prev-args args)
+              (hist (cdr iar--chain-history)))
+          ;; Skip a trailing run of identical calls (the identical
+          ;; guard's domain): they neither count toward the chain nor
+          ;; break it.
+          (while (and hist
+                      (equal (caar hist) name)
+                      (equal (nth 1 (car hist)) md5))
+            (setq hist (cdr hist)))
+          ;; Count while same tool AND each successive call's args are
+          ;; SIMILAR to the previous call's args. A dissimilar-args call
+          ;; is a new question: stop counting there (convergence reset).
+          ;; Iterator patterns have similar args (long common prefixes)
+          ;; and keep their monotone count.
+          (while (and hist
+                      (equal (caar hist) name))
+            (let ((entry-args (nth 2 (car hist))))
+              (if (and prev-args
+                       (not (iar--chain-args-similar-p prev-args entry-args)))
+                  ;; Dissimilar: the chain broke here.
+                  (setq hist nil)
+                (setq chain (1+ chain)
+                      prev-args entry-args
+                      hist (cdr hist)))))
+          ;; Total chain length including this call.
+          (setq chain (1+ chain))
+          ;; let* (not let): final-hard references the sibling bindings.
+          (let* ((effective-soft
+                  (let ((s iar-loop-guard-chain-soft))
+                    (if (and (integerp s) (> s 0)) s 10)))
+                 (effective-hard
+                  (let ((h iar-loop-guard-chain-hard))
+                    (if (and (integerp h) (> h 0)) h 20)))
+                 ;; Ensure hard > soft so the model always gets a warning.
+                 (final-hard (max effective-hard (1+ effective-soft))))
+            (cond
+             ((>= chain final-hard)
+              (let ((reason (format (iar--load-prompt "loop_chain_stop")
+                                    name chain)))
+                (message "[loop-guard-chain] HARD STOP: %s chained %d times" name chain)
+                (list :stop t :stop-reason reason)))
+             ((>= chain effective-soft)
+              (let ((msg (format (iar--load-prompt "loop_chain_block")
+                                 name chain name)))
+                (message "[loop-guard-chain] SOFT BLOCK: %s chained %d times" name chain)
+                (list :block msg)))
+             (t nil)))))))
+
+;;; --- Setup ---
 
 ;;; --- Setup ---
 

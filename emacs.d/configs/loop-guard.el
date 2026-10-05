@@ -32,6 +32,31 @@ one soft warning before hard-stopping."
   :safe #'iar--positive-integer-p
   :group 'iar)
 
+;; 0117 ask 2 (Nacho approved 2026-10-05): rolling-window same-tool
+;; share -- the consecutive chain cannot see the interleaved
+;; enumeration pattern (c521: 17 chain blocks, zero escalation).
+(defcustom iar-loop-guard-chain-share-window 20
+  "Rolling window (calls) for the same-tool share guard."
+  :type 'integer
+  :safe #'iar--positive-integer-p
+  :group 'iar)
+
+(defcustom iar-loop-guard-chain-share-soft 0.6
+  "Share (0-1) of the window that triggers the share soft block."
+  :type 'float
+  :group 'iar)
+
+(defcustom iar-loop-guard-chain-share-min 20
+  "Minimum calls in the window before the share guard counts."
+  :type 'integer
+  :safe #'iar--positive-integer-p
+  :group 'iar)
+
+(defcustom iar-loop-guard-chain-share-hard 0.85
+  "Share (0-1) that triggers the share hard stop."
+  :type 'float
+  :group 'iar)
+
 (provide 'iar-config-loop-guard)
 (defcustom iar-loop-guard-chain-similarity 0.5
   "Minimum token-set Jaccard similarity between consecutive
