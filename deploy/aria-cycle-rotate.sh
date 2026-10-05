@@ -42,4 +42,4 @@ if [ ! -x "$iar_wrap/utils/iar.sh" ]; then
   exit 97
 fi
 exec /bin/bash "$iar_wrap/utils/iar.sh" --loop --project iar --personalization /var/home/nacho/repos/iar-personalization --agent $AGENT --max-cycles 1 --self-modification --ollama-host 10.66.0.5:11434 --model $MODEL --ctx 262144 \
-  $([[ "$AGENT" == continuo ]] && echo "--num-predict 8192") --gptel-fork /var/home/nacho/repos/gptel --ssh-key aria_ed25519 --mount-ro /var/home/nacho/repos/agora --timeout 3600
+  $([[ "$AGENT" == continuo ]] && echo "--num-predict 32768") --gptel-fork /var/home/nacho/repos/gptel --ssh-key aria_ed25519 --mount-ro /var/home/nacho/repos/agora --timeout 3600
