@@ -303,6 +303,15 @@ calibrated against the old 120-call cap -- with the cap at 300 the
 same-tool warn stays at a third of it, and legitimate batched
 investigation via execute_code_local can honestly exceed 40 calls
 in one deep cycle).")
+(defvar iar-cycle-same-tool-block 150
+  "Second same-tool threshold (0117 ask 1, Nacho approved 2026-10-05):
+when a single tool's TOTAL for the run reaches this, the tool is
+BLOCKED for the rest of the cycle (memory/record tools exempt --
+the landing must always be writable). c521 evidence: 166
+near-identical greps rode 18 ignorable notices; one warning is not
+a control. 150 = the tool-call warn threshold: a cycle that deep in
+one tool has stopped investigating and started enumerating.")
+
 (defvar iar-cycle-tool-call-warn 150
   "Early-warning threshold for the tool-call cap (census option c,
 aria cycle 137 / continuo cycle 3). At this count the NEXT tool
@@ -351,6 +360,29 @@ agent must never be told to write a CYCLE_COMPLETE it does not have."
       "Write your final summary now as plain text -- what you did, what landed, what is next -- and end with CYCLE_COMPLETE."
     (format "Write your final summary now as plain text and wrap it in %s and %s."
             iar-one-shot-response-open iar-one-shot-response-close)))
+
+(defun iar--cycle-same-tool-escalation-p (tool-name same-count state)
+  "0117 ask 1: second same-tool threshold. Non-nil (:block MSG) when
+SAME-COUNT calls to TOOL-NAME reach `iar-cycle-same-tool-block' and
+the tool is not memory/record class. Idempotent: once
+:same-tool-blocked is set, later calls return the already-blocked
+message without re-writing state. Memory tools are always exempt."
+  (when (and (not (member tool-name '("append_file" "write_file"
+                                      "write_subtask" "write_roadmap"
+                                      "git_commit" "send_telegram")))
+             (integerp iar-cycle-same-tool-block)
+             (>= same-count iar-cycle-same-tool-block))
+    (if (plist-get state :same-tool-blocked)
+        (list :block
+              (format "Same-tool escalation: %s is ALREADY blocked for the rest of this cycle (%d calls). Switch tools, batch, or land the cycle (memory tools still allowed)."
+                      tool-name same-count))
+      (plist-put state :same-tool-blocked t)
+      (iar--fence-state-writeback state)
+      (message "[%s] Same-tool ESCALATION: %d calls to %s -- tool blocked for the cycle"
+               (plist-get state :agent) same-count tool-name)
+      (list :block
+            (format "Same-tool escalation: %d calls to %s this cycle. That is enumeration, not investigation. %s is BLOCKED for the rest of this cycle. Batch (one command carrying many operations), switch to a different tool, or land the cycle with what you have. Memory/record tools remain allowed."
+                    same-count tool-name tool-name)))))
 
 (defun iar--cycle-tool-call-cap (info)
   "Pre-tool-call hook: SOFT tool-call cap with a landing.
@@ -428,6 +460,11 @@ sessions are not capped)."
           (list :block
                 (format "Same-tool warning: %d calls to %s this cycle. You are repeating one tool far past what a workflow needs -- batch (one command carrying many operations) or switch approach. This call was NOT lost -- retry it. This warning fires once."
                         same-count tool-name)))
+        ;; 0117 ask 1: second threshold -- the tool is blocked for the
+        ;; cycle (memory tools exempt). Checked AFTER the warn branch;
+        ;; or-wrapped so the block plist is the return (the c39
+        ;; inert-warn law: a block inside a when-sequence is void).
+        (iar--cycle-same-tool-escalation-p tool-name same-count state)
         (when (> count iar-cycle-tool-call-cap)
           (if (member tool-name '("append_file" "write_file" "write_subtask"
                                   "write_roadmap" "git_commit" "send_telegram"))
