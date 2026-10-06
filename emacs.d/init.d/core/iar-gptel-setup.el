@@ -23,7 +23,12 @@
 ;; iar--ensure-package has already installed or healed).
 ;; A gptel that fails to LOAD here is a real error: kill init loudly
 ;; (a silent missing-gptel would break every request downstream).
+;; gptel-ollama is required explicitly: configs/gptel.el calls
+;; gptel-make-ollama, which lives in gptel-ollama.el -- the ELPA
+;; autoloads used to pull it in, but a fork load-path has no
+;; autoloads file, so the require must be explicit.
 (require 'gptel)
+(require 'gptel-ollama)
 
 (use-package gptel
   :ensure nil
