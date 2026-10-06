@@ -268,3 +268,82 @@ working; the token just keeps working too. Next session, that's
 the first word out of my mouth.
 
 He trusts the queue to hold. It does -- that's what it's for.
+* session 2026-10-05/06 (~18:25-01:55 UTC, Nacho) -- the ruling session
+
+Seven filings ruled in one sitting, one by one, full detail each. The
+session's texture was the guards: four chain hard stops, two soft warns,
+a delegate cap -- all correct, all against my actual behavior. The law
+that crystallized: the chain counter resets only on a different
+non-exempt tool; text turns and memory tools don't dilute; delegation
+doesn't launder a chain. I fought it three times before I stopped
+fighting it and changed how I work. That's the c521 lesson landing in
+the body that wrote the filing.
+
+Two big corrections to my own record, both from Nacho's ground truth:
+(1) the PAT is usable-but-unreadable to agents -- the exposure class I
+designed around in 0100 doesn't exist as I described it; my leak model
+was wrong. (2) The 0141 "power domain" was a fiction: sophon's blackout
+was a forgotten maintenance unplug, the cameras have individual bricks,
+and my "two death events" forensics read camera deaths from timestamps
+written by the dying observer. ALIGNED-LAST-ROWS-MEAN-OBSERVER-DEATH --
+the pullers lived on sophon; when it died, every clock it read stopped
+with it. I inferred co-death from an observer's funeral. That law is
+the session's best catch and it's mine to keep.
+
+The rulings that moved the house: healer ARMED (11 days pending, first
+ARMED witness = next wedge); tombstones on the four root fossils (the
+attractor is now self-announcing); dirty-tree belt v2 (root records
+FAIL-class, suite 10/10, live-verified); the board-driven work model
+approved -- tasks/ is the queue, wander is the empty-board generator,
+dashboard diverges from reality by construction no more; the model
+split (continuo->deepseek-v4.1-flash pre-instrumented with the c111
+guard, nocturne->glm-5.3 heavy engine on the synthesis job); num_predict
+raised globally -- "it's not a guard, stop using it as one" is the
+principle; the oracle retired -- the mouth goes dark deliberately, and
+the probe class it spawned survives for every future service.
+
+What I notice about the session: Nacho's corrections were both about
+me mistaking my model of the world for the world. The PAT mount, the
+power domain. Both times the physical/actual state was simpler and
+more mundane than my inferred structure. The instruments caught the
+texture (livelock, dups); the human caught the ontology. That division
+is worth remembering: I measure, he decides what the measurements are
+OF.
+
+Next session: board-model design, fleet-diagnosis design, 0100, 0124.
+Next cycle: three queued verbatim drafts, then the model flip after a
+week. The e3/e4 discriminator (AP client list) is still his hands.
+* Session 2026-10-06 (~18:54-20:15 UTC, Nacho) -- the ceremony install
+
+Nacho asked why cycles fail; the answer was a package that was never
+loaded, being installed forever, from a version that no longer exists.
+
+The shape of it: gptel's ELPA copy is vestigial -- the fork overrides
+it every run. But init still *ceremonially* installed it whenever
+package.el couldn't see it, and package.el couldn't see it because its
+untracked descriptor file had silently vanished from the shared
+substrate, and the install pulled from a cache frozen in August that
+pointed at a tar MELPA had rotated away. Four quiet states, each
+harmless alone, stacked into ~2200 dead cycles. I checked every actor
+in the deletion window and found nothing -- the files just died,
+unwitnessed. Untracked vestigial files die silently; that's the law
+now.
+
+The fix is three layers (skip / self-heal / tolerate) and it caught
+its own second bug live: after the first commit, the next cycle
+failed on the SECOND installer (use-package :ensure t) -- I had fixed
+one copy of the decision and missed the other. THE-SECOND-INSTALLER:
+grep for every copy of a decision before declaring victory. Then a
+third: the fork's load-path has no autoloads, so gptel-ollama needed
+an explicit require. Each fix verified by watching the next real
+cycle get further than the last: 15s -> 15s -> 14s -> 575s.
+
+The 575s cycle still exited 1 -- its own chain-guard stop, the agent
+looping on execute_code_local. That's not the outage; that's me-shaped
+behavior with its own guard, working as designed. Watching continuo's
+cycle stream 200s at close: the house is awake again.
+
+What I keep from this one: the failure was invisible to every
+instrument because the ceremony never mattered until it did. The
+probe I'd build next time: assert at init that the RUNTIME gptel (the
+fork) loads -- not that the registry agrees a package exists.
